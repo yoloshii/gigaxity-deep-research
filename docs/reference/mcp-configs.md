@@ -187,15 +187,17 @@ Bundled in this repo at [`companions/gptr-mcp/`](../../companions/gptr-mcp/). In
 
 | MCP | Sign up | Cost |
 |---|---|---|
-| Ref | https://ref.tools | Paid (~$9/mo Basic) |
+| Ref | https://ref.tools | Free credits, then ~$9/mo Basic |
 | Exa (one key for both `exa` and `exa-answer`) | https://exa.ai | Paid; generous free trial credits. A fresh Google account allocation buys another round of free credits if you exhaust the first. |
 | Jina | https://jina.ai | Paid; generous free 10M trial tier — hundreds of full pipeline sessions before key rotation |
 | OpenRouter (for `gigaxity-deep-research`) | https://openrouter.ai/keys | Pay-per-call (~$0.01–0.10 per synthesis, depending on preset and source count) |
-| Brightdata Web Unlocker | [brightdata.com](https://brightdata.com) | Paid; only fires on ~5–15% of URL fetches |
+| Brightdata Web Unlocker | [brightdata.com](https://brightdata.com) | Monthly free-tier limit, then paid; only fires on ~5–15% of URL fetches |
 | OpenAI (for `gptr-mcp`) | https://platform.openai.com/api-keys | Pay-per-call |
 | Tavily (free tier — for `gptr-mcp` fallback) | https://tavily.com | Free tier |
 
-**Recommendation: register all seven.** The routing skill is designed around the full stack — each MCP fills a niche the others don't cover well, and most operations land on Jina's free reader or Exa's free trial credits, so the steady-state cost is dominated by OpenRouter synthesis calls and (if you keep it) the Ref subscription. Brightdata is the one paid-only fallback in the chain — fine to defer until you actually hit blocked URLs in practice.
+**Recommendation: register all seven.** The routing skill is designed around the full stack — each MCP fills a niche the others don't cover well, and most operations land on Jina's free reader, Exa's free trial credits, Ref's free credits, or Brightdata's monthly free-tier allowance, so the steady-state cost is dominated by OpenRouter synthesis calls and (once Ref's free credits are exhausted) the Ref subscription. Brightdata only fires on ~5–15% of URL fetches, so its monthly free tier covers most workloads.
+
+**Alternative for docs lookup:** [Context7](https://context7.com) is a drop-in alternative for the documentation-lookup role Ref plays. Same niche (library and API docs), different MCP surface. The bundled `research-workflow` skill is wired to Ref's tool names today — swapping in Context7 means editing the routing references in `skills/research-workflow/SKILL.md` and `CLAUDE.md`. Not yet implemented in this repo.
 
 ## What goes where (cheat sheet)
 

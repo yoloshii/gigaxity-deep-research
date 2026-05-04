@@ -33,11 +33,19 @@ The companion `exa-answer` wrapper bundled in `companions/exa-answer/` exposes a
 
 The `research-workflow` skill routes only category-filtered or code-context queries to Exa — broader queries go to Jina (free reader) first. That keeps Exa credits available for the queries Jina can't answer well.
 
-## Ref — paid, low per-call cost
+## Ref — free credits, then low per-call cost
 
-[Ref](https://ref.tools) is the cheapest source for canonical library and API documentation. Plans start around $9–$15/month depending on tier; current pricing is on the Ref site. Per-call cost works out to roughly $0.0045 on the lower-tier plans.
+[Ref](https://ref.tools) is the cheapest source for canonical library and API documentation. New accounts get a starter credit allowance; after that, paid plans start around $9–$15/month depending on tier (current pricing is on the Ref site). Per-call cost works out to roughly $0.0045 on the lower-tier plans — typically cheaper per documentation lookup than burning Exa credits or Jina tokens on lower-quality docs sources, and it returns canonical library docs that the cheaper sources don't always surface cleanly.
 
-Ref isn't free, but it's typically cheaper per documentation lookup than burning Exa credits or Jina tokens on lower-quality docs sources — and it returns canonical library docs that the cheaper sources don't always surface cleanly. The recommended setup includes Ref. If you genuinely want a strict $0/month setup, the fallback chain routes documentation queries to `mcp__exa__get_code_context_exa` (Exa trial) or `mcp__jina__search_web` (Jina free tier); quality drops on edge cases but the synthesis still works.
+The recommended setup includes Ref. If you genuinely want a strict $0/month setup once Ref's free credits run out, the fallback chain routes documentation queries to `mcp__exa__get_code_context_exa` (Exa trial) or `mcp__jina__search_web` (Jina free tier); quality drops on edge cases but the synthesis still works.
+
+**Alternative MCP for the same role:** [Context7](https://context7.com) ships an MCP that covers the same library/API documentation niche and exposes its own free tier. The bundled `research-workflow` skill is currently wired to Ref's tool names — swapping in Context7 needs a small skill edit (and a corresponding edit to `CLAUDE.md`) to point at Context7's tool names instead. Not implemented in this repo today; pick whichever you have a key for.
+
+## Brightdata Web Unlocker — monthly free-tier limit, then paid
+
+[Brightdata Web Unlocker](https://brightdata.com) is the last hop in the URL-reading fallback chain — it fires only when Jina's free reader can't fetch a URL (CAPTCHA, paywall, Cloudflare challenge, 403). In practice that's ~5–15% of URL fetches in a research workflow, so the monthly free-tier allowance typically covers most usage; paid charges only kick in if you push past the monthly limit on blocked-URL recovery.
+
+If you skip Brightdata entirely, the routing skill degrades gracefully — URLs that would have routed to Brightdata just propagate their original error. SYNTHESIS workflows tolerate this because they pull from many sources; single-URL queries on blocked sites will simply fail. For a stack that treats blocked URLs as recoverable, register Brightdata and let the free tier handle most months.
 
 ## Tongyi DeepResearch 30B via OpenRouter — pay-as-you-go
 

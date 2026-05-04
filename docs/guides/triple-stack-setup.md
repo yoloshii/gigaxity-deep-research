@@ -8,17 +8,19 @@ This guide assumes you've already set up `gigaxity-deep-research` per [setup-mcp
 
 | MCP | Role | Cost |
 |---|---|---|
-| `Ref` | Library and API documentation lookup | Paid (~$9/mo Basic, [ref.tools](https://ref.tools)) |
+| `Ref` | Library and API documentation lookup | Free credits, then ~$9/mo Basic ([ref.tools](https://ref.tools)) |
 | `exa` | Code-context search, advanced web, crawling | Paid; generous free trial credits ([exa.ai](https://exa.ai)). Trial credits reset per signup, so a fresh Google account allocation buys another round if you exhaust them. |
 | `exa-answer` | 1–2 s factual lookups (uses Exa `/answer`) | Same key as `exa` |
 | `jina` | Free-tier web/arxiv/ssrn search, parallel reads | Paid; generous free 10M trial tier ([jina.ai](https://jina.ai)) — enough for hundreds of full pipeline sessions before key rotation |
 | `gigaxity-deep-research` | Multi-source synthesis with Tongyi 30B | Pay-per-call against your OpenRouter key (or zero ongoing cost on the `local-inference` branch) |
-| `brightdata_fallback` | Last-resort scraper for blocked URLs | Paid (https://brightdata.com Web Unlocker); only fires on ~5–15% of URL fetches |
+| `brightdata_fallback` | Last-resort scraper for blocked URLs | Monthly free-tier limit, then paid ([brightdata.com](https://brightdata.com) Web Unlocker); only fires on ~5–15% of URL fetches |
 | `gptr-mcp` | Social-first research via Reddit, X, YouTube — wraps [GPT Researcher](https://github.com/assafelovic/gptr-mcp) | Pay-per-call OpenAI + free-tier Tavily |
 
 **Recommendation: secure all seven keys and run the full stack.** Each MCP fills a distinct niche — Ref is the cheapest source for canonical docs, Exa exposes a curated code index and category-filtered web search, Jina is the workhorse free-tier reader, gigaxity-deep-research drives synthesis, Brightdata recovers blocked URLs, and gptr-mcp surfaces community knowledge. The routing skill orchestrates them so each call lands on the cheapest tool that can answer it; replacing one with a fallback degrades quality rather than just cost.
 
-The routing logic *does* degrade gracefully if an MCP isn't registered, so you can ship without one or two and add them later. But the design intent is the full seven — and most operations land on Jina (free 10M tier) or Exa (free trial credits), so the running cost is far below what the table's "Paid" labels imply. See [free-tier-strategy.md](free-tier-strategy.md) for per-MCP free-tier mechanics and the routing logic that keeps spend predictable.
+The routing logic *does* degrade gracefully if an MCP isn't registered, so you can ship without one or two and add them later. But the design intent is the full seven — and most operations land on Jina (free 10M tier), Exa (free trial credits), Ref (free credits before the $9/mo tier), or Brightdata (monthly free-tier limit), so the running cost is far below what the table's "Paid" labels imply. See [free-tier-strategy.md](free-tier-strategy.md) for per-MCP free-tier mechanics and the routing logic that keeps spend predictable.
+
+**Alternative for docs lookup:** [Context7](https://context7.com) covers the same role as Ref — library and API documentation lookup — and ships its own MCP. The bundled `research-workflow` skill is currently wired to Ref's tool names; swapping in Context7 requires a small edit to the routing references in [`../../skills/research-workflow/SKILL.md`](../../skills/research-workflow/SKILL.md) and [`../../CLAUDE.md`](../../CLAUDE.md). Pick whichever you have a key for — the rest of the stack doesn't care.
 
 ## Prerequisites
 
