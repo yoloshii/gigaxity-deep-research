@@ -249,10 +249,3 @@ See [SECURITY.md](SECURITY.md) for the threat model and the private vulnerabilit
 ## License
 
 [MIT](LICENSE). Copyright (c) 2026 Yoloshii.
-
-## Acknowledgments
-
-- Tongyi DeepResearch 30B, Alibaba NLP team
-- OpenRouter, hosted inference infrastructure
-- FastAPI, FastMCP, pydantic, the Python toolkit underneath
-- The deep-research MCP design space, for the four-tool surface conventions
