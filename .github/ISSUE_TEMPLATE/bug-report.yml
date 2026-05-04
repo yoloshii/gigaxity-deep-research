@@ -1,0 +1,75 @@
+name: Bug Report
+description: Report a bug or unexpected behavior.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug. Include what you expected to happen.
+      placeholder: |
+        When I call the `discover` MCP tool with query "...", I get...
+        I expected it to return...
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to trigger the bug.
+      placeholder: |
+        1. Start MCP server with `python run_mcp.py`
+        2. Call tool `discover` with query "..."
+        3. Observe error / unexpected output
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error output / logs
+      description: Paste any error messages or relevant log output.
+      render: shell
+    validations:
+      required: false
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Your system details.
+      value: |
+        - OS:
+        - Python version (`python --version`):
+        - gigaxity-deep-research version / commit SHA:
+        - Mode: MCP / REST / Docker
+        - LLM backend: OpenRouter (model: ...) / local inference (engine: ...)
+        - SearXNG host: self-hosted / third-party
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of the project is affected?
+      options:
+        - MCP Server (run_mcp.py / src/mcp_server.py)
+        - REST API (src/api/routes.py)
+        - Discovery Module (routing, expansion, decomposition, focus modes)
+        - Synthesis Module (quality gate, contradictions, presets, outline)
+        - Connectors (SearXNG, Tavily, LinkUp)
+        - LLM Client (OpenRouter / local inference)
+        - Configuration (src/config.py / .env)
+        - Docker / Deployment
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and this hasn't been reported
+          required: true
+        - label: I included full error output and reproduction steps above
+          required: false

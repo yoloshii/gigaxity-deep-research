@@ -1,0 +1,51 @@
+services:
+  research-tool:
+    build: .
+    container_name: research-mcp
+    restart: unless-stopped
+    ports:
+      # Bind to loopback by default. The REST mode spends the env OpenRouter
+      # key for any caller that reaches it; never expose to a public interface
+      # without an authenticated reverse proxy in front.
+      - "127.0.0.1:8000:8000"
+    environment:
+      # OpenRouter LLM Configuration
+      RESEARCH_LLM_API_KEY: "${OPENROUTER_API_KEY:-}"
+      RESEARCH_LLM_API_BASE: "https://openrouter.ai/api/v1"
+      RESEARCH_LLM_MODEL: "alibaba/tongyi-deepresearch-30b-a3b"
+      RESEARCH_LLM_TEMPERATURE: "0.85"
+      RESEARCH_LLM_TOP_P: "0.95"
+      RESEARCH_LLM_MAX_TOKENS: "8192"
+      RESEARCH_LLM_TIMEOUT: "120"
+
+      # SearXNG Configuration
+      RESEARCH_SEARXNG_HOST: "${SEARXNG_HOST:-http://host.docker.internal:8888}"
+      RESEARCH_SEARXNG_ENGINES: "brave,bing,duckduckgo,startpage,mojeek,wikipedia"
+      RESEARCH_SEARXNG_CATEGORIES: "general"
+      RESEARCH_SEARXNG_LANGUAGE: "en"
+      RESEARCH_SEARXNG_SAFESEARCH: "0"
+
+      # Tavily Configuration (optional)
+      RESEARCH_TAVILY_API_KEY: "${TAVILY_API_KEY:-}"
+      RESEARCH_TAVILY_SEARCH_DEPTH: "advanced"
+
+      # LinkUp Configuration (optional)
+      RESEARCH_LINKUP_API_KEY: "${LINKUP_API_KEY:-}"
+      RESEARCH_LINKUP_DEPTH: "standard"
+
+      # Search Configuration
+      RESEARCH_DEFAULT_TOP_K: "10"
+      RESEARCH_RRF_K: "60"
+    volumes:
+      - research_cache:/tmp/research_cache
+    networks:
+      - research-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  research_cache:
+
+networks:
+  research-net:
+    driver: bridge

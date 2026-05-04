@@ -1,0 +1,42 @@
+# SearXNG companion compose file for Gigaxity Deep Research.
+#
+# Spins up a local SearXNG instance with the JSON API enabled — required by
+# this project's primary search connector.
+#
+# Usage:
+#   cd companions/searxng
+#   cp settings.yml.example settings.yml
+#   # (optional) edit settings.yml — set secret_key, tweak engines
+#   docker compose up -d
+#
+# Default URL after startup: http://localhost:8888
+# Health check:              curl http://localhost:8888/healthz
+# JSON test:                 curl 'http://localhost:8888/search?q=test&format=json'
+#
+# Then in the parent project's .env:
+#   RESEARCH_SEARXNG_HOST=http://localhost:8888
+
+services:
+  searxng:
+    image: searxng/searxng:latest
+    container_name: gigaxity-searxng
+    restart: unless-stopped
+    ports:
+      - "8888:8080"
+    volumes:
+      - ./settings.yml:/etc/searxng/settings.yml:ro
+    environment:
+      - BASE_URL=http://localhost:8888
+      - INSTANCE_NAME=gigaxity-deep-research-searxng
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -1,0 +1,206 @@
+# SearXNG settings for Gigaxity Deep Research
+#
+# Tuned for use as a JSON API backend feeding the parent project's research
+# connector. Engine selection, weights, and timeouts are validated against a
+# long-running test instance and re-checked against upstream SearXNG activity
+# through 2026-05-04. Adjust per your jurisdiction — engines blocked from one
+# network may work fine from another.
+#
+# Setup:
+#   1. Copy this file to settings.yml
+#   2. Replace `secret_key` below with output of: openssl rand -hex 32
+#   3. docker compose up -d
+#
+# Most-common gotcha: many public/default SearXNG installs disable the JSON
+# format. The parent project requires it. The `formats: [html, json]` block
+# under `search:` is what unlocks `?format=json` queries.
+
+use_default_settings: true
+
+general:
+  debug: false
+  instance_name: "gigaxity-deep-research-searxng"
+  privacypolicy_url: false
+  donation_url: false
+  contact_url: false
+  enable_metrics: true
+
+server:
+  # IMPORTANT: replace before exposing the instance.
+  # Generate with: openssl rand -hex 32
+  secret_key: "placeholder-change-me-to-a-long-random-string-before-exposure"
+  base_url: "http://localhost:8888"
+  limiter: false               # set true if exposing publicly
+  image_proxy: false
+  http_protocol_version: "1.0"
+  method: "POST"
+
+outgoing:
+  request_timeout: 3.5
+  max_request_timeout: 10.0
+  pool_connections: 50
+  pool_maxsize: 20
+  keepalive_expiry: 10.0
+  enable_http2: true
+
+ui:
+  static_use_hash: true
+  query_in_title: false
+  default_theme: simple
+
+search:
+  safe_search: 0
+  autocomplete: "duckduckgo"
+  autocomplete_min: 4
+  favicon_resolver: ""
+  default_lang: "auto"
+  ban_time_on_fail: 5
+  max_ban_time_on_fail: 60
+  suspended_times:
+    SearxEngineAccessDenied: 300
+    SearxEngineCaptcha: 600
+    SearxEngineTooManyRequests: 120
+    cf_SearxEngineCaptcha: 7200
+    cf_SearxEngineAccessDenied: 600
+    recaptcha_SearxEngineCaptcha: 14400
+  formats:
+    - html
+    - json                     # required by gigaxity-deep-research
+
+engines:
+  # ============================================
+  # Tier 1: PRIMARY (weight 5) — independent indices, reliable
+  # ============================================
+
+  - name: brave
+    disabled: false
+    weight: 5
+    timeout: 4.0
+
+  - name: wikipedia
+    disabled: false
+    weight: 5
+    timeout: 3.0
+
+  - name: mojeek
+    disabled: false
+    weight: 5
+    timeout: 5.0
+
+  # ============================================
+  # Tier 2: SECONDARY (weight 2-3) — Bing-syndicated, useful for breadth
+  # ============================================
+
+  - name: bing
+    disabled: false
+    weight: 3
+    timeout: 4.0
+
+  - name: duckduckgo
+    disabled: false
+    weight: 3
+    timeout: 4.0
+
+  - name: startpage
+    disabled: false
+    weight: 3
+    timeout: 6.0
+
+  - name: qwant
+    # Cloudflare-blocked from many residential IPs as of early 2026.
+    # If your network can reach it, set disabled: false and weight: 3.
+    disabled: true
+
+  # ============================================
+  # SPECIALIZED — focus-mode coverage
+  # ============================================
+
+  - name: wolframalpha
+    engine: wolframalpha_noapi
+    disabled: false
+    weight: 4
+    timeout: 8.0
+
+  - name: reddit
+    disabled: false
+    weight: 3
+    timeout: 4.0
+
+  - name: youtube
+    disabled: false
+    weight: 3
+    timeout: 4.0
+
+  - name: arxiv
+    disabled: false
+    weight: 4
+    timeout: 6.0
+
+  - name: google scholar
+    engine: google_scholar
+    disabled: false
+    weight: 4
+    timeout: 8.0
+
+  # ============================================
+  # TECHNICAL — code/dev focus
+  # ============================================
+
+  - name: github
+    disabled: false
+    weight: 4
+    timeout: 5.0
+
+  - name: stackoverflow
+    disabled: false
+    weight: 4
+    timeout: 4.0
+
+  # ============================================
+  # DISABLED — degraded or rate-limited at the time of writing
+  # ============================================
+
+  - name: google
+    # Google web search routinely returns CAPTCHA on aggregator traffic.
+    # Brave + Bing + DuckDuckGo + Mojeek cover the same ground without it.
+    disabled: true
+
+  - name: google news
+    engine: google_news
+    # Broken upstream since March 2026 (searxng issue #5852, HTML rewrite
+    # plus protobuf-encrypted URLs). PR #5984 is a draft POC as of mid-April
+    # 2026 but blocked by consent-cookie 302 redirects on server IPs.
+    disabled: true
+
+  - name: google images
+    engine: google_images
+    disabled: true
+
+  - name: karmasearch
+    # Brave-mirror engine added in PR #5871 (Mar 2026). Referer-header
+    # bypass for Cloudflare landed in PR #5953 (Apr 5, 2026) but was
+    # defeated within a week — issue #5976 confirms HTTP 403 from all
+    # tested IPs including Tor exits. Keep disabled until a durable fix
+    # ships upstream.
+    disabled: true
+
+  - name: karmasearch images
+    disabled: true
+
+  - name: karmasearch videos
+    disabled: true
+
+  - name: karmasearch news
+    disabled: true
+
+  - name: yandex
+    disabled: true
+
+  - name: wikidata
+    disabled: true
+
+doi_resolvers:
+  oadoi.org: "https://oadoi.org/"
+  doi.org: "https://doi.org/"
+
+default_doi_resolver: "oadoi.org"

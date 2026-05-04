@@ -1,0 +1,51 @@
+.env
+.env.*
+!.env.example
+*.pyc
+__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg-info
+dist
+build
+.venv
+venv
+
+# Secrets and certificates
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+.secrets/
+
+# Research documentation (local only)
+BLEEDING_EDGE_RESEARCH_FINDINGS.md
+ENHANCEMENT_ROADMAP.md
+DESIGN_PHILOSOPHY.md
+P0_ENHANCEMENTS.md
+
+# Test reports (local only)
+TEST_OUTCOME_REPORT.md
+
+# Local reference docs
+REASONING_MODEL_COMPATIBILITY.md
+LLM_ENDPOINT_QUICKREF.md
+PROGRESS.md
+
+# Test artifacts
+tests/.env
+tests/outputs/
+tests/fixtures/secrets/
+coverage.xml
+htmlcov/
+.coverage
+P1_ENHANCEMENTS.md
+
+# Codex review artifacts (never pushed)
+.codex-review/
+
+# OS clutter
+.DS_Store
+Thumbs.db
