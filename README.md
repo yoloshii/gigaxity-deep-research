@@ -131,10 +131,10 @@ Full REST reference: [`docs/reference/rest-api.md`](docs/reference/rest-api.md).
 | Mode | Branch | LLM backend | When to use |
 |---|---|---|---|
 | **OpenRouter (default)** | `main` | Hosted Tongyi DeepResearch 30B via OpenRouter | Single-machine setup, no GPU, fastest path to working |
-| **Local inference** *(planned — see Roadmap)* | `local-inference` *(branch not yet cut)* | Self-hosted Tongyi/DeepSeek/Qwen via vLLM, SGLang, or any OpenAI-compatible server | On-prem requirement, GPU available, no usage-based cost. In the interim, set `RESEARCH_LLM_API_BASE` against `main` to point at any OpenAI-compatible endpoint. |
+| **Local inference** *(env-override today; code-level swap pending — see Roadmap)* | `local-inference` *(placeholder branch, currently mirrors `main`)* | Self-hosted Tongyi/DeepSeek/Qwen via vLLM, SGLang, or any OpenAI-compatible server | On-prem requirement, GPU available, no usage-based cost. Works on either branch today by setting `RESEARCH_LLM_API_BASE` to any OpenAI-compatible endpoint. |
 | **REST API (any backend)** | both | Either, plus optional remote model server | Distributed compute — orchestrator and model on different machines |
 
-The `local-inference` branch ships with `RESEARCH_LLM_API_BASE` defaulted to `http://localhost:8000/v1` and the OpenRouter client swapped for a generic OpenAI-compatible client. Everything else (search, fusion, synthesis, citations) is identical.
+The `local-inference` branch currently mirrors `main` and serves as a placeholder for the planned client-and-default swap. Once the swap lands, that branch will ship with `RESEARCH_LLM_API_BASE` defaulted to `http://localhost:8000/v1` and the OpenRouter client replaced by a generic OpenAI-compatible client. Until then, point `RESEARCH_LLM_API_BASE` at your local endpoint on either branch — search, fusion, synthesis, and citations behave identically.
 
 ## Architecture
 
@@ -223,7 +223,7 @@ The pipeline implements techniques from the recent literature:
 | :white_check_mark: | MCP + REST surfaces | Both stable, share orchestration logic |
 | :white_check_mark: | search · research · ask · discover · synthesize · reason | All six tools wired and tested |
 | :white_check_mark: | Multi-tenant via per-request key | `X-OpenRouter-Api-Key` header passthrough |
-| :construction: | Local inference branch | Bring-your-own Tongyi/DeepSeek/Qwen, parity with OpenRouter mode |
+| :construction: | Local inference branch | Bring-your-own Tongyi/DeepSeek/Qwen, parity with OpenRouter mode. Placeholder branch exists; client-and-default swap pending. |
 | :construction: | Self-hosted Tongyi guide | vLLM and SGLang reference deployments |
 | :memo: | Streaming responses | SSE for `synthesize` / `reason` long-running calls |
 | :memo: | Pluggable rerankers | Optional Jina or Cohere rerank stage between fusion and synthesis |

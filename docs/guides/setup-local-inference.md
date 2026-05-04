@@ -1,8 +1,8 @@
 # Setting up local inference (self-hosted Tongyi DeepResearch)
 
-> **Status: planned (Roadmap → :construction: Local inference branch).** The `local-inference` branch is not yet cut. Until it ships, this guide is a forward-looking reference: the hosting steps below work today against any OpenAI-compatible endpoint by setting `RESEARCH_LLM_API_BASE` on the `main` branch, but the dedicated branch with default-config-aware swaps is still in development. Track progress in the [Roadmap section of README.md](../../README.md#roadmap).
+> **Status: env-override path is fully working today on either branch; code-level swap pending (Roadmap → :construction: Local inference branch).** The `local-inference` branch exists as a placeholder and currently mirrors `main` byte-for-byte. The hosting steps below work today against any OpenAI-compatible endpoint by setting `RESEARCH_LLM_API_BASE` on either branch — that path is the supported way to run local inference right now. The dedicated branch with default-config-aware swaps (less env wiring, local-first defaults baked into `src/llm_client.py`) is still in development. Track progress in the [Roadmap section of README.md](../../README.md#roadmap).
 
-The default setup calls Tongyi DeepResearch 30B on OpenRouter — fastest path, no GPU needed, pay-per-call. Once the `local-inference` branch lands, it will swap the OpenRouter client for a generic OpenAI-compatible client so you can host the model yourself.
+The default setup calls Tongyi DeepResearch 30B on OpenRouter — fastest path, no GPU needed, pay-per-call. Once the planned `local-inference` divergence lands, that branch will swap the OpenRouter client for a generic OpenAI-compatible client so the env wiring below collapses to defaults.
 
 This guide covers when to choose local inference, how to host Tongyi 30B (or another reasoning model), and how to wire it back to the synthesis pipeline.
 
@@ -36,17 +36,17 @@ Multi-GPU:
 
 If you have less, drop down a model tier (Tongyi 7B, DeepSeek-R1-Distill-Qwen-14B, Qwen-QwQ-32B at INT4) — the synthesis pipeline is model-agnostic.
 
-## Switch to the `local-inference` branch (planned)
+## The `local-inference` branch (placeholder today, code swap planned)
 
 ```bash
 cd gigaxity-deep-research
-git checkout local-inference        # branch lands when the planned roadmap item ships
+git checkout local-inference        # exists today, currently identical to main
 pip install -e .
 ```
 
-The branch will differ from `main` in `src/llm_client.py` (generic OpenAI-compatible client instead of OpenRouter-flavored) and the default `RESEARCH_LLM_API_BASE`. Everything else will be identical.
+Right now the branch is a packaging placeholder — it mirrors `main` byte-for-byte so you can pin downstream tooling to it without a code-level divergence. Once the planned divergence lands, the branch will differ from `main` in `src/llm_client.py` (generic OpenAI-compatible client instead of OpenRouter-flavored) and the default `RESEARCH_LLM_API_BASE`. Everything else (search, fusion, synthesis, citations) will stay identical.
 
-**In the interim**, you can run the same setup against `main` by pointing the LLM client at your local endpoint. `RESEARCH_LLM_API_KEY` must be non-empty (see the note in the Configure section below); set any placeholder string when your model server doesn't enforce auth:
+**Today**, run the same setup against either branch by pointing the LLM client at your local endpoint. `RESEARCH_LLM_API_KEY` must be non-empty (see the note in the Configure section below); set any placeholder string when your model server doesn't enforce auth:
 
 ```bash
 RESEARCH_LLM_API_BASE=http://localhost:8000/v1 \
