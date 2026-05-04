@@ -195,7 +195,7 @@ ln -s /path/to/gigaxity-deep-research/skills/research-workflow ~/.claude/skills/
 
 Drop the block below into your global `~/.claude/CLAUDE.md` (or `~/.claude/AGENTS.md`). It tells Claude Code when to trigger the `research-workflow` skill, how to route between MCPs, and what the standard subagent dispatch looks like.
 
-```markdown
+````markdown
 ## Research Skill Trigger (DEFAULT BEHAVIOR)
 
 **MANDATORY**: Execute `research-workflow` skill for ANY external knowledge query.
@@ -385,7 +385,7 @@ Step 3:  mcp__exa__crawling_exa(url)                         (paid, last resort)
 ❌ Use mcp__jina__expand_query                              ✅ Rewrite query variants in the prompt — expand_query burns 12k tokens/call
 ❌ Pass type="deep" to web_search_exa                       ✅ MCP 3.2.0 has no deep type — use discover→jina→synthesize chain instead
 ```
-```
+````
 
 End of pasteable block.
 
