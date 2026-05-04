@@ -8,17 +8,17 @@ This guide assumes you've already set up `gigaxity-deep-research` per [setup-mcp
 
 | MCP | Role | Cost |
 |---|---|---|
-| `Ref` | Library and API documentation lookup | Paid (~$9/mo, https://ref.tools) |
-| `exa` | Code-context search, advanced web, crawling | Paid (https://exa.ai) |
-| `exa-answer` | 1–2 s factual lookups (uses Exa `/answer`) | Paid (same key as `exa`) |
-| `jina` | Free-tier web/arxiv/ssrn search, parallel reads | Free 10M trial tier (https://jina.ai) |
-| `gigaxity-deep-research` | Multi-source synthesis with Tongyi 30B | Free (you provide OpenRouter key) |
-| `brightdata_fallback` | Last-resort scraper for blocked URLs | Paid (https://brightdata.com Web Unlocker) |
+| `Ref` | Library and API documentation lookup | Paid (~$9/mo Basic, [ref.tools](https://ref.tools)) |
+| `exa` | Code-context search, advanced web, crawling | Paid; generous free trial credits ([exa.ai](https://exa.ai)). Trial credits reset per signup, so a fresh Google account allocation buys another round if you exhaust them. |
+| `exa-answer` | 1–2 s factual lookups (uses Exa `/answer`) | Same key as `exa` |
+| `jina` | Free-tier web/arxiv/ssrn search, parallel reads | Paid; generous free 10M trial tier ([jina.ai](https://jina.ai)) — enough for hundreds of full pipeline sessions before key rotation |
+| `gigaxity-deep-research` | Multi-source synthesis with Tongyi 30B | Pay-per-call against your OpenRouter key (or zero ongoing cost on the `local-inference` branch) |
+| `brightdata_fallback` | Last-resort scraper for blocked URLs | Paid (https://brightdata.com Web Unlocker); only fires on ~5–15% of URL fetches |
 | `gptr-mcp` | Social-first research via Reddit, X, YouTube — wraps [GPT Researcher](https://github.com/assafelovic/gptr-mcp) | Pay-per-call OpenAI + free-tier Tavily |
 
-You can omit any of the paid ones — the routing skill degrades gracefully when an MCP isn't registered. Realistic minimum-viable stack: `jina` (free) + `gigaxity-deep-research` + (optional) `Ref` and `exa`.
+**Recommendation: secure all seven keys and run the full stack.** Each MCP fills a distinct niche — Ref is the cheapest source for canonical docs, Exa exposes a curated code index and category-filtered web search, Jina is the workhorse free-tier reader, gigaxity-deep-research drives synthesis, Brightdata recovers blocked URLs, and gptr-mcp surfaces community knowledge. The routing skill orchestrates them so each call lands on the cheapest tool that can answer it; replacing one with a fallback degrades quality rather than just cost.
 
-For details on the free tiers each search MCP offers (Jina's free reader and search quotas, Exa's trial credits, Ref's plan options) and how to wire them up, see [free-tier-strategy.md](free-tier-strategy.md).
+The routing logic *does* degrade gracefully if an MCP isn't registered, so you can ship without one or two and add them later. But the design intent is the full seven — and most operations land on Jina (free 10M tier) or Exa (free trial credits), so the running cost is far below what the table's "Paid" labels imply. See [free-tier-strategy.md](free-tier-strategy.md) for per-MCP free-tier mechanics and the routing logic that keeps spend predictable.
 
 ## Prerequisites
 

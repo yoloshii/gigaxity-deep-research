@@ -23,9 +23,11 @@ Token cost per call (current, approximate):
 
 **Avoid:** `expand_query` — 12,000 tokens per call. Rewrite query variants in the prompt instead. The bundled `research-workflow` skill already generates variants in-prompt at zero token cost.
 
-## Exa — trial credits, then paid
+## Exa — generous free trial credits, then paid
 
-[Exa](https://exa.ai) ships an MCP server with `web_search_exa`, `web_search_advanced_exa` (category-filtered: `company`, `people`, `financial report`, `news`, `github`, `pdf`), `get_code_context_exa`, and `crawling_exa`. Trial credits cover most exploratory usage; after the trial, individual searches are paid per call.
+[Exa](https://exa.ai) ships an MCP server with `web_search_exa`, `web_search_advanced_exa` (category-filtered: `company`, `people`, `financial report`, `news`, `github`, `pdf`), `get_code_context_exa`, and `crawling_exa`. The free trial covers most exploratory usage; paid plans pick up only after the trial credits are exhausted.
+
+Trial credits are tied to the signup account. A fresh Google account allocation buys another round of credits when the previous one runs out — useful for stretching free-tier usage across multiple research bursts. Reserve Exa for what only Exa does well (curated code index, category-filtered web, subpage crawling) so each credit goes further.
 
 The companion `exa-answer` wrapper bundled in `companions/exa-answer/` exposes a separate `/answer` endpoint optimized for 1–2 second factual lookups. It uses the same Exa key as the main `exa` MCP.
 
@@ -35,7 +37,7 @@ The `research-workflow` skill routes only category-filtered or code-context quer
 
 [Ref](https://ref.tools) is the cheapest source for canonical library and API documentation. Plans start around $9–$15/month depending on tier; current pricing is on the Ref site. Per-call cost works out to roughly $0.0045 on the lower-tier plans.
 
-Ref isn't free, but it's typically cheaper per documentation lookup than burning Exa credits or Jina tokens on lower-quality docs sources. If you want a strict $0/month setup, skip Ref entirely — the fallback chain routes documentation queries to `mcp__exa__get_code_context_exa` (Exa trial) or `mcp__jina__search_web` (Jina free tier). Quality drops on edge cases but the synthesis still works.
+Ref isn't free, but it's typically cheaper per documentation lookup than burning Exa credits or Jina tokens on lower-quality docs sources — and it returns canonical library docs that the cheaper sources don't always surface cleanly. The recommended setup includes Ref. If you genuinely want a strict $0/month setup, the fallback chain routes documentation queries to `mcp__exa__get_code_context_exa` (Exa trial) or `mcp__jina__search_web` (Jina free tier); quality drops on edge cases but the synthesis still works.
 
 ## Tongyi DeepResearch 30B via OpenRouter — pay-as-you-go
 
@@ -72,11 +74,11 @@ This routing is what the `research-workflow` skill enforces by default. Override
 
 Sanitized JSON configs for all seven MCPs in the stack are in [`docs/reference/mcp-configs.md`](../reference/mcp-configs.md). Sign-up links:
 
-- OpenRouter: https://openrouter.ai/keys
-- Jina: https://jina.ai
-- Exa (one key for both `exa` and `exa-answer`): https://exa.ai
-- Ref (optional): https://ref.tools
-- Brightdata Web Unlocker (optional, blocked-URL fallback): https://brightdata.com
-- Tavily (optional, free fallback for built-in connectors): https://tavily.com
+- OpenRouter: [openrouter.ai/keys](https://openrouter.ai/keys)
+- Jina: [jina.ai](https://jina.ai)
+- Exa (one key for both `exa` and `exa-answer`): [exa.ai](https://exa.ai)
+- Ref: [ref.tools](https://ref.tools)
+- Brightdata Web Unlocker (optional, blocked-URL fallback): [brightdata.com](https://brightdata.com)
+- Tavily (optional, free fallback for built-in connectors): [tavily.com](https://tavily.com)
 
 The same configs work for any MCP-compatible client (Claude Code, Cursor, Hermes, Windsurf).

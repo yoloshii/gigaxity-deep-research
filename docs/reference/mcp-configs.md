@@ -188,14 +188,14 @@ Bundled in this repo at [`companions/gptr-mcp/`](../../companions/gptr-mcp/). In
 | MCP | Sign up | Cost |
 |---|---|---|
 | Ref | https://ref.tools | Paid (~$9/mo Basic) |
-| Exa (one key for both `exa` and `exa-answer`) | https://exa.ai | Paid, free trial credits |
-| Jina | https://jina.ai | Free 10M trial tier |
-| OpenRouter (for `gigaxity-deep-research`) | https://openrouter.ai/keys | Pay-per-call |
-| Brightdata Web Unlocker (optional) | https://brightdata.com | Paid |
+| Exa (one key for both `exa` and `exa-answer`) | https://exa.ai | Paid; generous free trial credits. A fresh Google account allocation buys another round of free credits if you exhaust the first. |
+| Jina | https://jina.ai | Paid; generous free 10M trial tier — hundreds of full pipeline sessions before key rotation |
+| OpenRouter (for `gigaxity-deep-research`) | https://openrouter.ai/keys | Pay-per-call (~$0.01–0.10 per synthesis, depending on preset and source count) |
+| Brightdata Web Unlocker | [brightdata.com](https://brightdata.com) | Paid; only fires on ~5–15% of URL fetches |
 | OpenAI (for `gptr-mcp`) | https://platform.openai.com/api-keys | Pay-per-call |
 | Tavily (free tier — for `gptr-mcp` fallback) | https://tavily.com | Free tier |
 
-Minimum-viable stack with paid services: Ref ($9/mo) + Exa ($0/mo trial) + OpenRouter ($0/mo + per-call). Skip Brightdata if blocked URLs aren't a recurring problem in your queries. Skip gptr-mcp if you don't need community-knowledge research.
+**Recommendation: register all seven.** The routing skill is designed around the full stack — each MCP fills a niche the others don't cover well, and most operations land on Jina's free reader or Exa's free trial credits, so the steady-state cost is dominated by OpenRouter synthesis calls and (if you keep it) the Ref subscription. Brightdata is the one paid-only fallback in the chain — fine to defer until you actually hit blocked URLs in practice.
 
 ## What goes where (cheat sheet)
 
