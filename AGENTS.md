@@ -223,14 +223,16 @@ Use Skill tool with skill="research-workflow"
 
 ---
 
-## Research Subagent Spawning (MANDATORY)
+## Research Subagent Spawning (RECOMMENDED)
+
+If your client supports parallel subagents (e.g. Claude Code's `Task` tool), dispatching research as a subagent keeps the main thread's context clean. Optional — skip this section if your client has no subagent primitive.
 
 **Parallelism limit:** Max 2 research subagents in parallel. For 3+ research topics, queue: run 2, wait for completion, run next batch.
 
 ❌ Spawn 3+ research subagents in a single Agent tool message
 ✅ Spawn at most 2, wait for completion, spawn next batch
 
-**Subagent prompt MUST include:**
+**Subagent prompt should include:**
 1. All relevant conversation context (prior decisions, constraints, what's established/ruled out)
 2. Research-workflow instructions (the body below, or reference to skills/research-workflow/SKILL.md)
 
