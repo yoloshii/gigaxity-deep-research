@@ -112,7 +112,7 @@ Add to `~/.claude.json` under `mcpServers`:
 
 Restart Claude Code. The six tools (`search`, `research`, `ask`, `discover`, `synthesize`, `reason`) become callable as `mcp__gigaxity-deep-research__<tool>`.
 
-To unlock the full deep research workflow described in [`CLAUDE.md`](CLAUDE.md), install the bundled `research-workflow` skill from [`skills/research-workflow/`](skills/research-workflow/) and the companion services in [`companions/`](companions/). The companions cover SearXNG (docker compose), an Exa Answer wrapper, and a Brightdata fallback wrapper. Step-by-step in [`docs/guides/setup-companions.md`](docs/guides/setup-companions.md). For the two fully hosted MCPs (Ref, Jina) plus the main Exa MCP, see [`docs/guides/triple-stack-setup.md`](docs/guides/triple-stack-setup.md).
+The MCP alone gives you raw access to the six tools. Most of the deep research value — automatic per-query tool routing across the full seven-MCP stack, the social-first layer via `gptr-mcp`, the routing skill, and the global agent-instruction block — comes from the rest of the staircase. Walk it in [Setup roadmap](#setup-roadmap) below.
 
 ## Quick start: REST API for distributed compute
 
@@ -140,6 +140,44 @@ REST endpoints:
 Each endpoint accepts an optional `X-LLM-Api-Key` header that overrides the env-configured key for that request. Multi-tenant deployments use it to bill each user separately when the configured `RESEARCH_LLM_API_BASE` is a paid hosted endpoint.
 
 Full REST reference: [`docs/reference/rest-api.md`](docs/reference/rest-api.md).
+
+## Setup roadmap
+
+The Quick Starts above get the orchestrator MCP running against a model and a search source. The full deep research workflow — automatic tool routing across the seven-MCP stack, social-first research via `gptr-mcp`, the routing skill that classifies queries, plus the agent-instruction block that wires it all into Claude Code — needs the rest of the staircase below.
+
+Each stage has a verify step, so you can stop at any point and know the layer below is solid. Stages 1–4 give you a working orchestrator. Stages 5–7 turn it into the full deep research stack.
+
+| # | Stage | What you do | Verify | Time | Doc |
+|---|---|---|---|---|---|
+| 1 | Core install | Clone repo, create venv, `pip install -e .` | `python -c "from src.main import app"` exits 0 | 2 min | [Quickstart](docs/quickstart.md) |
+| 2 | Primary search source | Stand up SearXNG (bundled compose file under [`companions/searxng/`](companions/searxng/)) | `curl http://localhost:8888/healthz` returns 200 | 5 min | [setup-companions.md](docs/guides/setup-companions.md) |
+| 3 | LLM endpoint | Start a local model (Ollama / vLLM / SGLang / llama.cpp) **or** point env vars at a hosted endpoint such as OpenRouter | `curl $RESEARCH_LLM_API_BASE/models` returns a model list | 5–30 min | [setup-local-inference.md](docs/guides/setup-local-inference.md) |
+| 4 | Wire gigaxity into Claude Code | `cp .env.example .env`, edit env vars, register the stdio MCP block in `~/.claude.json`, restart Claude Code | `/mcp` shows `gigaxity-deep-research` with a green dot; `mcp__gigaxity-deep-research__research` returns a synthesis with citations | 5 min | [setup-mcp.md](docs/guides/setup-mcp.md) |
+| 5 | Companion MCPs (Triple Stack) | Register Ref, Exa, Exa Answer, Jina, Brightdata fallback, and gptr-mcp in `~/.claude.json` | `/mcp` shows all seven MCPs registered with green dots | 10–15 min | [triple-stack-setup.md](docs/guides/triple-stack-setup.md) |
+| 6 | Routing skill + agent instructions | Symlink [`skills/research-workflow/`](skills/research-workflow/) into your skills dir; paste the instruction block from [`CLAUDE.md`](CLAUDE.md#instruction-block--paste-into-your-global-claudemd) into your global `~/.claude/CLAUDE.md` | A research query triggers the `research-workflow` skill instead of the agent's built-in WebSearch | 3 min | [skill SKILL.md](skills/research-workflow/SKILL.md) |
+| 7 | Full-stack smoke | Run one query of each routing class and confirm the right MCP fires | See the smoke matrix below | 5 min | (below) |
+
+### Smoke matrix
+
+Run each query in Claude Code (or the agent of your choice) after Stage 7 and confirm the routing matches:
+
+| Query | Should route to | What you should see |
+|---|---|---|
+| "What's the latest stable version of Bun?" | `exa-answer` | 1–2 s factual answer with citations |
+| "What does the OpenAI Python SDK's `client.beta` namespace cover?" | `Ref` (`ref_search_documentation`) | Library/API documentation chunks |
+| "Show me a code example using `httpx.AsyncClient` with retries" | `exa` (`get_code_context_exa`) | Curated code-context snippets |
+| "Find recent papers on CRAG quality gates" | `jina` (`search_arxiv`) | arXiv search hits |
+| "Compare FastAPI vs Litestar for production APIs in 2026" | `gigaxity-deep-research` (`synthesize`) | Citation-backed comparative synthesis |
+| "What do people on Reddit say about Bun vs Node for production?" | `gptr-mcp` (`quick_search`) | Reddit / X / YouTube community sentiment |
+
+If a query routes somewhere unexpected, the most common cause is the global instruction block from Stage 6 not being pasted into your global `CLAUDE.md` / `AGENTS.md`. Without it, the agent has to discover the routing logic on its own per session.
+
+### Common pitfalls
+
+- **Stage 2 is required, not optional.** SearXNG is the primary search source — Tavily and LinkUp are fallbacks, not replacements. Skipping it leaves the synthesis layer with nothing to fuse.
+- **Verify Stage 4 before adding companions.** A failing `research` call after Stage 5 is hard to debug because the failure could be any of seven MCPs misfiring; confirm the orchestrator alone works first.
+- **Stage 6 is what makes the agent route automatically.** Without the skill plus the instruction block, the seven MCPs are visible but the agent treats them as raw tools, not a stack.
+- **`local-inference` branch defaults to `http://localhost:8000/v1`; `main` defaults to OpenRouter.** Stage 3's verify command is the same either way, but the env var values differ — match them to your branch.
 
 ## Modes
 
