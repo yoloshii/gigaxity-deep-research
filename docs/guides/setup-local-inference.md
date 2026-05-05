@@ -20,19 +20,27 @@ Tongyi DeepResearch 30B (A3B variant) needs:
 
 - ~60 GB VRAM at FP16
 - ~30 GB VRAM at INT8
-- ~16 GB VRAM at INT4 (with quality tradeoff)
+- ~18-19 GB VRAM at Q4_K_M (GGUF, llama.cpp/Ollama) — the **recommended** path for consumer GPUs
+- ~16 GB VRAM at INT4 AWQ (vLLM/SGLang) — slightly tighter, slightly faster
 
 Single-GPU friendly options:
 - 1× A100 80 GB (FP16, comfortable headroom)
 - 1× H100 80 GB
-- 2× RTX 4090 24 GB (with tensor parallelism, INT8)
 - 1× RTX 6000 Ada 48 GB (INT8)
+- **1× RTX 3090 / 4090 / 5090 24 GB (Q4_K_M GGUF — fits comfortably with 5+ GB headroom for KV cache)**
+- 2× RTX 4090 24 GB (with tensor parallelism, INT8)
 
 Multi-GPU:
 - 2× A100 40 GB (FP16, tensor-parallel)
 - 4× RTX 3090 24 GB (FP16, tensor-parallel)
 
-If you have less, drop down a model tier (Tongyi 7B, DeepSeek-R1-Distill-Qwen-14B, Qwen-QwQ-32B at INT4) — the synthesis pipeline is model-agnostic.
+### Recommended quant for 24 GB consumer GPUs
+
+For an RTX 3090 / 4090 / 5090 (24 GB) or an Apple Silicon machine with 32 GB+ unified memory, use the Q4_K_M GGUF quant. It loads in about 18.5 GB on disk and consumes around 18.9 GB VRAM at runtime, leaving headroom for the KV cache during long-context synthesis runs. Quality drop versus FP16 is small for synthesis tasks — the reasoning behavior of Tongyi DeepResearch holds up well at Q4_K_M in practice.
+
+Browse the available GGUF quants: [https://huggingface.co/models?other=base_model:quantized:Alibaba-NLP/Tongyi-DeepResearch-30B-A3B](https://huggingface.co/models?other=base_model:quantized:Alibaba-NLP/Tongyi-DeepResearch-30B-A3B). Most quanters publish the full Q3/Q4/Q5/Q6/Q8 ladder — pick Q4_K_M unless you have a specific reason to go higher (Q5_K_M ≈ 21.6 GB; tighter on a 24 GB GPU) or lower (Q3 quants below 16 GB; quality starts to degrade noticeably for multi-hop reasoning).
+
+If you have less than 16 GB VRAM, drop down a model tier (Tongyi 7B, DeepSeek-R1-Distill-Qwen-14B, Qwen-QwQ-32B at INT4) — the synthesis pipeline is model-agnostic.
 
 ## The `local-inference` branch
 
@@ -101,14 +109,43 @@ python -m sglang.launch_server \
 
 ## Host the model with Ollama (lower hardware bar)
 
-For modest GPUs (24 GB) or CPU-only experiments, Ollama works with quantized GGUF builds:
+For modest GPUs (24 GB) or CPU-only experiments, Ollama works with the Q4_K_M GGUF. There's no first-party Ollama tag — pull the GGUF from one of the community quanters and import it with a Modelfile:
 
 ```bash
-ollama pull tongyi-deepresearch:30b-q4
+# 1. Download the Q4_K_M GGUF (~18.5 GB) into Ollama's import staging dir.
+#    Pick any of the quanters listed at:
+#    https://huggingface.co/models?other=base_model:quantized:Alibaba-NLP/Tongyi-DeepResearch-30B-A3B
+#    Example with `huggingface-cli` (substitute the quanter you trust):
+huggingface-cli download bartowski/Alibaba-NLP_Tongyi-DeepResearch-30B-A3B-GGUF \
+  Tongyi-DeepResearch-30B-A3B-Q4_K_M.gguf \
+  --local-dir ~/models
+
+# 2. Create a Modelfile pointing at it
+cat > ~/models/Tongyi-DR-Q4_K_M.Modelfile <<'EOF'
+FROM ~/models/Tongyi-DeepResearch-30B-A3B-Q4_K_M.gguf
+PARAMETER temperature 0.85
+PARAMETER top_p 0.95
+PARAMETER num_ctx 32768
+EOF
+
+# 3. Import it under a friendly tag
+ollama create tongyi-deepresearch:30b-q4 -f ~/models/Tongyi-DR-Q4_K_M.Modelfile
+
+# 4. Serve
 ollama serve
 ```
 
-Ollama's OpenAI-compatible endpoint is at `http://localhost:11434/v1`.
+Ollama's OpenAI-compatible endpoint is at `http://localhost:11434/v1`. Once the import is done, the model is callable as `tongyi-deepresearch:30b-q4` (the tag set in step 3) — set that as `RESEARCH_LLM_MODEL`.
+
+Alternatively, llama.cpp's `llama-server` can serve the GGUF directly without an import step:
+
+```bash
+# In a llama.cpp checkout with CUDA build:
+./llama-server -m ~/models/Tongyi-DeepResearch-30B-A3B-Q4_K_M.gguf \
+  --host 0.0.0.0 --port 8080 -ngl 999 -c 32768
+```
+
+Then set `RESEARCH_LLM_API_BASE=http://localhost:8080/v1` and use whatever model alias `llama-server` reports.
 
 ## Configure the orchestrator
 
