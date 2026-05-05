@@ -5,7 +5,7 @@ from openai import AsyncOpenAI
 from ..connectors.base import Source
 from ..config import settings
 from ..llm_utils import get_llm_content
-from ..llm_client import OpenRouterClient, get_llm_client
+from ..llm_client import LLMClient, get_llm_client
 from .prompts import RESEARCH_SYSTEM_PROMPT, build_research_prompt, format_citations
 
 
@@ -20,19 +20,19 @@ class SynthesisEngine:
         temperature: float | None = None,
         top_p: float | None = None,
         max_tokens: int | None = None,
-        client: OpenRouterClient | None = None,
+        client: LLMClient | None = None,
     ):
         """
         Initialize synthesis engine.
 
         Args:
             api_base: OpenAI-compatible API base URL
-            api_key: API key (can be dummy for local models)
+            api_key: API key (can be a placeholder for local models without auth)
             model: Model name
             temperature: Generation temperature
             top_p: Top-p sampling parameter
             max_tokens: Maximum output tokens
-            client: Optional OpenRouterClient for per-request API key support
+            client: Optional LLMClient for per-request API key support
         """
         self.api_base = api_base or settings.llm_api_base
         self.api_key = api_key or settings.llm_api_key
@@ -43,9 +43,8 @@ class SynthesisEngine:
 
         # Honor api_key + api_base overrides when constructing the LLM client.
         # The optional `client` argument still wins (callers can fully replace
-        # the client). This pattern lets the planned local-inference branch be
-        # a thin diff: pass api_base="http://localhost:8000/v1" and the engine
-        # routes through the local OpenAI-compatible endpoint.
+        # the client). On this branch the defaults already point at a local
+        # OpenAI-compatible server; pass api_base to retarget per-call.
         if client is not None:
             self.client = client
         else:

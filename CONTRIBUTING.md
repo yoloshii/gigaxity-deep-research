@@ -1,11 +1,11 @@
 # Contributing to Gigaxity Deep Research
 
-Gigaxity Deep Research is an MCP server (and REST API) that wraps Alibaba's Tongyi DeepResearch 30B model on OpenRouter, exposing `discover`, `synthesize`, `reason`, and `ask` primitives to Claude Code and other MCP-compatible agents. Thanks for your interest in contributing.
+Gigaxity Deep Research is an MCP server (and REST API) that wraps Alibaba's Tongyi DeepResearch 30B model — running on a self-hosted OpenAI-compatible server on this branch (or via OpenRouter on `main`) — and exposes `discover`, `synthesize`, `reason`, and `ask` primitives to Claude Code and other MCP-compatible agents. Thanks for your interest in contributing.
 
 ## Prerequisites
 
 - Python >= 3.11
-- An OpenRouter API key (https://openrouter.ai/keys) for live LLM tests
+- An OpenAI-compatible LLM endpoint (a local vLLM/SGLang/Ollama server, or a hosted service such as OpenRouter) for live LLM tests
 - A SearXNG instance — self-hosted (https://docs.searxng.org/) or third-party — for live search tests
 - Optional: Docker + Docker Compose if you want to run the server in a container
 

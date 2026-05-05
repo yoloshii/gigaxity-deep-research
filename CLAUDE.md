@@ -1,6 +1,6 @@
 # Gigaxity Deep Research — Agent Reference
 
-This is the agent reference for Gigaxity Deep Research, an open-source deep research MCP server for Claude Code, Hermes, Cursor, and other MCP-compatible agents. Tongyi DeepResearch 30B runs via OpenRouter, the Triple Stack search MCPs (Ref, Exa, Jina) handle web/docs/code retrieval, and the bundled `research-workflow` skill routes queries to the right tool per query class.
+This is the agent reference for Gigaxity Deep Research, an open-source deep research MCP server for Claude Code, Hermes, Cursor, and other MCP-compatible agents — `local-inference` branch. Tongyi DeepResearch 30B (or any OpenAI-compatible chat-completions model) runs on a self-hosted server (vLLM, SGLang, llama.cpp, Ollama). The Triple Stack search MCPs (Ref, Exa, Jina) handle web/docs/code retrieval, and the bundled `research-workflow` skill routes queries to the right tool per query class.
 
 This file is loaded by Claude Code (`CLAUDE.md`) and other MCP-compatible agents (`AGENTS.md` is byte-identical). It documents how to operate the six MCP tools this server exposes (two primitives plus four deep-research tools) and how to plug them into the broader deep research stack.
 
@@ -28,7 +28,7 @@ The MCP server exposes **two primitives** plus **four deep-research tools** — 
 | `mcp__gigaxity-deep-research__synthesize` | Citation-aware fusion of pre-gathered content; CRAG quality gate, contradiction surfacing | ~5000–10000 |
 | `mcp__gigaxity-deep-research__reason` | Deep synthesis with explicit chain-of-thought depth control over pre-gathered content | ~5000–15000 |
 
-All six tools accept an optional `openrouter_api_key` parameter for per-request key override (multi-tenant deployments). REST callers can use the `X-OpenRouter-Api-Key` header for the same purpose.
+All six tools accept an optional `api_key` parameter for per-request LLM key override (multi-tenant deployments). REST callers can use the `X-LLM-Api-Key` header for the same purpose.
 
 ---
 
@@ -59,9 +59,9 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `RESEARCH_LLM_API_BASE` | `https://openrouter.ai/api/v1` | LLM endpoint. For local inference, set to `http://localhost:8000/v1` etc. |
-| `RESEARCH_LLM_API_KEY` | *(empty — required)* | OpenRouter or local-server API key |
-| `RESEARCH_LLM_MODEL` | `alibaba/tongyi-deepresearch-30b-a3b` | Any OpenAI-compatible chat-completions model |
+| `RESEARCH_LLM_API_BASE` | `http://localhost:8000/v1` | LLM endpoint. For Ollama set `http://localhost:11434/v1`; for hosted services point at their `/v1` URL. |
+| `RESEARCH_LLM_API_KEY` | *(empty — required, set any non-empty placeholder for local servers without auth)* | LLM API key |
+| `RESEARCH_LLM_MODEL` | `Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking` | Any OpenAI-compatible chat-completions model |
 | `RESEARCH_LLM_TEMPERATURE` | `0.85` | |
 | `RESEARCH_LLM_TOP_P` | `0.95` | |
 | `RESEARCH_LLM_MAX_TOKENS` | `16384` | |
@@ -91,7 +91,7 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 ❌ Use reason() for "what is X" lookups
 ✅ Use ask() — reason() burns tokens on a CoT you don't need
 
-❌ Pass the same OpenRouter key in every request body
+❌ Pass the same LLM API key in every request body
 ✅ Set RESEARCH_LLM_API_KEY in env, override per-request only when multi-tenant
 
 ❌ Skip SearXNG and rely on Tavily/LinkUp alone
@@ -107,14 +107,15 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `RESEARCH_LLM_API_KEY` missing on startup | env var not set | Set in `.env` or MCP `env` block |
-| 401 from OpenRouter on every call | Invalid or expired key | Regenerate at https://openrouter.ai/keys |
+| `RESEARCH_LLM_API_KEY` missing on startup | env var not set | Set in `.env` or MCP `env` block; for local servers without auth, set any non-empty placeholder |
+| `ConnectionError` / `APIConnectionError` on first call | Local LLM server not running | Start vLLM/SGLang/Ollama on the configured `RESEARCH_LLM_API_BASE`; `curl <base>/models` should return 200 |
+| 401 from LLM endpoint | Invalid bearer token | Match `RESEARCH_LLM_API_KEY` to what your server expects (real key for hosted; placeholder for unauthenticated local) |
 | Empty results from `discover` / `synthesize` | SearXNG host unreachable | `curl $RESEARCH_SEARXNG_HOST/healthz` — should return 200 |
-| `Tongyi-DeepResearch 30B not found` from OpenRouter | Model slug typo | Use exactly `alibaba/tongyi-deepresearch-30b-a3b` |
+| `model not found` from local server | Model not loaded | vLLM/SGLang load 30B in 30-120 s; check the model-server logs and use the exact slug they registered |
 | MCP server boots but Claude Code shows no tools | stdio path / venv mismatch | Confirm `command` in `~/.claude.json` points at the venv's Python (not system Python) |
-| 429 rate limit from OpenRouter | Quota exceeded | Reduce `RESEARCH_DEFAULT_TOP_K`; consider local-inference branch |
+| Out-of-memory at model startup | Model larger than VRAM | Switch to a quantized variant (AWQ, INT4) or smaller model |
 | Latency > 30 s on `synthesize` | Quality gate enabled with many sources | Lower `RESEARCH_DEFAULT_TOP_K` to 5; switch preset to `fast` |
-| Per-request `X-OpenRouter-Api-Key` header ignored | Header name typo | Exact header is `X-OpenRouter-Api-Key` (case-insensitive in HTTP, but exact spelling in alias) |
+| Per-request `X-LLM-Api-Key` header ignored | Header name typo | Exact header is `X-LLM-Api-Key` (case-insensitive in HTTP, but exact spelling in alias) |
 
 ---
 
@@ -124,7 +125,7 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 |---|---|---|
 | MCP entry | `run_mcp.py` → `src/mcp_server.py` | FastMCP, stdio transport |
 | REST entry | `src/main.py` → `src/api/routes.py` | FastAPI, uvicorn |
-| LLM client | `src/llm_client.py` | OpenRouter on `main`, generic OpenAI-compat on `local-inference` branch |
+| LLM client | `src/llm_client.py` | Generic OpenAI-compatible client on this branch; OpenRouter-flavored on `main` |
 | Discovery | `src/discovery/` | Routing, expansion, decomposition, focus modes |
 | Synthesis | `src/synthesis/` | Quality gate, contradictions, presets, outline, RCS |
 | Connectors | `src/connectors/` | SearXNG, Tavily, LinkUp |
@@ -174,8 +175,9 @@ Sign-up links:
 - Ref: https://ref.tools
 - Exa (one key for both `exa` and `exa-answer`): https://exa.ai
 - Jina (free 10M tier): https://jina.ai
-- OpenRouter (for `gigaxity-deep-research`): https://openrouter.ai/keys
 - Brightdata Web Unlocker (paid; optional): https://brightdata.com
+
+`gigaxity-deep-research` on this branch uses a self-hosted OpenAI-compatible endpoint (vLLM, SGLang, llama.cpp, Ollama). No external sign-up needed for the LLM unless you point `RESEARCH_LLM_API_BASE` at a hosted service (e.g. OpenRouter).
 
 `exa-answer` and `brightdata_fallback` are minimal wrappers **bundled in this repo** under [`companions/`](companions/). Install per [`docs/guides/setup-companions.md`](docs/guides/setup-companions.md) — both are single-file Python MCP servers with a `requirements.txt` each.
 
@@ -380,7 +382,7 @@ Step 3:  mcp__exa__crawling_exa(url)                         (paid, last resort)
 ❌ Use ask() for cross-source comparisons                   ✅ Use synthesize() — runs quality gate + contradictions
 ❌ Use discover() when URLs are already chosen              ✅ Use synthesize() with the URLs already in the prompt
 ❌ Use reason() for "what is X" lookups                     ✅ Use ask() — reason() burns tokens on a CoT you don't need
-❌ Pass the same OpenRouter key in every request body       ✅ Set RESEARCH_LLM_API_KEY in env, override per-request only when multi-tenant
+❌ Pass the same LLM API key in every request body       ✅ Set RESEARCH_LLM_API_KEY in env, override per-request only when multi-tenant
 ❌ Call synthesize() expecting it to fetch sources          ✅ synthesize NEVER re-searches — pass it pre-gathered sources from discover() or your own URL reads
 ❌ Use mcp__jina__expand_query                              ✅ Rewrite query variants in the prompt — expand_query burns 12k tokens/call
 ❌ Pass type="deep" to web_search_exa                       ✅ MCP 3.2.0 has no deep type — use discover→jina→synthesize chain instead

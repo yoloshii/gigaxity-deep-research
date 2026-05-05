@@ -4,7 +4,7 @@ import hashlib
 import re
 from fastapi import APIRouter, HTTPException, Header
 from typing import Annotated
-from ..llm_client import get_llm_client, OpenRouterClient
+from ..llm_client import get_llm_client, LLMClient
 from ..llm_utils import get_llm_content
 from ..cache import cache
 from .schemas import (
@@ -89,14 +89,14 @@ from ..config import settings
 router = APIRouter()
 
 
-# Type alias for optional OpenRouter API key header
-OpenRouterApiKeyHeader = Annotated[str | None, Header(alias="X-OpenRouter-Api-Key")]
+# Type alias for optional per-request LLM API key header
+LLMApiKeyHeader = Annotated[str | None, Header(alias="X-LLM-Api-Key")]
 
 
-def _get_llm_client(api_key: str | None = None, header_api_key: str | None = None) -> OpenRouterClient:
-    """Get OpenRouter client with optional per-request API key.
+def _get_llm_client(api_key: str | None = None, header_api_key: str | None = None) -> LLMClient:
+    """Get LLM client with optional per-request API key.
 
-    Priority: request body api_key > X-OpenRouter-Api-Key header > server default
+    Priority: request body api_key > X-LLM-Api-Key header > server default
     """
     effective_key = api_key or header_api_key
     return get_llm_client(api_key=effective_key)
@@ -110,8 +110,10 @@ async def health_check():
         status="healthy",
         connectors=aggregator.get_active_connectors(),
         # `llm_configured` reflects whether a key is set, not just the base URL.
-        # The base URL has a default of https://openrouter.ai/api/v1, which would
+        # The base URL has a default of http://localhost:8000/v1, which would
         # otherwise make this field always-true and useless as a readiness signal.
+        # Local servers without auth still need the user to set a placeholder key
+        # so this signal stays meaningful.
         llm_configured=bool(settings.llm_api_key),
     )
 
@@ -169,7 +171,7 @@ async def search(request: SearchRequest):
 @router.post("/research", response_model=ResearchResponse)
 async def research(
     request: ResearchRequest,
-    x_openrouter_api_key: OpenRouterApiKeyHeader = None,  # placeholder; per-request override of env key
+    x_llm_api_key: LLMApiKeyHeader = None,  # placeholder; per-request override of env key
 ):
     """
     Perform full research: search + synthesis with citations.
@@ -183,7 +185,7 @@ async def research(
     - focus_mode: Optimize discovery for specific domains
     """
     aggregator = SearchAggregator()
-    llm_client = _get_llm_client(request.api_key, x_openrouter_api_key)
+    llm_client = _get_llm_client(request.api_key, x_llm_api_key)
 
     if not aggregator.connectors:
         raise HTTPException(
@@ -325,7 +327,7 @@ async def research(
         )
 
     # Standard synthesis (no preset)
-    engine = SynthesisEngine(client=_get_llm_client(request.api_key, x_openrouter_api_key))
+    engine = SynthesisEngine(client=_get_llm_client(request.api_key, x_llm_api_key))
     result = await engine.research(
         query=request.query,
         sources=sources,
@@ -366,7 +368,7 @@ async def research(
 @router.post("/ask", response_model=AskResponse)
 async def ask(
     request: AskRequest,
-    x_openrouter_api_key: OpenRouterApiKeyHeader = None,  # placeholder; per-request override of env key
+    x_llm_api_key: LLMApiKeyHeader = None,  # placeholder; per-request override of env key
 ):
     """
     Quick conversational answer.
@@ -382,7 +384,7 @@ async def ask(
         cached_result["_cached"] = True
         return AskResponse(**cached_result)
 
-    llm_client = _get_llm_client(request.api_key, x_openrouter_api_key)
+    llm_client = _get_llm_client(request.api_key, x_llm_api_key)
 
     messages = []
     optional_context = getattr(request, "context", "") or ""
@@ -419,7 +421,7 @@ async def ask(
 @router.post("/discover", response_model=DiscoverResponse)
 async def discover(
     request: DiscoverRequest | DiscoverRequestEnhanced,
-    x_openrouter_api_key: OpenRouterApiKeyHeader = None,  # placeholder; per-request override of env key
+    x_llm_api_key: LLMApiKeyHeader = None,  # placeholder; per-request override of env key
 ):
     """
     Exploratory discovery with breadth expansion.
@@ -447,7 +449,7 @@ async def discover(
         return DiscoverResponse(**cached_result)
 
     aggregator = SearchAggregator()
-    llm_client = _get_llm_client(request.api_key, x_openrouter_api_key)
+    llm_client = _get_llm_client(request.api_key, x_llm_api_key)
 
     if not aggregator.connectors:
         raise HTTPException(
@@ -546,7 +548,7 @@ async def discover(
 @router.post("/synthesize", response_model=SynthesizeResponse)
 async def synthesize(
     request: SynthesizeRequest,
-    x_openrouter_api_key: OpenRouterApiKeyHeader = None,  # placeholder; per-request override of env key
+    x_llm_api_key: LLMApiKeyHeader = None,  # placeholder; per-request override of env key
 ):
     """
     Pure synthesis of pre-gathered content.
@@ -567,7 +569,7 @@ async def synthesize(
         cached_result["_cached"] = True
         return SynthesizeResponse(**cached_result)
 
-    llm_client = _get_llm_client(request.api_key, x_openrouter_api_key)
+    llm_client = _get_llm_client(request.api_key, x_llm_api_key)
     aggregator = SynthesisAggregator(
         llm_client=llm_client,
         model=settings.llm_model,
@@ -638,7 +640,7 @@ async def synthesize(
 @router.post("/reason", response_model=ReasonResponse)
 async def reason(
     request: ReasonRequest,
-    x_openrouter_api_key: OpenRouterApiKeyHeader = None,  # placeholder; per-request override of env key
+    x_llm_api_key: LLMApiKeyHeader = None,  # placeholder; per-request override of env key
 ):
     """
     Advanced reasoning with chain-of-thought.
@@ -660,7 +662,7 @@ async def reason(
         cached_result["_cached"] = True
         return ReasonResponse(**cached_result)
 
-    llm_client = _get_llm_client(request.api_key, x_openrouter_api_key)
+    llm_client = _get_llm_client(request.api_key, x_llm_api_key)
     aggregator = SynthesisAggregator(
         llm_client=llm_client,
         model=settings.llm_model,
@@ -733,7 +735,7 @@ async def reason(
 @router.post("/synthesize/enhanced", response_model=SynthesizeResponseEnhanced)
 async def synthesize_enhanced(
     request: SynthesizeRequestEnhanced,
-    x_openrouter_api_key: OpenRouterApiKeyHeader = None,  # placeholder; per-request override of env key
+    x_llm_api_key: LLMApiKeyHeader = None,  # placeholder; per-request override of env key
 ):
     """
     Enhanced synthesis with P0 reliability features.
@@ -745,7 +747,7 @@ async def synthesize_enhanced(
 
     Use this endpoint when citation reliability is critical.
     """
-    llm_client = _get_llm_client(request.api_key, x_openrouter_api_key)
+    llm_client = _get_llm_client(request.api_key, x_llm_api_key)
 
     # Convert request sources to internal format
     sources = [
@@ -979,7 +981,7 @@ async def get_focus_modes():
 @router.post("/synthesize/p1", response_model=SynthesizeResponseP1)
 async def synthesize_p1(
     request: SynthesizeRequestP1,
-    x_openrouter_api_key: OpenRouterApiKeyHeader = None,  # placeholder; per-request override of env key
+    x_llm_api_key: LLMApiKeyHeader = None,  # placeholder; per-request override of env key
 ):
     """
     P1 enhanced synthesis with presets, outline-guided synthesis, and RCS.
@@ -991,7 +993,7 @@ async def synthesize_p1(
 
     Use preset=None to manually configure individual options.
     """
-    llm_client = _get_llm_client(request.api_key, x_openrouter_api_key)
+    llm_client = _get_llm_client(request.api_key, x_llm_api_key)
 
     # Convert request sources to internal format
     sources = [

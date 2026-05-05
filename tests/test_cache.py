@@ -419,11 +419,11 @@ class TestMCPToolWiring:
 
     @pytest.mark.asyncio
     async def test_per_request_key_threading(self):
-        """All LLM-using stdio tools forward `openrouter_api_key` to _get_llm_client.
+        """All LLM-using stdio tools forward `api_key` to _get_llm_client.
 
         Regression test: Codex Turn 1 found the docs claimed per-request key
-        worked on stdio when it didn't. The `openrouter_api_key` kwarg now
-        exists on every tool and must thread through to _get_llm_client(api_key=...).
+        worked on stdio when it didn't. The `api_key` kwarg now exists on every
+        tool and must thread through to _get_llm_client(api_key=...).
         """
         with patch('src.mcp_server._get_llm_client') as mock_client:
             mock_response = MagicMock()
@@ -433,7 +433,7 @@ class TestMCPToolWiring:
                 return_value=mock_response
             )
 
-            await _tool_fn("ask")(query="x", openrouter_api_key="sk-test-123")
+            await _tool_fn("ask")(query="x", api_key="sk-test-123")
             mock_client.assert_called_with("sk-test-123")
 
 

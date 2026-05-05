@@ -12,7 +12,7 @@ If you're a single Claude Code user on one machine, use [the MCP setup](setup-mc
 ## Prerequisites
 
 - Docker + Docker Compose, OR Python 3.11+ if running natively
-- An OpenRouter API key (or another OpenAI-compatible LLM endpoint)
+- An OpenAI-compatible LLM endpoint reachable from the orchestrator (local vLLM/SGLang/Ollama, or a hosted service such as OpenRouter)
 - A SearXNG instance reachable from the server
 
 ## Option A: Docker (recommended)
@@ -61,7 +61,7 @@ cp .env.example .env
 uvicorn src.main:app --host 127.0.0.1 --port 8000
 ```
 
-`--host 127.0.0.1` (loopback) is the safe default — the REST surface spends the env-configured OpenRouter key for any caller that reaches it. Bind `--host 0.0.0.0` only behind an authenticated reverse proxy (see the "Reverse proxy and TLS" section below).
+`--host 127.0.0.1` (loopback) is the safe default — the REST surface spends the env-configured LLM key for any caller that reaches it. Bind `--host 0.0.0.0` only behind an authenticated reverse proxy (see the "Reverse proxy and TLS" section below).
 
 Add `--reload` during development for autoreload on source changes.
 
@@ -89,16 +89,16 @@ Full schemas: [reference/rest-api.md](../reference/rest-api.md).
 
 ## Multi-tenant via per-request keys
 
-Send `X-OpenRouter-Api-Key: <key>` on any POST. The server forwards that key to OpenRouter for that single request, bypassing `RESEARCH_LLM_API_KEY`.
+Send `X-LLM-Api-Key: <key>` on any POST. The server forwards that key to the configured LLM endpoint for that single request, bypassing `RESEARCH_LLM_API_KEY`.
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/ask \
   -H "Content-Type: application/json" \
-  -H "X-OpenRouter-Api-Key: sk-or-v1-tenant-key-placeholder" \
-  -d '{"query": "What is the OpenRouter rate limit?"}'
+  -H "X-LLM-Api-Key: sk-tenant-key-placeholder" \
+  -d '{"query": "What is the rate limit?"}'
 ```
 
-Use this when your front-end already collects user OpenRouter keys and you want each user's calls billed to their own account.
+Use this when your front-end already collects user keys for whichever LLM endpoint you're proxying (OpenRouter, Together, Anthropic-compatible, or per-tenant local servers) and you want each user's calls billed to their own account.
 
 ## Distributed compute pattern
 
@@ -119,7 +119,7 @@ Example for vLLM:
 ```bash
 RESEARCH_LLM_API_BASE=http://192.0.2.50:8000/v1
 RESEARCH_LLM_API_KEY=local-anything   # placeholder — see note above
-RESEARCH_LLM_MODEL=alibaba/tongyi-deepresearch-30b-a3b
+RESEARCH_LLM_MODEL=Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking
 ```
 
 See [setup-local-inference.md](setup-local-inference.md) for the model-server side.
@@ -140,22 +140,22 @@ research.example.com {
   log {
     output file /var/log/caddy/research.log
     format filter {
-      request>headers>X-OpenRouter-Api-Key delete
+      request>headers>X-LLM-Api-Key delete
     }
   }
 }
 ```
 
-Stripping the per-request OpenRouter key from access logs is important if you accept multi-tenant traffic.
+Stripping the per-request LLM key from access logs is important if you accept multi-tenant traffic.
 
 ## Security hardening checklist
 
 - [ ] Bind to `127.0.0.1` if behind a reverse proxy on the same host (`RESEARCH_HOST=127.0.0.1`)
 - [ ] Reverse proxy enforces TLS and authentication
-- [ ] Reverse proxy strips `X-OpenRouter-Api-Key` from access logs
+- [ ] Reverse proxy strips `X-LLM-Api-Key` from access logs
 - [ ] `.env` file is `0600` and not in source control (the shipped `.gitignore` already excludes it)
 - [ ] Container runs as non-root (the shipped `Dockerfile` does this)
-- [ ] OpenRouter key in env, not baked into image layers
+- [ ] LLM key in env, not baked into image layers
 
 ## What's next
 

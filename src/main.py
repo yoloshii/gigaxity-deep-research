@@ -52,8 +52,8 @@ mcp = FastApiMCP(
     app,
     name="Research Tool MCP",
     description="Multi-source search and LLM synthesis research tool",
-    # Forward per-user OpenRouter API key to route handlers
-    headers=["X-OpenRouter-Api-Key"],
+    # Forward per-user LLM API key to route handlers
+    headers=["X-LLM-Api-Key"],
     # Expose exactly the six documented tools — `synthesize/enhanced` and
     # `synthesize/p1` stay reachable as REST endpoints but not as MCP tools,
     # so the HTTP MCP surface matches the stdio MCP surface (and the docs).

@@ -1,6 +1,8 @@
 # Introduction to Gigaxity Deep Research
 
-Gigaxity Deep Research is an MCP server that gives Claude Code (and other MCP-compatible agents) a deep research capability — multi-source search, citation-aware synthesis, contradiction detection, and chain-of-thought reasoning — backed by [Tongyi DeepResearch 30B](https://huggingface.co/Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking) hosted on [OpenRouter](https://openrouter.ai/). It exposes six tools — two primitives (`search`, `research`) plus four deep-research tools (`ask`, `discover`, `synthesize`, `reason`) — over both an MCP stdio surface and a FastAPI REST API.
+> **You are reading this on the `local-inference` branch.** The default LLM endpoint is a self-hosted OpenAI-compatible server (vLLM, SGLang, llama.cpp, Ollama). The hosted-OpenRouter framing in the rest of this page applies on `main`; this branch swaps the default to local inference but the synthesis pipeline is identical.
+
+Gigaxity Deep Research is an MCP server that gives Claude Code (and other MCP-compatible agents) a deep research capability — multi-source search, citation-aware synthesis, contradiction detection, and chain-of-thought reasoning — backed by [Tongyi DeepResearch 30B](https://huggingface.co/Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking) running locally on this branch (or hosted on [OpenRouter](https://openrouter.ai/) when configured for that). It exposes six tools — two primitives (`search`, `research`) plus four deep-research tools (`ask`, `discover`, `synthesize`, `reason`) — over both an MCP stdio surface and a FastAPI REST API.
 
 This page covers what the project is, the problems it solves, and where it sits in the broader Triple Stack of six research MCPs.
 
@@ -43,13 +45,13 @@ The bundled [`research-workflow` skill](../skills/research-workflow/SKILL.md) an
 
 ## What models does it work with?
 
-Default is `alibaba/tongyi-deepresearch-30b-a3b` on OpenRouter, chosen for its reasoning-tuned multi-hop research behavior. The synthesis pipeline is model-agnostic, so any OpenAI-compatible chat-completions model works:
+Default on this branch is `Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking` running on a local OpenAI-compatible server (vLLM, SGLang, llama.cpp, Ollama), chosen for its reasoning-tuned multi-hop research behavior. The synthesis pipeline is model-agnostic, so any OpenAI-compatible chat-completions model works:
 
 - DeepSeek-R1 (and any reasoning variant)
 - Qwen-QwQ
-- Llama-3.x via OpenRouter
-- Anthropic / OpenAI / Gemini via OpenRouter
-- A self-hosted model exposed over an OpenAI-compatible endpoint (vLLM, SGLang, Ollama)
+- Llama-3.x (locally hosted or via a hosted endpoint)
+- Anthropic / OpenAI / Gemini via OpenRouter or another aggregator
+- A self-hosted model exposed over an OpenAI-compatible endpoint (vLLM, SGLang, Ollama, llama.cpp)
 
 Switch models by setting `RESEARCH_LLM_MODEL` in `.env` or the MCP `env` block. No code changes needed.
 
@@ -57,8 +59,8 @@ Switch models by setting `RESEARCH_LLM_MODEL` in `.env` or the MCP `env` block. 
 
 | Mode | Branch | When to use |
 |---|---|---|
-| OpenRouter | `main` | Default. Single machine, no GPU, fastest path. |
-| Local inference | `local-inference` | Self-hosted model, on-prem, no usage cost |
+| OpenRouter | `main` | Default on `main`. Single machine, no GPU, fastest path. |
+| Local inference | `local-inference` | Default on this branch. Self-hosted model, on-prem, no usage cost. |
 | REST distributed | both | Orchestrator and model on different machines |
 
 See [docs/guides/setup-mcp.md](guides/setup-mcp.md), [docs/guides/setup-rest.md](guides/setup-rest.md), and [docs/guides/setup-local-inference.md](guides/setup-local-inference.md) for setup per mode.

@@ -1,10 +1,10 @@
 # Gigaxity Deep Research — Open-source deep research MCP server for Claude Code, Hermes, and Cursor
 
-**Open-source deep research MCP server for Claude Code, Hermes, Cursor, and any MCP-compatible agent.** [Tongyi DeepResearch 30B](https://huggingface.co/Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking) via [OpenRouter](https://openrouter.ai/) plus multi-source web synthesis with citations.
+**Open-source deep research MCP server for Claude Code, Hermes, Cursor, and any MCP-compatible agent — local-inference branch.** [Tongyi DeepResearch 30B](https://huggingface.co/Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking) (or any OpenAI-compatible chat-completions model) running on your own hardware via [vLLM](https://github.com/vllm-project/vllm), [SGLang](https://github.com/sgl-project/sglang), [Ollama](https://ollama.ai/), or [llama.cpp](https://github.com/ggerganov/llama.cpp), plus multi-source web synthesis with citations.
 
 Gigaxity Deep Research wraps Alibaba's Tongyi DeepResearch 30B, a model purpose-built for agentic research, and exposes it as six MCP tools — two primitives (`search`, `research`) plus four deep-research tools (`ask`, `discover`, `synthesize`, `reason`) — with a matching FastAPI REST surface. The synthesis layer pulls from a "Triple Stack" of complementary search MCPs ([Ref](https://ref.tools), [Exa](https://exa.ai), [Jina](https://jina.ai)) alongside [SearXNG](https://github.com/searxng/searxng), [Tavily](https://tavily.com), and [LinkUp](https://linkup.so) connectors, then merges results via reciprocal rank fusion with citation binding and contradiction detection on top. A bundled [GPT Researcher](https://github.com/assafelovic/gptr-mcp) (`gptr-mcp`) companion adds Reddit, X, and YouTube as social-first sources.
 
-If you want to run the synthesis model on your own hardware, the `local-inference` branch swaps OpenRouter for any OpenAI-compatible endpoint (Ollama, llama.cpp, vLLM, SGLang). The search-MCP layer is priced separately by each provider. See [`docs/guides/free-tier-strategy.md`](docs/guides/free-tier-strategy.md) for what their free tiers cover and how to wire them up.
+This branch defaults to a local OpenAI-compatible inference server on `http://localhost:8000/v1`. If you'd rather use a hosted model (OpenRouter and friends), check out the [`main` branch](https://github.com/yoloshii/gigaxity-deep-research/tree/main) — it ships with OpenRouter as the default and is the simpler path when you don't have GPU capacity. The search-MCP layer is priced separately by each provider. See [`docs/guides/free-tier-strategy.md`](docs/guides/free-tier-strategy.md) for what their free tiers cover and how to wire them up.
 
 Python on FastAPI. MIT License. Runs as an MCP stdio server, FastAPI REST API, or both. Drop-in instructions for the full deep research stack live in [`CLAUDE.md`](CLAUDE.md) so any agent can mirror the configuration.
 
@@ -58,7 +58,7 @@ The MCP server exposes **two primitives** plus **four deep-research tools** — 
 ### Compatibility
 
 - **Reasoning models**: works with Tongyi DeepResearch, DeepSeek-R1, Qwen-QwQ, and any other OpenAI-compatible chat-completions model.
-- **Multi-tenant**: accepts a per-request `X-OpenRouter-Api-Key` header so multiple users can share one server instance and bill their own OpenRouter accounts.
+- **Multi-tenant**: accepts a per-request `X-LLM-Api-Key` header so multiple users can share one server instance and bring their own LLM endpoint keys.
 - **MCP and REST**: the same orchestration logic powers both surfaces.
 
 ## Quick start: MCP for Claude Code
@@ -76,9 +76,24 @@ pip install -e .
 
 # Configure
 cp .env.example .env
-# Edit .env: set RESEARCH_LLM_API_KEY (https://openrouter.ai/keys)
-#            and RESEARCH_SEARXNG_HOST (or leave default)
+# Edit .env: defaults point at http://localhost:8000/v1 — start vLLM, SGLang,
+#            llama.cpp, or Ollama there before booting the orchestrator.
+#            For Ollama, set RESEARCH_LLM_API_BASE=http://localhost:11434/v1.
+#            RESEARCH_LLM_API_KEY must be non-empty (any placeholder works for
+#            local servers without auth).
 ```
+
+Stand up a local model server. The fastest GPU-friendly path is vLLM:
+
+```bash
+# In a separate terminal (needs ~24-60 GB VRAM at INT4-FP16)
+pip install vllm
+python -m vllm.entrypoints.openai.api_server \
+  --model Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking \
+  --host 0.0.0.0 --port 8000
+```
+
+For lighter setups, swap in any smaller OpenAI-compatible model (Ollama runs on a 24 GB GPU or even CPU). See [`docs/guides/setup-local-inference.md`](docs/guides/setup-local-inference.md) for hardware tradeoffs and per-server commands.
 
 Add to `~/.claude.json` under `mcpServers`:
 
@@ -88,9 +103,9 @@ Add to `~/.claude.json` under `mcpServers`:
   "command": "/path/to/gigaxity-deep-research/.venv/bin/python",
   "args": ["/path/to/gigaxity-deep-research/run_mcp.py"],
   "env": {
-    "RESEARCH_LLM_API_BASE": "https://openrouter.ai/api/v1",
-    "RESEARCH_LLM_API_KEY": "YOUR_OPENROUTER_API_KEY",
-    "RESEARCH_LLM_MODEL": "alibaba/tongyi-deepresearch-30b-a3b"
+    "RESEARCH_LLM_API_BASE": "http://localhost:8000/v1",
+    "RESEARCH_LLM_API_KEY": "local-anything",
+    "RESEARCH_LLM_MODEL": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking"
   }
 }
 ```
@@ -122,7 +137,7 @@ REST endpoints:
 | `/api/v1/presets` | GET | List synthesis presets |
 | `/api/v1/focus-modes` | GET | List focus modes |
 
-Each endpoint accepts an optional `X-OpenRouter-Api-Key` header that overrides the env-configured key for that request. Multi-tenant deployments use it to bill each user separately.
+Each endpoint accepts an optional `X-LLM-Api-Key` header that overrides the env-configured key for that request. Multi-tenant deployments use it to bill each user separately when the configured `RESEARCH_LLM_API_BASE` is a paid hosted endpoint.
 
 Full REST reference: [`docs/reference/rest-api.md`](docs/reference/rest-api.md).
 
@@ -130,11 +145,11 @@ Full REST reference: [`docs/reference/rest-api.md`](docs/reference/rest-api.md).
 
 | Mode | Branch | LLM backend | When to use |
 |---|---|---|---|
-| **OpenRouter (default)** | `main` | Hosted Tongyi DeepResearch 30B via OpenRouter | Single-machine setup, no GPU, fastest path to working |
-| **Local inference** *(env-override today; code-level swap pending — see Roadmap)* | `local-inference` *(placeholder branch, currently mirrors `main`)* | Self-hosted Tongyi/DeepSeek/Qwen via vLLM, SGLang, or any OpenAI-compatible server | On-prem requirement, GPU available, no usage-based cost. Works on either branch today by setting `RESEARCH_LLM_API_BASE` to any OpenAI-compatible endpoint. |
+| **OpenRouter (hosted)** | [`main`](https://github.com/yoloshii/gigaxity-deep-research/tree/main) | Hosted Tongyi DeepResearch 30B via OpenRouter | Single-machine setup, no GPU, fastest path to working |
+| **Local inference (default on this branch)** | `local-inference` | Self-hosted Tongyi/DeepSeek/Qwen via vLLM, SGLang, llama.cpp, or Ollama | On-prem requirement, GPU available, no usage-based cost |
 | **REST API (any backend)** | both | Either, plus optional remote model server | Distributed compute — orchestrator and model on different machines |
 
-The `local-inference` branch currently mirrors `main` and serves as a placeholder for the planned client-and-default swap. Once the swap lands, that branch will ship with `RESEARCH_LLM_API_BASE` defaulted to `http://localhost:8000/v1` and the OpenRouter client replaced by a generic OpenAI-compatible client. Until then, point `RESEARCH_LLM_API_BASE` at your local endpoint on either branch — search, fusion, synthesis, and citations behave identically.
+This branch ships with `RESEARCH_LLM_API_BASE` defaulted to `http://localhost:8000/v1` and a generic OpenAI-compatible LLM client. Search, fusion, synthesis, and citations behave identically across both branches; the only divergence is which inference endpoint the synthesis layer talks to by default. To run against a hosted model from this branch, just override the env vars (or check out `main` for a config that's already wired for OpenRouter).
 
 ## Architecture
 
@@ -219,12 +234,12 @@ The pipeline implements techniques from the recent literature:
 
 | Status | Feature | Description |
 |---|---|---|
-| :white_check_mark: | OpenRouter mode | Default, shipped on `main` |
+| :white_check_mark: | OpenRouter mode | Default on `main` |
+| :white_check_mark: | Local inference mode | Default on this branch — generic OpenAI-compatible client, ships with vLLM/SGLang/Ollama-friendly defaults |
 | :white_check_mark: | MCP + REST surfaces | Both stable, share orchestration logic |
 | :white_check_mark: | search · research · ask · discover · synthesize · reason | All six tools wired and tested |
-| :white_check_mark: | Multi-tenant via per-request key | `X-OpenRouter-Api-Key` header passthrough |
-| :construction: | Local inference branch | Bring-your-own Tongyi/DeepSeek/Qwen, parity with OpenRouter mode. Placeholder branch exists; client-and-default swap pending. |
-| :construction: | Self-hosted Tongyi guide | vLLM and SGLang reference deployments |
+| :white_check_mark: | Multi-tenant via per-request key | `X-LLM-Api-Key` header passthrough |
+| :construction: | Self-hosted Tongyi guide | vLLM and SGLang reference deployments — see [setup-local-inference.md](docs/guides/setup-local-inference.md) |
 | :memo: | Streaming responses | SSE for `synthesize` / `reason` long-running calls |
 | :memo: | Pluggable rerankers | Optional Jina or Cohere rerank stage between fusion and synthesis |
 
@@ -233,7 +248,8 @@ The pipeline implements techniques from the recent literature:
 ## Requirements
 
 - Python 3.11+
-- An OpenRouter API key (https://openrouter.ai/keys) for default mode
+- A local OpenAI-compatible inference server: vLLM, SGLang, llama.cpp, or Ollama (or override `RESEARCH_LLM_API_BASE` to point at a hosted endpoint such as OpenRouter)
+- A GPU sized for your chosen model — Tongyi DeepResearch 30B fits in ~24-60 GB VRAM at INT4-FP16; smaller models (Qwen, Llama 3.x, DeepSeek-R1 distilled) run on lighter hardware
 - A SearXNG instance, self-hosted (https://docs.searxng.org/) or third-party, as the primary search source
 - Optional: Tavily API key, LinkUp API key for fallback search
 - Optional: Docker + Docker Compose for REST mode

@@ -1,8 +1,6 @@
 # Setting up local inference (self-hosted Tongyi DeepResearch)
 
-> **Status: env-override path is fully working today on either branch; code-level swap pending (Roadmap → :construction: Local inference branch).** The `local-inference` branch exists as a placeholder and currently mirrors `main` byte-for-byte. The hosting steps below work today against any OpenAI-compatible endpoint by setting `RESEARCH_LLM_API_BASE` on either branch — that path is the supported way to run local inference right now. The dedicated branch with default-config-aware swaps (less env wiring, local-first defaults baked into `src/llm_client.py`) is still in development. Track progress in the [Roadmap section of README.md](../../README.md#roadmap).
-
-The default setup calls Tongyi DeepResearch 30B on OpenRouter — fastest path, no GPU needed, pay-per-call. Once the planned `local-inference` divergence lands, that branch will swap the OpenRouter client for a generic OpenAI-compatible client so the env wiring below collapses to defaults.
+> **You are reading this on the `local-inference` branch.** The defaults shipped here already point at a local OpenAI-compatible inference server (`RESEARCH_LLM_API_BASE=http://localhost:8000/v1`) and the LLM client is generic — no OpenRouter-specific code paths. To run against OpenRouter or another hosted endpoint, either override the env vars or check out the [`main` branch](https://github.com/yoloshii/gigaxity-deep-research/tree/main).
 
 This guide covers when to choose local inference, how to host Tongyi 30B (or another reasoning model), and how to wire it back to the synthesis pipeline.
 
@@ -10,11 +8,11 @@ This guide covers when to choose local inference, how to host Tongyi 30B (or ano
 
 - **On-prem requirement** — data must not leave your network
 - **Cost predictability** — your usage volume makes per-call pricing more expensive than amortized GPU hosting
-- **Latency floor** — round-trip to OpenRouter adds 100–500 ms; local hosting can drop that to single-digit ms
+- **Latency floor** — round-trip to a hosted service adds 100–500 ms; local hosting can drop that to single-digit ms
 - **GPU you already have** — repurposing existing infra
 - **Custom fine-tune** — running your own variant of Tongyi/DeepSeek/Qwen
 
-Otherwise, default OpenRouter mode is simpler.
+Otherwise, the hosted-OpenRouter path on the `main` branch is simpler — no model server to manage, no GPU prerequisites.
 
 ## Hardware requirements
 
@@ -36,26 +34,26 @@ Multi-GPU:
 
 If you have less, drop down a model tier (Tongyi 7B, DeepSeek-R1-Distill-Qwen-14B, Qwen-QwQ-32B at INT4) — the synthesis pipeline is model-agnostic.
 
-## The `local-inference` branch (placeholder today, code swap planned)
+## The `local-inference` branch
 
 ```bash
 cd gigaxity-deep-research
-git checkout local-inference        # exists today, currently identical to main
+git checkout local-inference
 pip install -e .
 ```
 
-Right now the branch is a packaging placeholder — it mirrors `main` byte-for-byte so you can pin downstream tooling to it without a code-level divergence. Once the planned divergence lands, the branch will differ from `main` in `src/llm_client.py` (generic OpenAI-compatible client instead of OpenRouter-flavored) and the default `RESEARCH_LLM_API_BASE`. Everything else (search, fusion, synthesis, citations) will stay identical.
+This branch differs from `main` in two places:
 
-**Today**, run the same setup against either branch by pointing the LLM client at your local endpoint. `RESEARCH_LLM_API_KEY` must be non-empty (see the note in the Configure section below); set any placeholder string when your model server doesn't enforce auth:
+- `src/llm_client.py` exposes a generic `LLMClient` against any OpenAI-compatible endpoint (no OpenRouter-flavored helpers, no `X-OpenRouter-Api-Key` alias).
+- `src/config.py` defaults to `RESEARCH_LLM_API_BASE=http://localhost:8000/v1` and `RESEARCH_LLM_MODEL=Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking`.
+
+Everything else (search, fusion, synthesis, citations) is identical to `main`. The per-request key override that exists on both branches is named `api_key` (MCP tool parameter) / `X-LLM-Api-Key` (REST header) on this branch — a generic name that fits whatever endpoint you point at.
+
+If your local server runs on the default port, the only env var you need to set is `RESEARCH_LLM_API_KEY` (any non-empty placeholder works for unauthenticated local servers):
 
 ```bash
-RESEARCH_LLM_API_BASE=http://localhost:8000/v1 \
-RESEARCH_LLM_API_KEY=local-anything \
-RESEARCH_LLM_MODEL=alibaba/Tongyi-DeepResearch-30B-A3B-Thinking \
-python run_mcp.py
+RESEARCH_LLM_API_KEY=local-anything python run_mcp.py
 ```
-
-OpenRouter-specific behavior (per-request `X-OpenRouter-Api-Key` header passthrough) is harmless against most OpenAI-compatible servers.
 
 ## Host the model with vLLM
 
@@ -114,21 +112,24 @@ Ollama's OpenAI-compatible endpoint is at `http://localhost:11434/v1`.
 
 ## Configure the orchestrator
 
-In `.env`:
+The branch defaults already match a vLLM/SGLang server on `localhost:8000`. Override only what you need:
 
 ```bash
-# vLLM / SGLang
-RESEARCH_LLM_API_BASE=http://localhost:8000/v1
+# vLLM / SGLang on the default port — only RESEARCH_LLM_API_KEY needs setting
 RESEARCH_LLM_API_KEY=local-anything   # placeholder string — see note below
-RESEARCH_LLM_MODEL=Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking
 
-# Ollama
+# Ollama (different default port + custom model slug)
 RESEARCH_LLM_API_BASE=http://localhost:11434/v1
-RESEARCH_LLM_API_KEY=local-anything   # placeholder string — see note below
+RESEARCH_LLM_API_KEY=local-anything
 RESEARCH_LLM_MODEL=tongyi-deepresearch:30b-q4
+
+# Hosted endpoint (e.g. OpenRouter) from this branch
+RESEARCH_LLM_API_BASE=https://openrouter.ai/api/v1
+RESEARCH_LLM_API_KEY=sk-or-v1-your-key
+RESEARCH_LLM_MODEL=alibaba/tongyi-deepresearch-30b-a3b
 ```
 
-`RESEARCH_LLM_API_KEY` must be **non-empty** because every entrypoint calls `settings.require_llm_key()` and fails fast on an empty key — this is the OpenRouter-mode safety check that prevents the server from coming up without a configured key. For local servers that do not enforce auth, set the variable to any placeholder string (`local-anything`, `na`, etc.). If your model server uses bearer tokens, set this to the actual token value.
+`RESEARCH_LLM_API_KEY` must be **non-empty** because every entrypoint calls `settings.require_llm_key()` and fails fast on an empty key — without it, `llm_configured` on `/api/v1/health` would always read `true` and stop being a useful readiness signal. For local servers that do not enforce auth, set the variable to any placeholder string (`local-anything`, `na`, etc.). For hosted endpoints or local servers configured with bearer tokens, set this to the actual token value.
 
 ## Smoke test
 

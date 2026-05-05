@@ -119,9 +119,9 @@ HTTP transport with bearer token. Fully hosted — no install. Sign up at https:
   "command": "/absolute/path/to/gigaxity-deep-research/.venv/bin/python",
   "args": ["/absolute/path/to/gigaxity-deep-research/run_mcp.py"],
   "env": {
-    "RESEARCH_LLM_API_BASE": "https://openrouter.ai/api/v1",
-    "RESEARCH_LLM_API_KEY": "YOUR_OPENROUTER_API_KEY_PLACEHOLDER",
-    "RESEARCH_LLM_MODEL": "alibaba/tongyi-deepresearch-30b-a3b",
+    "RESEARCH_LLM_API_BASE": "http://localhost:8000/v1",
+    "RESEARCH_LLM_API_KEY": "local-anything",
+    "RESEARCH_LLM_MODEL": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking",
     "RESEARCH_SEARXNG_HOST": "http://localhost:8888"
   }
 }
@@ -190,12 +190,12 @@ Bundled in this repo at [`companions/gptr-mcp/`](../../companions/gptr-mcp/). In
 | Ref | https://ref.tools | Free credits, then ~$9/mo Basic |
 | Exa (one key for both `exa` and `exa-answer`) | https://exa.ai | Paid; generous free trial credits. A fresh Google account allocation buys another round of free credits if you exhaust the first. |
 | Jina | https://jina.ai | Paid; generous free 10M trial tier — hundreds of full pipeline sessions before key rotation |
-| OpenRouter (for `gigaxity-deep-research`) | https://openrouter.ai/keys | Pay-per-call (~$0.01–0.10 per synthesis, depending on preset and source count) |
+| Self-hosted LLM (for `gigaxity-deep-research`) | vLLM, SGLang, llama.cpp, Ollama | Hardware cost only — zero ongoing usage charges. Tongyi 30B fits in ~24-60 GB VRAM at INT4-FP16. |
 | Brightdata Web Unlocker | [brightdata.com](https://brightdata.com) | Monthly free-tier limit, then paid; only fires on ~5–15% of URL fetches |
 | OpenAI (for `gptr-mcp`) | https://platform.openai.com/api-keys | Pay-per-call |
 | Tavily (free tier — for `gptr-mcp` fallback) | https://tavily.com | Free tier |
 
-**Recommendation: register all seven.** The routing skill is designed around the full stack — each MCP fills a niche the others don't cover well, and most operations land on Jina's free reader, Exa's free trial credits, Ref's free credits, or Brightdata's monthly free-tier allowance, so the steady-state cost is dominated by OpenRouter synthesis calls and (once Ref's free credits are exhausted) the Ref subscription. Brightdata only fires on ~5–15% of URL fetches, so its monthly free tier covers most workloads.
+**Recommendation: register all seven.** The routing skill is designed around the full stack — each MCP fills a niche the others don't cover well, and most operations land on Jina's free reader, Exa's free trial credits, Ref's free credits, or Brightdata's monthly free-tier allowance. On this branch the synthesis stage runs on your own hardware (no per-call LLM charges), so the steady-state cost is dominated by the Ref subscription once the starter credits run out. To run synthesis against OpenRouter instead, point `RESEARCH_LLM_API_BASE` at it (or check out the `main` branch which is wired for OpenRouter by default).
 
 **Alternative for docs lookup:** [Context7](https://context7.com) is a drop-in alternative for the documentation-lookup role Ref plays. Same niche (library and API docs), different MCP surface. The bundled `research-workflow` skill is wired to Ref's tool names today — swapping in Context7 means editing the routing references in `skills/research-workflow/SKILL.md` and `CLAUDE.md`. Not yet implemented in this repo.
 

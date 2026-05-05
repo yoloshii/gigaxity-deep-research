@@ -132,7 +132,7 @@ result = mcp__gigaxity-deep-research__reason(
 
 ### MCP tools (stdio)
 
-All six tools return **markdown strings**, not JSON. Every tool also accepts an optional `openrouter_api_key: str | None = None` for per-request key override (omitted from the signatures below for brevity).
+All six tools return **markdown strings**, not JSON. Every tool also accepts an optional `api_key: str | None = None` for per-request LLM key override (omitted from the signatures below for brevity).
 
 ```
 mcp__gigaxity-deep-research__search(
@@ -194,7 +194,7 @@ Base URL: `http://localhost:8000` (configurable via `RESEARCH_HOST` / `RESEARCH_
 | GET | `/api/v1/presets` | — | List the five synthesis presets |
 | GET | `/api/v1/focus-modes` | — | List the seven focus modes |
 
-All POST endpoints accept the optional header `X-OpenRouter-Api-Key: <key>` to override `RESEARCH_LLM_API_KEY` for that request.
+All POST endpoints accept the optional header `X-LLM-Api-Key: <key>` to override `RESEARCH_LLM_API_KEY` for that request.
 
 ## Presets
 

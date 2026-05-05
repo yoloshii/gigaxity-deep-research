@@ -1,5 +1,7 @@
 # Setting up Gigaxity Deep Research as an MCP server for Claude Code
 
+> **You are reading this on the `local-inference` branch.** The example config below shows the OpenRouter path — easiest if you don't have GPU capacity. To use a self-hosted OpenAI-compatible server (this branch's default), follow [`setup-local-inference.md`](setup-local-inference.md) and adapt the `env` block in step 4 to point at your local endpoint.
+
 This guide walks through registering the server with Claude Code as an MCP stdio server, the recommended setup for individual developers.
 
 ## What you'll get
@@ -126,9 +128,9 @@ For a public instance, pick one from https://searx.space/ that explicitly advert
 
 ## Multi-tenant deployments
 
-If multiple developers share one server, each request can include an `X-OpenRouter-Api-Key` header that overrides the env-configured key. The MCP surface accepts this via the optional `openrouter_api_key` parameter on every tool call. The REST surface accepts it as a header.
+If multiple developers share one server, each request can include an `X-LLM-Api-Key` header that overrides the env-configured key. The MCP surface accepts this via the optional `api_key` parameter on every tool call. The REST surface accepts it as a header.
 
-This means the server holds an "owner" key (used for the request that didn't specify one) and each user's per-request key gets billed to their own OpenRouter account.
+This means the server holds an "owner" key (used for any request that didn't specify one) and each user's per-request key gets billed to their own LLM endpoint account.
 
 ## What's next
 

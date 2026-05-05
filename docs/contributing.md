@@ -4,7 +4,7 @@ This page is a deep-link target from the docs site. The canonical contribution g
 
 It covers:
 
-- Prerequisites (Python 3.11+, OpenRouter, SearXNG)
+- Prerequisites (Python 3.11+, an OpenAI-compatible LLM endpoint, SearXNG)
 - Development setup with venv and editable install
 - Running the test suite (`pytest`)
 - Project structure overview

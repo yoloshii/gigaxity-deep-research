@@ -24,7 +24,7 @@ Given the orchestration architecture, the primary security concerns are:
 
 1. **API key exposure** — `RESEARCH_LLM_API_KEY`, `RESEARCH_TAVILY_API_KEY`, and `RESEARCH_LINKUP_API_KEY` are read from environment. Reports of unintended logging, error messages, or response payloads that include these keys should be filed.
 
-2. **Per-request key passthrough** — The REST API accepts an `X-OpenRouter-Api-Key` header that overrides the env-configured key for multi-tenant deployments. Any path where this header leaks across requests, into logs, or into stored responses should be reported.
+2. **Per-request key passthrough** — The REST API accepts an `X-LLM-Api-Key` header that overrides the env-configured key for multi-tenant deployments. Any path where this header leaks across requests, into logs, or into stored responses should be reported.
 
 3. **Prompt injection via search results** — Web content fetched from search providers is fed to the LLM during synthesis. Adversarial content that bypasses prompt-isolation and causes the LLM to leak system instructions, exfiltrate keys, or call unintended tools should be reported.
 
@@ -53,4 +53,4 @@ You should receive an acknowledgment within 72 hours. Critical issues fixed with
 - Store API keys in `.env` — never commit them. The shipped `.gitignore` excludes `.env` already.
 - If you expose the REST API beyond `localhost`, put it behind an authenticated reverse proxy. There is no built-in auth.
 - Bind the server to `127.0.0.1` (not `0.0.0.0`) when running on a shared machine.
-- If you accept per-request OpenRouter keys, ensure your reverse proxy strips the `X-OpenRouter-Api-Key` header from access logs.
+- If you accept per-request LLM keys, ensure your reverse proxy strips the `X-LLM-Api-Key` header from access logs.

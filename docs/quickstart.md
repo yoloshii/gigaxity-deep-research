@@ -1,5 +1,7 @@
 # Quickstart for Gigaxity Deep Research MCP
 
+> **You are reading this on the `local-inference` branch.** This quickstart shows the OpenRouter-hosted path — fastest path to a working setup, but it requires an OpenRouter key. If you'd prefer to keep using OpenRouter, you can stay on this branch and override the env vars below; for a default-OpenRouter experience without overrides, check out the [`main` branch](https://github.com/yoloshii/gigaxity-deep-research/tree/main). For self-hosted local inference (the branch's default path), see [`setup-local-inference.md`](guides/setup-local-inference.md) instead.
+
 A five-minute install that gets the six MCP tools (`search`, `research`, `ask`, `discover`, `synthesize`, `reason`) registered with Claude Code, calling Tongyi DeepResearch 30B on OpenRouter, and resolving real queries.
 
 ## Prerequisites

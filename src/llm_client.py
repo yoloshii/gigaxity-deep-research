@@ -1,6 +1,8 @@
-"""LLM client for OpenRouter.
+"""LLM client for any OpenAI-compatible chat-completions endpoint.
 
-Simple AsyncOpenAI wrapper for OpenRouter with per-request API key support.
+Wraps AsyncOpenAI with per-request API key support. Works against vLLM, SGLang,
+Ollama, llama.cpp, and remote services that follow the OpenAI chat-completions
+contract.
 """
 
 import logging
@@ -12,8 +14,8 @@ from .config import settings
 logger = logging.getLogger(__name__)
 
 
-class OpenRouterClient:
-    """AsyncOpenAI wrapper for OpenRouter with per-request API key support."""
+class LLMClient:
+    """AsyncOpenAI wrapper with per-request API key support."""
 
     def __init__(
         self,
@@ -21,10 +23,11 @@ class OpenRouterClient:
         base_url: Optional[str] = None,
         model: Optional[str] = None,
     ):
-        """Initialize OpenRouter client.
+        """Initialize the LLM client.
 
         Args:
-            api_key: OpenRouter API key (defaults to settings)
+            api_key: API key (defaults to settings); pass any non-empty placeholder
+                for local servers that do not enforce auth
             base_url: API base URL (defaults to settings)
             model: Model to use (defaults to settings)
         """
@@ -94,7 +97,7 @@ class OpenRouterClient:
 class _ChatNamespace:
     """Namespace for chat.completions compatibility."""
 
-    def __init__(self, client: OpenRouterClient):
+    def __init__(self, client: LLMClient):
         self._client = client
         self.completions = _CompletionsNamespace(client)
 
@@ -102,7 +105,7 @@ class _ChatNamespace:
 class _CompletionsNamespace:
     """Namespace for chat.completions.create() compatibility."""
 
-    def __init__(self, client: OpenRouterClient):
+    def __init__(self, client: LLMClient):
         self._client = client
 
     async def create(
@@ -119,10 +122,10 @@ class _CompletionsNamespace:
         )
 
 
-def get_llm_client(api_key: str | None = None) -> OpenRouterClient:
-    """Get OpenRouter client.
+def get_llm_client(api_key: str | None = None) -> LLMClient:
+    """Get LLM client.
 
     Args:
         api_key: Optional per-request API key. Uses server default if None.
     """
-    return OpenRouterClient(api_key=api_key if api_key else None)
+    return LLMClient(api_key=api_key if api_key else None)

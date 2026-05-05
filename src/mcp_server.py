@@ -1,7 +1,8 @@
-"""FastMCP server for OpenRouter research tools.
+"""FastMCP server for deep-research tools.
 
 Exposes research tools via Model Context Protocol using stdio transport.
-Uses OpenRouterClient for LLM inference via OpenRouter API.
+Uses LLMClient for inference against any OpenAI-compatible chat-completions
+endpoint (vLLM, SGLang, Ollama, llama.cpp, OpenRouter).
 
 Usage:
     python -m src.mcp_server
@@ -50,7 +51,7 @@ mcp = FastMCP("deepresearch")
 
 
 def _get_llm_client(api_key: str | None = None):
-    """Get OpenRouter LLM client with optional per-request key override."""
+    """Get LLM client with optional per-request key override."""
     return get_llm_client(api_key=api_key)
 
 
@@ -58,7 +59,7 @@ def _get_llm_client(api_key: str | None = None):
 async def search(
     query: str,
     top_k: int = 10,
-    openrouter_api_key: str | None = None,
+    api_key: str | None = None,
 ) -> str:
     """Multi-source search with RRF (Reciprocal Rank Fusion).
 
@@ -68,12 +69,12 @@ async def search(
     Args:
         query: Search query
         top_k: Results per source (1-50)
-        openrouter_api_key: Per-request key override; ignored by `search` since
+        api_key: Per-request LLM key override; ignored by `search` since
             no LLM call is made, but accepted for consistency across tools.
     """
-    # search makes no LLM call, but we accept openrouter_api_key for surface
-    # consistency so callers can use the same shape across all six tools.
-    _ = openrouter_api_key
+    # search makes no LLM call, but we accept api_key for surface consistency
+    # so callers can use the same shape across all six tools.
+    _ = api_key
     aggregator = SearchAggregator()
     sources, raw_results = await aggregator.search(query=query, top_k=top_k)
 
@@ -93,7 +94,7 @@ async def research(
     query: str,
     top_k: int = 10,
     reasoning_effort: Literal["low", "medium", "high"] = "medium",
-    openrouter_api_key: str | None = None,
+    api_key: str | None = None,
 ) -> str:
     """Full research pipeline: search + LLM synthesis with citations.
 
@@ -103,7 +104,7 @@ async def research(
         query: Research query
         top_k: Results per source
         reasoning_effort: Depth of analysis (low=concise, medium=balanced, high=academic)
-        openrouter_api_key: Per-request key override; defaults to RESEARCH_LLM_API_KEY.
+        api_key: Per-request LLM key override; defaults to RESEARCH_LLM_API_KEY.
     """
     aggregator = SearchAggregator()
     sources, _ = await aggregator.search(query=query, top_k=top_k)
@@ -111,7 +112,7 @@ async def research(
     if not sources:
         return "No sources found for query."
 
-    client = _get_llm_client(openrouter_api_key)
+    client = _get_llm_client(api_key)
     engine = SynthesisEngine(client=client, model=settings.llm_model)
 
     result = await engine.research(
@@ -135,7 +136,7 @@ async def research(
 async def ask(
     query: str,
     context: str = "",
-    openrouter_api_key: str | None = None,
+    api_key: str | None = None,
 ) -> str:
     """Quick conversational answer using LLM.
 
@@ -145,9 +146,9 @@ async def ask(
     Args:
         query: Question to answer
         context: Optional context to consider
-        openrouter_api_key: Per-request key override; defaults to RESEARCH_LLM_API_KEY.
+        api_key: Per-request LLM key override; defaults to RESEARCH_LLM_API_KEY.
     """
-    client = _get_llm_client(openrouter_api_key)
+    client = _get_llm_client(api_key)
 
     messages = []
     if context:
@@ -170,7 +171,7 @@ async def discover(
     top_k: int = 10,
     identify_gaps: bool = True,
     focus_mode: Literal["general", "academic", "documentation", "comparison", "debugging", "tutorial", "news"] = "general",
-    openrouter_api_key: str | None = None,
+    api_key: str | None = None,
 ) -> str:
     """Exploratory discovery with knowledge gap analysis.
 
@@ -182,9 +183,9 @@ async def discover(
         top_k: Results per source
         identify_gaps: Analyze knowledge gaps
         focus_mode: Domain-specific discovery mode
-        openrouter_api_key: Per-request key override; defaults to RESEARCH_LLM_API_KEY.
+        api_key: Per-request LLM key override; defaults to RESEARCH_LLM_API_KEY.
     """
-    client = _get_llm_client(openrouter_api_key)
+    client = _get_llm_client(api_key)
     aggregator = SearchAggregator()
 
     try:
@@ -248,7 +249,7 @@ async def synthesize(
     sources: list[dict],
     style: Literal["comprehensive", "concise", "comparative", "academic", "tutorial"] = "comprehensive",
     preset: Literal["comprehensive", "fast", "contracrow", "academic", "tutorial"] | None = None,
-    openrouter_api_key: str | None = None,
+    api_key: str | None = None,
 ) -> str:
     """Synthesize pre-gathered content into coherent analysis.
 
@@ -259,7 +260,7 @@ async def synthesize(
         sources: Pre-gathered source documents with title, content, url, origin, source_type
         style: Output format/length
         preset: Processing pipeline preset (comprehensive, fast, contracrow, academic, tutorial)
-        openrouter_api_key: Per-request key override; defaults to RESEARCH_LLM_API_KEY.
+        api_key: Per-request LLM key override; defaults to RESEARCH_LLM_API_KEY.
     """
     # Source-aware cache key
     sources_hash = hashlib.md5(
@@ -283,7 +284,7 @@ async def synthesize(
         for s in sources
     ]
 
-    client = _get_llm_client(openrouter_api_key)
+    client = _get_llm_client(api_key)
 
     style_map = {
         "comprehensive": SynthesisStyle.COMPREHENSIVE,
@@ -397,7 +398,7 @@ async def reason(
     context: str = "",
     sources: list[dict] | None = None,
     reasoning_depth: Literal["shallow", "moderate", "deep"] = "moderate",
-    openrouter_api_key: str | None = None,
+    api_key: str | None = None,
 ) -> str:
     """Deep reasoning with chain-of-thought analysis.
 
@@ -422,9 +423,9 @@ async def reason(
             sources-aware mode and uses chain-of-thought synthesis.
         reasoning_depth: How thorough (no-sources mode only).
             shallow=2-3 steps, moderate=4-6, deep=7+
-        openrouter_api_key: Per-request key override; defaults to RESEARCH_LLM_API_KEY.
+        api_key: Per-request LLM key override; defaults to RESEARCH_LLM_API_KEY.
     """
-    client = _get_llm_client(openrouter_api_key)
+    client = _get_llm_client(api_key)
 
     if sources:
         pre_sources = [

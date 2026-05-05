@@ -216,9 +216,10 @@ def llm_configured():
     """Check if a real LLM is configured.
 
     Live-LLM tests gate on this fixture so they skip when no key is set; the
-    base URL is not sufficient because it has a default of
-    https://openrouter.ai/api/v1, which would otherwise make this fixture
-    always-true and run live tests against an unauthenticated endpoint.
+    base URL is not sufficient because it has a working default
+    (http://localhost:8000/v1 on local-inference), which would otherwise make
+    this fixture always-true and run live tests against an unauthenticated or
+    unreachable endpoint.
     """
     return bool(os.getenv("RESEARCH_LLM_API_KEY", ""))
 

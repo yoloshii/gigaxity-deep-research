@@ -2,9 +2,9 @@
 
 Gigaxity Deep Research exposes the same orchestration over HTTP via FastAPI. The REST surface mirrors the six MCP tools (`search`, `research`, `ask`, `discover`, `synthesize`, `reason`) and adds enhanced synthesis variants (`/synthesize/enhanced`, `/synthesize/p1`) plus reflection endpoints for presets and focus modes.
 
-Base URL: `http://<RESEARCH_HOST>:<RESEARCH_PORT>` (defaults to `http://127.0.0.1:8000`). Bind to `0.0.0.0` only behind an authenticated reverse proxy — the REST surface spends the env-configured OpenRouter key on every unauthenticated caller that reaches it.
+Base URL: `http://<RESEARCH_HOST>:<RESEARCH_PORT>` (defaults to `http://127.0.0.1:8000`). Bind to `0.0.0.0` only behind an authenticated reverse proxy — the REST surface spends the env-configured LLM key on every unauthenticated caller that reaches it.
 
-All POST endpoints accept the optional header `X-OpenRouter-Api-Key: <key>` for per-request key override (multi-tenant). Bodies that include an `api_key` field set the same override. Header and body values both win over the env-configured `RESEARCH_LLM_API_KEY`.
+All POST endpoints accept the optional header `X-LLM-Api-Key: <key>` for per-request key override (multi-tenant). Bodies that include an `api_key` field set the same override. Header and body values both win over the env-configured `RESEARCH_LLM_API_KEY`.
 
 The interactive OpenAPI schema lives at `/docs` and is the source of truth — this page summarizes it.
 
@@ -88,7 +88,7 @@ Combined search + synthesis. The server fetches sources internally — caller do
   "citations": [{"id": "1", "title": "...", "url": "..."}],
   "sources": [{"id": "...", "title": "...", "url": "...", "content": "...", "score": 0.9, "connector": "searxng"}],
   "connectors_used": ["searxng", "tavily"],
-  "model": "alibaba/tongyi-deepresearch-30b-a3b",
+  "model": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking",
   "usage": {"prompt_tokens": 1234, "completion_tokens": 567},
   "preset_used": "fast",
   "focus_mode_used": null,
@@ -122,7 +122,7 @@ Quick conversational answer. **Direct LLM call, no search hop.** Mirrors the std
   "content": "...the LLM's answer...",
   "citations": [],
   "sources": [],
-  "model": "alibaba/tongyi-deepresearch-30b-a3b"
+  "model": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking"
 }
 ```
 
@@ -200,7 +200,7 @@ Citation-aware synthesis over caller-provided sources. Does not search.
   "confidence": 0.83,
   "style_used": "comprehensive",
   "word_count": 612,
-  "model": "alibaba/tongyi-deepresearch-30b-a3b",
+  "model": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking",
   "usage": {"prompt_tokens": 1500, "completion_tokens": 612}
 }
 ```
@@ -250,7 +250,7 @@ Deep reasoning over pre-gathered sources with a fixed chain-of-thought prompt. T
   "source_attribution": [{"origin": "ref", "contribution": 0.5}],
   "confidence": 0.81,
   "word_count": 920,
-  "model": "alibaba/tongyi-deepresearch-30b-a3b"
+  "model": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking"
 }
 ```
 
@@ -284,7 +284,7 @@ Standard FastAPI / OpenAPI status codes:
 |---|---|
 | 200 | Success |
 | 400 | Validation error |
-| 401 | OpenRouter auth failed (forwarded from upstream) |
+| 401 | LLM endpoint auth failed (forwarded from upstream) |
 | 429 | Rate limited (forwarded from upstream) |
 | 500 | Internal error |
 | 503 | No search connectors configured |
@@ -304,4 +304,4 @@ Stricter typed error envelopes are not yet produced — clients should branch on
 
 The server has no built-in authentication. For anything beyond `localhost`, put it behind a reverse proxy (nginx, Caddy) that enforces auth and TLS. See [`setup-rest.md`](../guides/setup-rest.md) for an example.
 
-The per-request `X-OpenRouter-Api-Key` header is forwarded to OpenRouter — it does **not** authenticate the caller to this server. Anyone who can hit `/api/v1/*` will spend whichever OpenRouter key is in scope (header, body, or env).
+The per-request `X-LLM-Api-Key` header is forwarded to the configured LLM endpoint — it does **not** authenticate the caller to this server. Anyone who can hit `/api/v1/*` will spend whichever LLM key is in scope (header, body, or env).

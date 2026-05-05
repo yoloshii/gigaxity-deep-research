@@ -322,19 +322,19 @@ class TestOpenRouterConfiguration:
     """Tests for OpenRouter-specific configuration."""
 
     @pytest.mark.unit
-    def test_config_has_openrouter_settings(self):
-        """Config includes OpenRouter-specific settings."""
+    def test_config_has_llm_settings(self):
+        """Config includes LLM-endpoint settings with local-server defaults."""
         from src.config import settings
         assert hasattr(settings, 'llm_api_base')
         assert hasattr(settings, 'llm_api_key')
         assert hasattr(settings, 'llm_model')
-        # Default should be OpenRouter
-        assert "openrouter.ai" in settings.llm_api_base
+        # Default on the local-inference branch points at a local server
+        assert "localhost" in settings.llm_api_base or "127.0.0.1" in settings.llm_api_base
 
     @pytest.mark.unit
     def test_llm_client_accepts_per_request_key(self):
         """LLM client supports per-request API key."""
-        from src.llm_client import OpenRouterClient, get_llm_client
+        from src.llm_client import LLMClient, get_llm_client
         # Test that get_llm_client accepts api_key parameter
         client = get_llm_client(api_key="test-key")
         assert client.api_key == "test-key"
@@ -343,9 +343,9 @@ class TestOpenRouterConfiguration:
         assert hasattr(default_client, 'api_key')
 
     @pytest.mark.unit
-    def test_synthesis_engine_uses_openrouter_client(self):
-        """SynthesisEngine uses OpenRouterClient."""
+    def test_synthesis_engine_uses_llm_client(self):
+        """SynthesisEngine uses LLMClient."""
         from src.synthesis.engine import SynthesisEngine
-        from src.llm_client import OpenRouterClient
+        from src.llm_client import LLMClient
         engine = SynthesisEngine()
-        assert isinstance(engine.client, OpenRouterClient)
+        assert isinstance(engine.client, LLMClient)

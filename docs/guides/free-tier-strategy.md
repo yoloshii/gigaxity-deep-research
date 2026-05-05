@@ -55,7 +55,7 @@ A typical multi-source synthesis runs 5,000–10,000 input tokens (the gathered 
 
 ### Per-request key override (multi-tenant)
 
-Both the MCP and REST surfaces accept a per-request `openrouter_api_key` parameter (or `X-OpenRouter-Api-Key` HTTP header). One server instance can serve multiple tenants who bring their own OpenRouter keys. See [`docs/reference/configuration.md`](../reference/configuration.md) for the env-vs-header precedence rules.
+Both the MCP and REST surfaces accept a per-request `api_key` parameter (or `X-LLM-Api-Key` HTTP header). One server instance can serve multiple tenants who bring their own keys for whichever LLM endpoint is configured. See [`docs/reference/configuration.md`](../reference/configuration.md) for the env-vs-header precedence rules.
 
 ## Local inference — zero ongoing inference cost
 
