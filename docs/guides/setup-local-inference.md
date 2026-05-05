@@ -38,7 +38,27 @@ Multi-GPU:
 
 For an RTX 3090 / 4090 / 5090 (24 GB) or an Apple Silicon machine with 32 GB+ unified memory, use the Q4_K_M GGUF quant. It loads in about 18.5 GB on disk and consumes around 18.9 GB VRAM at runtime, leaving headroom for the KV cache during long-context synthesis runs. Quality drop versus FP16 is small for synthesis tasks — the reasoning behavior of Tongyi DeepResearch holds up well at Q4_K_M in practice.
 
-Browse the available GGUF quants: [https://huggingface.co/models?other=base_model:quantized:Alibaba-NLP/Tongyi-DeepResearch-30B-A3B](https://huggingface.co/models?other=base_model:quantized:Alibaba-NLP/Tongyi-DeepResearch-30B-A3B). Most quanters publish the full Q3/Q4/Q5/Q6/Q8 ladder — pick Q4_K_M unless you have a specific reason to go higher (Q5_K_M ≈ 21.6 GB; tighter on a 24 GB GPU) or lower (Q3 quants below 16 GB; quality starts to degrade noticeably for multi-hop reasoning).
+Browse the available GGUF quants: [https://huggingface.co/models?other=base_model:quantized:Alibaba-NLP/Tongyi-DeepResearch-30B-A3B](https://huggingface.co/models?other=base_model:quantized:Alibaba-NLP/Tongyi-DeepResearch-30B-A3B). Most quanters publish the full Q3/Q4/Q5/Q6/Q8 ladder — pick Q4_K_M unless you have a specific reason to go higher (Q5_K_M ≈ 21.6 GB; tighter on a 24 GB GPU) or lower (Q3 quants below 16 GB; see the threshold note below).
+
+### When to stop quanting and rent inference instead
+
+Quality degrades non-linearly as you go below Q4_K_M. The practical threshold for *this* pipeline (multi-hop research synthesis with citation binding, contradiction detection, and outline-guided generation) sits at:
+
+| Quant | Disk size | Verdict for synthesis work |
+|---|---|---|
+| Q5_K_M / Q6_K / Q8_0 | 22–32 GB | Indistinguishable from FP16 in practice; pick if VRAM allows |
+| **Q4_K_M (recommended)** | **~18.5 GB** | **Negligible drop vs FP16. Citation accuracy + multi-hop reasoning intact.** |
+| Q4_K_S | ~17.6 GB | Still fine. Useful when Q4_K_M won't fit alongside KV cache. |
+| IQ4_XS / IQ4_NL | ~16–17 GB | Imatrix quants — comparable to Q4_K_S in practice, slightly tighter. |
+| Q3_K_M | ~14.6 GB | **Borderline.** Citation IDs and inline `[sx_xxx]` markers occasionally drift; multi-hop chains shorten. Acceptable for `ask` and quick `research` calls; noticeable on `synthesize` with 5+ sources. |
+| Q3_K_S / IQ3_M | ~13–14 GB | **Stop here.** Citation accuracy slips, contradiction detection misses cross-source disagreements, the `<thinking>` block becomes shorter and shallower. |
+| Q2_K and below | < 12 GB | Not viable for research synthesis. Reasoning collapses on cross-source comparisons. |
+
+**Rule of thumb:** if your hardware can't comfortably hold **Q4_K_M plus 5+ GB of KV cache** (so ~24 GB VRAM minimum, or ~32 GB unified memory on Apple Silicon), the math usually flips against local inference for this pipeline. At Q3_K_M and below, you're paying the latency and ops cost of self-hosting for output that's measurably worse than what OpenRouter returns for $0.01–0.05 per synthesis. Either:
+
+- **Stay on a 24 GB+ GPU at Q4_K_M** — best quality-per-dollar at moderate-to-heavy usage
+- **Use a smaller, less-quanted model** — Tongyi 7B at Q5_K_M, DeepSeek-R1-Distill-Qwen-14B at Q4_K_M, or Qwen3-14B at Q4_K_M all beat Tongyi 30B at Q3_K_S on reasoning benchmarks despite being smaller, because the quant penalty above ~Q4_K_M is small but the penalty below it is steep
+- **Rent hosted inference** — switch `RESEARCH_LLM_API_BASE` to OpenRouter (or check out the `main` branch). Pay-per-call beats running degraded Q3 locally for any real research workload
 
 If you have less than 16 GB VRAM, drop down a model tier (Tongyi 7B, DeepSeek-R1-Distill-Qwen-14B, Qwen-QwQ-32B at INT4) — the synthesis pipeline is model-agnostic.
 
