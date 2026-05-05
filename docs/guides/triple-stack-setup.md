@@ -85,6 +85,27 @@ What it does: web search, URL reading (free reader tier), arxiv, ssrn, parallel 
 
 Already covered in [setup-mcp.md](setup-mcp.md).
 
+## Stack 6: Brightdata fallback
+
+```json
+"brightdata_fallback": {
+  "type": "stdio",
+  "command": "/absolute/path/to/gigaxity-deep-research/companions/brightdata-fallback/.venv/bin/python",
+  "args": ["/absolute/path/to/gigaxity-deep-research/companions/brightdata-fallback/mcp_server.py"],
+  "cwd": "/absolute/path/to/gigaxity-deep-research/companions/brightdata-fallback",
+  "env": {
+    "BRIGHTDATA_API_TOKEN": "YOUR_BRIGHTDATA_API_TOKEN",
+    "BRIGHTDATA_ZONE": "YOUR_WEB_UNLOCKER_ZONE_NAME"
+  }
+}
+```
+
+`brightdata_fallback` is a minimal MCP that exposes only `scrape_as_markdown` against Brightdata's Web Unlocker API. **Bundled in this repo** at [`companions/brightdata-fallback/`](../../companions/brightdata-fallback/). See [setup-companions.md](setup-companions.md) for install steps.
+
+What it does: scrapes URLs that Jina can't (CAPTCHA, paywall, Cloudflare challenge, 403). Used as the last resort in the URL-reading fallback chain — see [concepts/fallback-chains.md](../concepts/fallback-chains.md) for when it fires.
+
+The wrapper requires `BRIGHTDATA_API_TOKEN` and `BRIGHTDATA_ZONE` env vars and fails fast at startup if either is missing — no defaults are bundled.
+
 ## Stack 7: gptr-mcp (social-first research)
 
 Bundled in this repo with an install script that clones upstream — see [`../../companions/gptr-mcp/`](../../companions/gptr-mcp/) and [setup-companions.md](setup-companions.md) for the full procedure.
@@ -111,27 +132,6 @@ Bundled in this repo with an install script that clones upstream — see [`../..
 What it does: surfaces real-world opinions, troubleshooting threads, and community sentiment from Reddit, X/Twitter, and YouTube — content that web search and documentation lookup miss. Routed automatically by the `research-workflow` skill when a query benefits from lived-experience knowledge.
 
 LinkedIn is **not** part of `SOCIAL_OPENAI_DOMAINS` (the upstream retriever doesn't support LinkedIn well). For LinkedIn-specific queries, route to Jina with `site:linkedin.com`.
-
-## Stack 6: Brightdata fallback
-
-```json
-"brightdata_fallback": {
-  "type": "stdio",
-  "command": "/absolute/path/to/gigaxity-deep-research/companions/brightdata-fallback/.venv/bin/python",
-  "args": ["/absolute/path/to/gigaxity-deep-research/companions/brightdata-fallback/mcp_server.py"],
-  "cwd": "/absolute/path/to/gigaxity-deep-research/companions/brightdata-fallback",
-  "env": {
-    "BRIGHTDATA_API_TOKEN": "YOUR_BRIGHTDATA_API_TOKEN",
-    "BRIGHTDATA_ZONE": "YOUR_WEB_UNLOCKER_ZONE_NAME"
-  }
-}
-```
-
-`brightdata_fallback` is a minimal MCP that exposes only `scrape_as_markdown` against Brightdata's Web Unlocker API. **Bundled in this repo** at [`companions/brightdata-fallback/`](../../companions/brightdata-fallback/). See [setup-companions.md](setup-companions.md) for install steps.
-
-What it does: scrapes URLs that Jina can't (CAPTCHA, paywall, Cloudflare challenge, 403). Used as the last resort in the URL-reading fallback chain — see [concepts/fallback-chains.md](../concepts/fallback-chains.md) for when it fires.
-
-The wrapper requires `BRIGHTDATA_API_TOKEN` and `BRIGHTDATA_ZONE` env vars and fails fast at startup if either is missing — no defaults are bundled.
 
 ## Install the routing skill
 
