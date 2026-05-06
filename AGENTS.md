@@ -4,7 +4,7 @@ This is the agent reference for Gigaxity Deep Research, an open-source deep rese
 
 This file is loaded by Claude Code (`CLAUDE.md`) and other MCP-compatible agents (`AGENTS.md` is byte-identical). It documents how to operate the six MCP tools this server exposes (two primitives plus four deep-research tools) and how to plug them into the broader deep research stack.
 
-If you maintain a global `~/.claude/CLAUDE.md`, copy the **instruction block** at the bottom of this file into it. That single block makes Claude Code automatically route research queries through this MCP plus the six companion MCPs in the Triple Stack.
+If you maintain a global `~/.claude/CLAUDE.md`, copy the **instruction block** at the bottom of this file into it. That single block makes Claude Code automatically route research queries through this MCP plus the six companion MCPs (Ref, Exa, Exa Answer, Jina, Brightdata fallback, gptr-mcp) in the full deep research stack.
 
 ---
 
