@@ -14,7 +14,7 @@ This guide assumes you've already set up `gigaxity-deep-research` per [setup-mcp
 | `jina` | Free-tier web/arxiv/ssrn search, parallel reads | Paid; generous free 10M trial tier ([jina.ai](https://jina.ai)) — enough for hundreds of full pipeline sessions before key rotation |
 | `gigaxity-deep-research` | Multi-source synthesis with Tongyi 30B | Pay-per-call against your OpenRouter key (or zero ongoing cost on the `local-inference` branch) |
 | `brightdata_fallback` | Last-resort scraper for blocked URLs | Monthly free-tier limit, then paid ([brightdata.com](https://brightdata.com) Web Unlocker); only fires on ~5–15% of URL fetches |
-| `gptr-mcp` | Social-first research via Reddit, X, YouTube — wraps [GPT Researcher](https://github.com/assafelovic/gptr-mcp) | Pay-per-call OpenAI + free-tier Tavily |
+| `gptr-mcp` | Social-first research via Reddit, X, YouTube — MCP shim around [GPT Researcher](https://github.com/assafelovic/gpt-researcher) (the underlying agentic-research library) | Pay-per-call OpenAI + free-tier Tavily |
 
 **Recommendation: secure all seven keys and run the full stack.** Each MCP fills a distinct niche — Ref is the cheapest source for canonical docs, Exa exposes a curated code index and category-filtered web search, Jina is the workhorse free-tier reader, gigaxity-deep-research drives synthesis, Brightdata recovers blocked URLs, and gptr-mcp surfaces community knowledge. The routing skill orchestrates them so each call lands on the cheapest tool that can answer it; replacing one with a fallback degrades quality rather than just cost.
 
