@@ -148,20 +148,30 @@ python -m sglang.launch_server \
 
 ## Host the model with Ollama (lower hardware bar)
 
-For modest GPUs (24 GB) or CPU-only experiments, Ollama runs the Q4_K_M GGUF directly. The Ollama import path below is the simplest of the three GGUF runtimes (llama.cpp + Ollama + vLLM all load the same `.gguf` file — see the llama.cpp block at the bottom of this section for a no-import path, and [vLLM's GGUF docs](https://docs.vllm.ai/en/latest/api/vllm/model_executor/model_loader/gguf_loader) for that route). There's no first-party Ollama tag for Tongyi DeepResearch — pull the GGUF from one of the community quanters and import it with a Modelfile:
+For modest GPUs (24 GB) or CPU-only experiments, Ollama runs the Q4_K_M GGUF directly. The Ollama path below is the simplest of the three GGUF runtimes (llama.cpp + Ollama + vLLM all load the same `.gguf` file — see the llama.cpp block at the bottom of this section for the no-Ollama path, and [vLLM's GGUF docs](https://docs.vllm.ai/en/latest/api/vllm/model_executor/model_loader/gguf_loader) for that route). There's no first-party Ollama tag for Tongyi DeepResearch — recommended quanter is [`mradermacher/Tongyi-DeepResearch-30B-A3B-GGUF`](https://huggingface.co/mradermacher/Tongyi-DeepResearch-30B-A3B-GGUF) (well-reputed, full Q3/Q4/Q5/Q6/Q8 ladder). We explicitly avoid [`bartowski/Alibaba-NLP_Tongyi-DeepResearch-30B-A3B-GGUF`](https://huggingface.co/bartowski/Alibaba-NLP_Tongyi-DeepResearch-30B-A3B-GGUF) because of an [open repetition issue](https://huggingface.co/bartowski/Alibaba-NLP_Tongyi-DeepResearch-30B-A3B-GGUF/discussions/2) reported on this exact model.
+
+The simplest path is Ollama's HF-shortcut — pull and serve in one command, no Modelfile needed:
+
+```bash
+ollama serve &
+ollama run hf.co/mradermacher/Tongyi-DeepResearch-30B-A3B-GGUF:Q4_K_M
+```
+
+Ollama's OpenAI-compatible endpoint is at `http://localhost:11434/v1`. Set `RESEARCH_LLM_MODEL=hf.co/mradermacher/Tongyi-DeepResearch-30B-A3B-GGUF:Q4_K_M` in the orchestrator's env.
+
+If you want the GGUF file on local disk (e.g. to share between Ollama and llama.cpp without re-downloading) plus custom default sampling params, use the explicit Modelfile path instead:
 
 ```bash
 # 1. Download the Q4_K_M GGUF (~18.5 GB) into Ollama's import staging dir.
-#    Pick any of the quanters listed at:
+#    Browse alternative quanters at:
 #    https://huggingface.co/models?other=base_model:quantized:Alibaba-NLP/Tongyi-DeepResearch-30B-A3B
-#    Example with `huggingface-cli` (substitute the quanter you trust):
-huggingface-cli download bartowski/Alibaba-NLP_Tongyi-DeepResearch-30B-A3B-GGUF \
-  Tongyi-DeepResearch-30B-A3B-Q4_K_M.gguf \
+huggingface-cli download mradermacher/Tongyi-DeepResearch-30B-A3B-GGUF \
+  Tongyi-DeepResearch-30B-A3B.Q4_K_M.gguf \
   --local-dir ~/models
 
 # 2. Create a Modelfile pointing at it
 cat > ~/models/Tongyi-DR-Q4_K_M.Modelfile <<'EOF'
-FROM ~/models/Tongyi-DeepResearch-30B-A3B-Q4_K_M.gguf
+FROM ~/models/Tongyi-DeepResearch-30B-A3B.Q4_K_M.gguf
 PARAMETER temperature 0.85
 PARAMETER top_p 0.95
 PARAMETER num_ctx 32768
@@ -174,13 +184,19 @@ ollama create tongyi-deepresearch:30b-q4 -f ~/models/Tongyi-DR-Q4_K_M.Modelfile
 ollama serve
 ```
 
-Ollama's OpenAI-compatible endpoint is at `http://localhost:11434/v1`. Once the import is done, the model is callable as `tongyi-deepresearch:30b-q4` (the tag set in step 3) — set that as `RESEARCH_LLM_MODEL`.
+Once the import is done, the model is callable as `tongyi-deepresearch:30b-q4` (the tag set in step 3) — set that as `RESEARCH_LLM_MODEL`.
 
-Alternatively, llama.cpp's `llama-server` can serve the GGUF directly without an import step:
+Alternatively, llama.cpp's `llama-server` can serve the GGUF directly without Ollama. The simplest path uses llama.cpp's HF-shortcut (no manual download):
 
 ```bash
-# In a llama.cpp checkout with CUDA build:
-./llama-server -m ~/models/Tongyi-DeepResearch-30B-A3B-Q4_K_M.gguf \
+llama-server -hf mradermacher/Tongyi-DeepResearch-30B-A3B-GGUF:Q4_K_M \
+  --host 0.0.0.0 --port 8080 -ngl 999 -c 32768
+```
+
+Or point at an already-downloaded file (e.g. the one fetched in step 1 above):
+
+```bash
+./llama-server -m ~/models/Tongyi-DeepResearch-30B-A3B.Q4_K_M.gguf \
   --host 0.0.0.0 --port 8080 -ngl 999 -c 32768
 ```
 
@@ -194,10 +210,12 @@ The branch defaults already match a vLLM/SGLang server on `localhost:8000`. Over
 # vLLM / SGLang on the default port — only RESEARCH_LLM_API_KEY needs setting
 RESEARCH_LLM_API_KEY=local-anything   # placeholder string — see note below
 
-# Ollama (different default port + custom model slug)
+# Ollama (different default port + Ollama model slug)
 RESEARCH_LLM_API_BASE=http://localhost:11434/v1
 RESEARCH_LLM_API_KEY=local-anything
-RESEARCH_LLM_MODEL=tongyi-deepresearch:30b-q4
+RESEARCH_LLM_MODEL=hf.co/mradermacher/Tongyi-DeepResearch-30B-A3B-GGUF:Q4_K_M
+# Or, if you used the Modelfile path with a custom tag:
+# RESEARCH_LLM_MODEL=tongyi-deepresearch:30b-q4
 
 # Hosted endpoint (e.g. OpenRouter) from this branch
 RESEARCH_LLM_API_BASE=https://openrouter.ai/api/v1
