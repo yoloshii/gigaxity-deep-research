@@ -6,7 +6,7 @@ Gigaxity Deep Research is a multi-source synthesis pipeline — six MCP tools (t
 
 If you want to run the synthesis model on your own hardware, the `local-inference` branch swaps OpenRouter for any OpenAI-compatible endpoint (vLLM, SGLang, or llama.cpp). The search-MCP layer is priced separately by each provider. See [`docs/guides/free-tier-strategy.md`](docs/guides/free-tier-strategy.md) for what their free tiers cover and how to wire them up.
 
-Python on FastAPI. MIT License. Runs as an MCP stdio server, FastAPI REST API, or both. Drop-in instructions for the full deep research stack live in [`CLAUDE.md`](CLAUDE.md) so any agent can mirror the configuration.
+Python on FastAPI. MIT License. Runs as an MCP stdio server, FastAPI REST API, or both. Drop-in instructions for the full deep research stack live in [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) (byte-identical) so any MCP-capable harness — Claude Code, Codex, Cursor, Hermes, etc. — or a standalone agent (system-prompt path) can mirror the configuration.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](pyproject.toml)
