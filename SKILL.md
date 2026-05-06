@@ -6,7 +6,7 @@ version: 1.0.0
 
 # Gigaxity Deep Research
 
-A skill-format reference for any agent (Claude Code, Hermes, Cursor, plain-MCP) calling this server. For human-readable installation instructions, see [README.md](README.md). For Claude-Code-specific routing logic and the pasteable global-CLAUDE.md instruction block, see [CLAUDE.md](CLAUDE.md).
+A skill-format reference for any agent (Claude Code, Codex, Cursor, Hermes, plain-MCP) calling this server. For human-readable installation instructions, see [README.md](README.md). For harness-agnostic routing logic and the pasteable instruction block (drop into your harness's global `CLAUDE.md` / `AGENTS.md` or a standalone agent's system prompt), see [CLAUDE.md](CLAUDE.md).
 
 ## Quick Start
 
