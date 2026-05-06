@@ -16,7 +16,7 @@ Python on FastAPI. MIT License. Runs as an MCP stdio server, FastAPI REST API, o
 
 ## What it does
 
-Tongyi DeepResearch 30B is a reasoning-tuned model that Alibaba designed for multi-hop web research. Gigaxity Deep Research wires it to a multi-source search layer (SearXNG, Tavily, LinkUp), an RRF fusion stage, and a synthesis engine with citation binding, then exposes the whole pipeline as six MCP tools — two primitives (`search`, `research`) plus four deep-research tools (`ask`, `discover`, `synthesize`, `reason`) — that Claude Code or any MCP-compatible agent can call.
+Gigaxity Deep Research wires a multi-source search layer (SearXNG, Tavily, LinkUp) to an RRF fusion stage and a synthesis engine with citation binding, then exposes the whole pipeline as six MCP tools — two primitives (`search`, `research`) plus four deep-research tools (`ask`, `discover`, `synthesize`, `reason`) — that Claude Code or any MCP-compatible agent can call. The synthesis stage runs against any OpenAI-compatible chat-completions model; the recommended default is Tongyi DeepResearch 30B, a reasoning-tuned model Alibaba designed for multi-hop web research.
 
 So when an agent hits a question outside its training cutoff, it doesn't hallucinate or shell out to a generic search tool. It calls `discover` to widen the source set, reads the top hits, and calls `synthesize` to fold the evidence into a citation-backed answer. Round-trip is typically 5–15 seconds against a hosted reasoning model.
 
