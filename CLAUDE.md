@@ -133,11 +133,11 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 
 ---
 
-## Triple Stack — full deep research setup
+## Companion MCPs — full deep research setup
 
-The full deep-research workflow uses six MCPs. This repo ships the most complex one (`gigaxity-deep-research`); the other five each take 30 seconds to register in `~/.claude.json`.
+The full deep-research workflow uses seven MCPs. The middle three (`Ref` + `exa` + `jina`) form the **Triple Stack** — the search/docs/code trio. This repo ships the most complex one (`gigaxity-deep-research`); the other six each take 30 seconds to register in `~/.claude.json`.
 
-### Companion MCPs
+### Companion MCP configs
 
 ```json
 "Ref": {
@@ -168,6 +168,22 @@ The full deep-research workflow uses six MCPs. This repo ships the most complex 
     "BRIGHTDATA_API_TOKEN": "YOUR_BRIGHTDATA_API_TOKEN",
     "BRIGHTDATA_ZONE": "YOUR_WEB_UNLOCKER_ZONE_NAME"
   }
+},
+"gptr-mcp": {
+  "type": "stdio",
+  "command": "/absolute/path/to/gptr-mcp-source/.venv/bin/python",
+  "args": ["/absolute/path/to/gptr-mcp-source/server.py"],
+  "cwd": "/absolute/path/to/gptr-mcp-source",
+  "env": {
+    "OPENAI_API_KEY": "YOUR_OPENAI_API_KEY",
+    "TAVILY_API_KEY": "YOUR_TAVILY_API_KEY",
+    "RETRIEVER": "social_openai,tavily",
+    "SOCIAL_OPENAI_DOMAINS": "reddit.com,x.com,youtube.com",
+    "SOCIAL_OPENAI_MODEL": "gpt-4o",
+    "FAST_LLM": "openai:gpt-4o-mini",
+    "SMART_LLM": "openai:gpt-4o",
+    "STRATEGIC_LLM": "openai:gpt-4o-mini"
+  }
 }
 ```
 
@@ -176,14 +192,16 @@ Sign-up links:
 - Exa (one key for both `exa` and `exa-answer`): https://exa.ai
 - Jina (free 10M tier): https://jina.ai
 - Brightdata Web Unlocker (paid; optional): https://brightdata.com
+- OpenAI (for gptr-mcp): https://platform.openai.com/api-keys
+- Tavily (for gptr-mcp fallback retriever): https://tavily.com
 
 `gigaxity-deep-research` on this branch uses a self-hosted OpenAI-compatible endpoint (vLLM, SGLang, llama.cpp, Ollama). No external sign-up needed for the LLM unless you point `RESEARCH_LLM_API_BASE` at a hosted service (e.g. OpenRouter).
 
-`exa-answer` and `brightdata_fallback` are minimal wrappers **bundled in this repo** under [`companions/`](companions/). Install per [`docs/guides/setup-companions.md`](docs/guides/setup-companions.md) — both are single-file Python MCP servers with a `requirements.txt` each.
+`exa-answer` and `brightdata_fallback` are minimal wrappers **bundled in this repo** under [`companions/`](companions/). `gptr-mcp` is the [upstream MCP shim](https://github.com/assafelovic/gptr-mcp) around [GPT Researcher](https://github.com/assafelovic/gpt-researcher) — `companions/gptr-mcp/install.sh` clones it into a sibling directory rather than vendoring source. Install per [`docs/guides/setup-companions.md`](docs/guides/setup-companions.md).
 
 ### Bundled skill
 
-[`skills/research-workflow/SKILL.md`](skills/research-workflow/SKILL.md) is a vendored copy of the universal-format skill that drives the classification logic across all six MCPs. Symlink or copy it into your skills directory:
+[`skills/research-workflow/SKILL.md`](skills/research-workflow/SKILL.md) is a vendored copy of the universal-format skill that drives the classification logic across all seven MCPs. Symlink or copy it into your skills directory:
 
 ```bash
 # Claude Code (per-user skills)
