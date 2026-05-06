@@ -2,7 +2,7 @@
 
 Gigaxity Deep Research is an MCP server that gives Claude Code (and other MCP-compatible agents) a deep research capability — multi-source search, citation-aware synthesis, contradiction detection, and chain-of-thought reasoning — backed by [Tongyi DeepResearch 30B](https://huggingface.co/Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking) hosted on [OpenRouter](https://openrouter.ai/). It exposes six tools — two primitives (`search`, `research`) plus four deep-research tools (`ask`, `discover`, `synthesize`, `reason`) — over both an MCP stdio surface and a FastAPI REST API.
 
-This page covers what the project is, the problems it solves, and where it sits in the broader Triple Stack of six research MCPs.
+This page covers what the project is, the problems it solves, and where it sits in the broader seven-MCP deep research stack.
 
 ## What problem does it solve?
 
@@ -28,18 +28,19 @@ The same pipeline serves both MCP and REST surfaces. The MCP surface is what Cla
 
 ## Where does it fit?
 
-This server is one of six MCPs in the **Triple Stack** — a configuration that turns Claude Code into a deep-research-first environment.
+This server is one of seven MCPs in the **deep research stack** — a configuration that turns Claude Code into a deep-research-first environment. The middle three (`Ref` + `exa` + `jina`) form the **Triple Stack** — the search/docs/code trio that does most of the heavy retrieval.
 
 | MCP | Role | Relationship to this server |
 |---|---|---|
-| `Ref` | Library and API documentation | Used before this server when the answer is in official docs |
-| `exa` | Code-context search, advanced web | Used in parallel with this server's discovery layer for cross-validation |
+| `Ref` | Library and API documentation (Triple Stack) | Used before this server when the answer is in official docs |
+| `exa` | Code-context search, advanced web (Triple Stack) | Used in parallel with this server's discovery layer for cross-validation |
+| `jina` | Free-tier web/arxiv/ssrn search (Triple Stack) | Provides the URL-reading layer that feeds this server's `synthesize` |
 | `exa-answer` | Speed-critical 1–2 s factual lookups | Substitutes for `ask` when latency is the only thing that matters |
-| `jina` | Free-tier web/arxiv/ssrn search | Provides the URL-reading layer that feeds this server's `synthesize` |
 | **`gigaxity-deep-research`** | This server — multi-source synthesis with Tongyi 30B | The core synthesis engine |
 | `brightdata_fallback` | Last-resort scraper for blocked URLs | Handles the long tail of CAPTCHA/paywall/Cloudflare pages |
+| `gptr-mcp` | Social-first research — community knowledge from Reddit, X, YouTube | Surfaces lived-experience content the rest of the stack misses |
 
-The bundled [`research-workflow` skill](../skills/research-workflow/SKILL.md) and the pasteable block in [`CLAUDE.md`](../CLAUDE.md) wire all six together with classification logic. You can use this server alone — it's self-contained — but the full experience comes from the stack.
+The bundled [`research-workflow` skill](../skills/research-workflow/SKILL.md) and the pasteable instruction block in [`CLAUDE.md`](../CLAUDE.md) wire all seven together with classification logic. You can use this server alone — it's self-contained — but the full experience comes from the stack.
 
 ## What models does it work with?
 
@@ -67,4 +68,4 @@ See [docs/guides/setup-mcp.md](guides/setup-mcp.md), [docs/guides/setup-rest.md]
 
 - [Quickstart](quickstart.md) — five-minute MCP install
 - [Architecture](concepts/architecture.md) — how the pipeline works under the hood
-- [Triple Stack setup](guides/triple-stack-setup.md) — wire up the full six-MCP deep research stack
+- [Triple Stack setup](guides/triple-stack-setup.md) — wire up the full seven-MCP deep research stack (Triple Stack + four)
