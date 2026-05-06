@@ -1,4 +1,4 @@
-# Gigaxity Deep Research — Open-source deep research MCP server for Claude Code, Hermes, and Cursor
+# Gigaxity Deep Research — Open-source deep research MCP server for Claude Code, Codex, Cursor, Hermes, and any MCP-capable agent
 
 **Open-source deep research MCP server for Claude Code, Hermes, Cursor, and any MCP-compatible agent.** [Tongyi DeepResearch 30B](https://huggingface.co/Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking) via [OpenRouter](https://openrouter.ai/) plus multi-source web synthesis with citations.
 
@@ -67,14 +67,14 @@ The Quick Starts below cover the orchestrator MCP — one of seven in the full s
 
 1. **Seven MCPs.** This repo's orchestrator (`gigaxity-deep-research`) plus the **Triple Stack** (`Ref` + `exa` + `jina` — search/docs/code trio) plus three more (`exa-answer`, `brightdata_fallback`, `gptr-mcp`).
 2. **Companion projects and dependencies.** [SearXNG](https://github.com/searxng/searxng) (primary search source, bundled at [`companions/searxng/`](companions/searxng/)) and [GPT Researcher](https://github.com/assafelovic/gpt-researcher) (transitive dependency of `gptr-mcp`); plus the minimal MCP wrappers bundled at [`companions/exa-answer/`](companions/exa-answer/) and [`companions/brightdata-fallback/`](companions/brightdata-fallback/).
-3. **The pasteable instruction block** in [`CLAUDE.md`](CLAUDE.md#instruction-block--paste-into-your-global-claudemd) — drop into your global `~/.claude/CLAUDE.md` (or `AGENTS.md`) so the agent fires the research workflow on external-knowledge queries and routes each query class to the right MCP.
+3. **The pasteable instruction block** in [`CLAUDE.md`](CLAUDE.md#instruction-block--paste-into-your-harnesss-global-claudemd--agentsmd-or-system-prompt) — drop into the global `CLAUDE.md` / `AGENTS.md` your harness loads (e.g. `~/.claude/CLAUDE.md` for Claude Code), or paste into a standalone agent's system prompt. The agent then fires the research workflow on external-knowledge queries and routes each query class to the right MCP.
 4. **The bundled [`research-workflow`](skills/research-workflow/SKILL.md) skill** — the deep reference for the routing classifier (token costs per tool, presets, fallback chains).
 
 Walk the [Setup roadmap](#setup-roadmap) below for a stage-by-stage path through all four.
 
-## Quick start: MCP for Claude Code
+## Quick start: MCP install (Claude Code walkthrough)
 
-For individual setups, run as an MCP stdio server and register it in your global `~/.claude.json`.
+The example below registers the server with Claude Code via `~/.claude.json`. The same MCP stdio config block works for any MCP-capable harness (Codex, Cursor, Hermes, Continue.dev, etc.) — substitute that harness's config file path. For standalone agents that don't have an MCP harness, run the REST API instead (see the next quick start).
 
 ```bash
 # Clone and install
@@ -218,7 +218,7 @@ The `local-inference` branch currently mirrors `main` and serves as a placeholde
 
 ## The bigger stack
 
-Gigaxity Deep Research is the synthesis MCP in a seven-MCP deep research stack for Claude Code. The other six handle search, URL reading, and social discovery:
+Gigaxity Deep Research is the synthesis MCP in a seven-MCP deep research stack — agent-framework-agnostic, designed to drop into any MCP-capable harness (Claude Code, Codex, Cursor, Hermes, etc.) or a standalone agent that takes a system prompt. The other six MCPs handle search, URL reading, and social discovery:
 
 | MCP | Role |
 |---|---|
@@ -240,7 +240,7 @@ The bundled [`research-workflow`](skills/research-workflow/) skill plus the inst
 - [Concepts: presets](docs/concepts/presets.md): `fast`, `tutorial`, `academic`, `comprehensive`, `contracrow`
 - [Concepts: focus modes](docs/concepts/focus-modes.md)
 - [Concepts: fallback chains](docs/concepts/fallback-chains.md): how Brightdata, Jina, and the rest chain on URL/search/synthesis failures
-- [Guide: MCP setup for Claude Code](docs/guides/setup-mcp.md)
+- [Guide: MCP setup (Claude Code walkthrough — same MCP block adapts to any MCP-capable harness)](docs/guides/setup-mcp.md)
 - [Guide: REST API setup for distributed compute](docs/guides/setup-rest.md)
 - [Guide: Local inference (Tongyi self-host)](docs/guides/setup-local-inference.md)
 - [Guide: Bundled companions setup (SearXNG, Exa Answer, Brightdata)](docs/guides/setup-companions.md)

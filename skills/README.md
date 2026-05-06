@@ -29,4 +29,4 @@ The skill format is a single markdown file with YAML frontmatter (`name`, `descr
 
 The skill encodes the routing logic that turns the seven MCPs into a coherent deep-research workflow. Without it, an agent sees seven separate tool servers and has to figure out the call sequence on its own. With it, the agent sees one workflow with the right tool selected per query class.
 
-The pasteable instruction block in [`../CLAUDE.md`](../CLAUDE.md) is an abridged version of this skill suitable for inlining into a global `CLAUDE.md`. The skill itself is the deep reference (token costs per tool call, preset/focus-mode catalog, fallback chains for blocked URLs).
+The pasteable instruction block in [`../CLAUDE.md`](../CLAUDE.md) is an abridged version of this skill suitable for inlining into your harness's global `CLAUDE.md` / `AGENTS.md` (or a standalone agent's system prompt). The skill itself is the deep reference (token costs per tool call, preset/focus-mode catalog, fallback chains for blocked URLs).

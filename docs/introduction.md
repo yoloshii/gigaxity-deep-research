@@ -1,6 +1,6 @@
 # Introduction to Gigaxity Deep Research
 
-Gigaxity Deep Research is an MCP server that gives Claude Code (and other MCP-compatible agents) a deep research capability — multi-source search, citation-aware synthesis, contradiction detection, and chain-of-thought reasoning — backed by [Tongyi DeepResearch 30B](https://huggingface.co/Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking) hosted on [OpenRouter](https://openrouter.ai/). It exposes six tools — two primitives (`search`, `research`) plus four deep-research tools (`ask`, `discover`, `synthesize`, `reason`) — over both an MCP stdio surface and a FastAPI REST API.
+Gigaxity Deep Research is an MCP server that gives any MCP-compatible agent (Claude Code, Codex, Cursor, Hermes, and others) a deep research capability — multi-source search, citation-aware synthesis, contradiction detection, and chain-of-thought reasoning — backed by [Tongyi DeepResearch 30B](https://huggingface.co/Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking) hosted on [OpenRouter](https://openrouter.ai/). It exposes six tools — two primitives (`search`, `research`) plus four deep-research tools (`ask`, `discover`, `synthesize`, `reason`) — over both an MCP stdio surface and a FastAPI REST API. Standalone agents that take a system prompt instead of MCP can use the REST API for the same capability set.
 
 This page covers what the project is, the problems it solves, and where it sits in the broader seven-MCP deep research stack.
 
