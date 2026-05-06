@@ -25,7 +25,7 @@ OpenRouter:
 - `anthropic/claude-3.5-sonnet` — non-reasoning, but very strong synthesis
 
 vLLM / SGLang / Ollama (local):
-- `Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking` (HF model ID)
+- `Alibaba-NLP/Tongyi-DeepResearch-30B-A3B` (HF model ID)
 - `tongyi-deepresearch:30b-q4` (Ollama tag)
 
 ## Search configuration
@@ -97,7 +97,7 @@ RESEARCH_TAVILY_API_KEY=tvly-your-key-placeholder
 ```bash
 RESEARCH_LLM_API_BASE=http://localhost:8000/v1
 RESEARCH_LLM_API_KEY=
-RESEARCH_LLM_MODEL=Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking
+RESEARCH_LLM_MODEL=Alibaba-NLP/Tongyi-DeepResearch-30B-A3B
 RESEARCH_SEARXNG_HOST=http://localhost:8888
 RESEARCH_HOST=127.0.0.1
 RESEARCH_PORT=8001    # avoid clash with vLLM on 8000
@@ -108,7 +108,7 @@ RESEARCH_PORT=8001    # avoid clash with vLLM on 8000
 ```bash
 RESEARCH_LLM_API_BASE=http://192.0.2.50:8000/v1   # example LAN IP (RFC 5737 TEST-NET-1)
 RESEARCH_LLM_API_KEY=
-RESEARCH_LLM_MODEL=Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking
+RESEARCH_LLM_MODEL=Alibaba-NLP/Tongyi-DeepResearch-30B-A3B
 RESEARCH_SEARXNG_HOST=http://192.0.2.10:8888   # example SearXNG on yet another machine (RFC 5737)
 ```
 

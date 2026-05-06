@@ -51,7 +51,7 @@ Right now the branch is a packaging placeholder — it mirrors `main` byte-for-b
 ```bash
 RESEARCH_LLM_API_BASE=http://localhost:8000/v1 \
 RESEARCH_LLM_API_KEY=local-anything \
-RESEARCH_LLM_MODEL=alibaba/Tongyi-DeepResearch-30B-A3B-Thinking \
+RESEARCH_LLM_MODEL=alibaba/Tongyi-DeepResearch-30B-A3B \
 python run_mcp.py
 ```
 
@@ -66,21 +66,21 @@ pip install vllm
 
 # Single-GPU FP16
 python -m vllm.entrypoints.openai.api_server \
-  --model Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking \
+  --model Alibaba-NLP/Tongyi-DeepResearch-30B-A3B \
   --host 0.0.0.0 \
   --port 8000 \
   --max-model-len 32768
 
 # Multi-GPU tensor-parallel
 python -m vllm.entrypoints.openai.api_server \
-  --model Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking \
+  --model Alibaba-NLP/Tongyi-DeepResearch-30B-A3B \
   --tensor-parallel-size 2 \
   --host 0.0.0.0 \
   --port 8000
 
 # Quantized (INT4)
 python -m vllm.entrypoints.openai.api_server \
-  --model Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking-AWQ \
+  --model Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-AWQ \
   --quantization awq \
   --host 0.0.0.0 \
   --port 8000
@@ -96,7 +96,7 @@ SGLang is faster for multi-turn / structured generation workloads and has built-
 pip install "sglang[all]"
 
 python -m sglang.launch_server \
-  --model-path Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking \
+  --model-path Alibaba-NLP/Tongyi-DeepResearch-30B-A3B \
   --host 0.0.0.0 \
   --port 8000
 ```
@@ -120,7 +120,7 @@ In `.env`:
 # vLLM / SGLang
 RESEARCH_LLM_API_BASE=http://localhost:8000/v1
 RESEARCH_LLM_API_KEY=local-anything   # placeholder string — see note below
-RESEARCH_LLM_MODEL=Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking
+RESEARCH_LLM_MODEL=Alibaba-NLP/Tongyi-DeepResearch-30B-A3B
 
 # Ollama
 RESEARCH_LLM_API_BASE=http://localhost:11434/v1
@@ -136,7 +136,7 @@ RESEARCH_LLM_MODEL=tongyi-deepresearch:30b-q4
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking",
+    "model": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B",
     "messages": [{"role":"user","content":"hello"}],
     "max_tokens": 64
   }'
