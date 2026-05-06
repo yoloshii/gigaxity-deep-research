@@ -24,9 +24,8 @@ OpenRouter:
 - `qwen/qwen-qwq-32b-preview` — Qwen reasoning variant
 - `anthropic/claude-3.5-sonnet` — non-reasoning, but very strong synthesis
 
-vLLM / SGLang / Ollama (local):
-- `Alibaba-NLP/Tongyi-DeepResearch-30B-A3B` (HF model ID)
-- `tongyi-deepresearch:30b-q4` (Ollama tag)
+vLLM / SGLang / llama.cpp (local):
+- `Alibaba-NLP/Tongyi-DeepResearch-30B-A3B` (HF model ID; `llama-server` exposes whatever alias it derives from the GGUF)
 
 ## Search configuration
 

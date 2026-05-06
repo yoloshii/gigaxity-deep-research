@@ -69,7 +69,7 @@ Symptom-fix lookup table for common boot and runtime errors. Find your symptom i
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `ConnectionError` on every call | Model server not running | Start vLLM/SGLang/Ollama; verify with `curl $RESEARCH_LLM_API_BASE/models` |
+| `ConnectionError` on every call | Model server not running | Start vLLM/SGLang/llama.cpp; verify with `curl $RESEARCH_LLM_API_BASE/models` |
 | `Unauthorized` from model server | Bearer token mismatch | Set `RESEARCH_LLM_API_KEY` to whatever your model server expects; empty string for open endpoints |
 | OOM at model-server startup | Model larger than VRAM | Switch to a quantized variant or smaller model |
 | Slow first request after model load | Prompt-eval cold-start | Send a warmup request after the model server reports loaded |

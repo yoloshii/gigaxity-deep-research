@@ -50,7 +50,7 @@ Default is `alibaba/tongyi-deepresearch-30b-a3b` on OpenRouter, chosen for its r
 - Qwen-QwQ
 - Llama-3.x via OpenRouter
 - Anthropic / OpenAI / Gemini via OpenRouter
-- A self-hosted model exposed over an OpenAI-compatible endpoint (vLLM, SGLang, Ollama)
+- A self-hosted model exposed over an OpenAI-compatible endpoint (vLLM, SGLang)
 
 Switch models by setting `RESEARCH_LLM_MODEL` in `.env` or the MCP `env` block. No code changes needed.
 
