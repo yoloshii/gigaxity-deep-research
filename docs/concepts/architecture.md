@@ -98,7 +98,7 @@ The final JSON looks roughly like:
   "metadata": {
     "preset": "comprehensive",
     "focus_mode": "general",
-    "model": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking",
+    "model": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B",
     "latency_ms": 14823
   }
 }

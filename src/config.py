@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     # LLM Configuration (any OpenAI-compatible endpoint: vLLM, SGLang, Ollama, llama.cpp, OpenRouter)
     llm_api_base: str = Field(default="http://localhost:8000/v1", description="LLM API base URL (defaults to a local OpenAI-compatible server on port 8000)")
     llm_api_key: str = Field(default="", description="LLM API key; for local servers without auth, set any non-empty placeholder")
-    llm_model: str = Field(default="Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking", description="DeepResearch model (HuggingFace path that vLLM/SGLang load by default)")
+    llm_model: str = Field(default="Alibaba-NLP/Tongyi-DeepResearch-30B-A3B", description="DeepResearch model (HuggingFace path that vLLM/SGLang load by default)")
     llm_temperature: float = Field(default=0.85, description="Generation temperature")
     llm_top_p: float = Field(default=0.95, description="Top-p sampling")
     llm_max_tokens: int = Field(default=16384, description="Max output tokens")

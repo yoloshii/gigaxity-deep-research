@@ -49,7 +49,7 @@ If you skip Brightdata entirely, the routing skill degrades gracefully — URLs 
 
 ## Tongyi DeepResearch 30B via OpenRouter — pay-as-you-go
 
-The synthesis stage runs against [Tongyi DeepResearch 30B](https://huggingface.co/Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking) — a reasoning-tuned 30B-parameter model purpose-built for agentic multi-hop research. [OpenRouter](https://openrouter.ai/) hosts it on pay-as-you-go billing. Current rates are at `https://openrouter.ai/alibaba/tongyi-deepresearch-30b-a3b`.
+The synthesis stage runs against [Tongyi DeepResearch 30B](https://huggingface.co/Alibaba-NLP/Tongyi-DeepResearch-30B-A3B) — a reasoning-tuned 30B-parameter model purpose-built for agentic multi-hop research. [OpenRouter](https://openrouter.ai/) hosts it on pay-as-you-go billing. Current rates are at `https://openrouter.ai/alibaba/tongyi-deepresearch-30b-a3b`.
 
 A typical multi-source synthesis runs 5,000–10,000 input tokens (the gathered source content) plus 2,000–4,000 output tokens (the synthesized answer with citations). The `fast` preset is a single LLM call; `comprehensive` runs 2–3 calls and costs proportionally more.
 

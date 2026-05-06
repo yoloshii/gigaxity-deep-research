@@ -48,7 +48,7 @@ RESEARCH_LLM_API_KEY=local-anything           # any non-empty placeholder works 
 RESEARCH_SEARXNG_HOST=http://localhost:8888
 ```
 
-That's the minimum. The rest of the variables have working defaults — including `RESEARCH_LLM_API_BASE=http://localhost:8000/v1` and `RESEARCH_LLM_MODEL=Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking`.
+That's the minimum. The rest of the variables have working defaults — including `RESEARCH_LLM_API_BASE=http://localhost:8000/v1` and `RESEARCH_LLM_MODEL=Alibaba-NLP/Tongyi-DeepResearch-30B-A3B`.
 
 ## Smoke test
 
@@ -70,7 +70,7 @@ Open `~/.claude.json` (or wherever your global Claude Code config lives). Find t
   "env": {
     "RESEARCH_LLM_API_BASE": "http://localhost:8000/v1",
     "RESEARCH_LLM_API_KEY": "local-anything",
-    "RESEARCH_LLM_MODEL": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking",
+    "RESEARCH_LLM_MODEL": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B",
     "RESEARCH_SEARXNG_HOST": "http://localhost:8888"
   }
 }

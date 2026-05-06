@@ -121,7 +121,7 @@ HTTP transport with bearer token. Fully hosted — no install. Sign up at https:
   "env": {
     "RESEARCH_LLM_API_BASE": "http://localhost:8000/v1",
     "RESEARCH_LLM_API_KEY": "local-anything",
-    "RESEARCH_LLM_MODEL": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking",
+    "RESEARCH_LLM_MODEL": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B",
     "RESEARCH_SEARXNG_HOST": "http://localhost:8888"
   }
 }

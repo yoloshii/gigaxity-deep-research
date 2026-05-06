@@ -48,7 +48,7 @@ Not every server loads every quant format. As of May 2026:
 Implications:
 
 - **GGUF route (Q4_K_M and friends, on llama.cpp / Ollama / vLLM):** the recommended path for 24 GB consumer GPUs. Production-validated on this stack via Ollama on VM 200.
-- **SGLang users:** swap the model path to an AWQ or GPTQ build — search HuggingFace for `Tongyi-DeepResearch-30B-A3B-Thinking-AWQ` (or `-GPTQ`) instead of pulling a `.gguf`. See the [SGLang section](#host-the-model-with-sglang) below.
+- **SGLang users:** swap the model path to an AWQ or GPTQ build — search HuggingFace for `Tongyi-DeepResearch-30B-A3B-AWQ` (or `-GPTQ`) instead of pulling a `.gguf`. See the [SGLang section](#host-the-model-with-sglang) below.
 - **Not locked to GGUF:** AWQ and GPTQ at INT4 land in roughly the same 16-19 GB VRAM footprint as Q4_K_M GGUF and run on both vLLM and SGLang. If your stack is already on vLLM/SGLang and you don't want a second runtime, AWQ is the natural alternative.
 
 ### Recommended quant for 24 GB consumer GPUs
@@ -90,7 +90,7 @@ pip install -e .
 This branch differs from `main` in two places:
 
 - `src/llm_client.py` exposes a generic `LLMClient` against any OpenAI-compatible endpoint (no OpenRouter-flavored helpers, no `X-OpenRouter-Api-Key` alias).
-- `src/config.py` defaults to `RESEARCH_LLM_API_BASE=http://localhost:8000/v1` and `RESEARCH_LLM_MODEL=Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking`.
+- `src/config.py` defaults to `RESEARCH_LLM_API_BASE=http://localhost:8000/v1` and `RESEARCH_LLM_MODEL=Alibaba-NLP/Tongyi-DeepResearch-30B-A3B`.
 
 Everything else (search, fusion, synthesis, citations) is identical to `main`. The per-request key override that exists on both branches is named `api_key` (MCP tool parameter) / `X-LLM-Api-Key` (REST header) on this branch — a generic name that fits whatever endpoint you point at.
 
@@ -109,21 +109,21 @@ pip install vllm
 
 # Single-GPU FP16
 python -m vllm.entrypoints.openai.api_server \
-  --model Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking \
+  --model Alibaba-NLP/Tongyi-DeepResearch-30B-A3B \
   --host 0.0.0.0 \
   --port 8000 \
   --max-model-len 32768
 
 # Multi-GPU tensor-parallel
 python -m vllm.entrypoints.openai.api_server \
-  --model Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking \
+  --model Alibaba-NLP/Tongyi-DeepResearch-30B-A3B \
   --tensor-parallel-size 2 \
   --host 0.0.0.0 \
   --port 8000
 
 # Quantized (INT4)
 python -m vllm.entrypoints.openai.api_server \
-  --model Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking-AWQ \
+  --model Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-AWQ \
   --quantization awq \
   --host 0.0.0.0 \
   --port 8000
@@ -135,13 +135,13 @@ vLLM exposes `/v1/chat/completions` at the OpenAI-compatible path.
 
 SGLang is faster for multi-turn / structured generation workloads and has built-in support for reasoning models.
 
-> **Note on quant format:** SGLang doesn't load GGUF as of May 2026 ([#1937](https://github.com/sgl-project/sglang/issues/1937)). The launch command below loads the FP16 HuggingFace model. For a quantized SGLang deployment that fits in 24 GB VRAM, swap the `--model-path` to an AWQ or GPTQ build (e.g. `Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking-AWQ`) and add `--quantization awq`.
+> **Note on quant format:** SGLang doesn't load GGUF as of May 2026 ([#1937](https://github.com/sgl-project/sglang/issues/1937)). The launch command below loads the FP16 HuggingFace model. For a quantized SGLang deployment that fits in 24 GB VRAM, swap the `--model-path` to an AWQ or GPTQ build (e.g. `Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-AWQ`) and add `--quantization awq`.
 
 ```bash
 pip install "sglang[all]"
 
 python -m sglang.launch_server \
-  --model-path Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking \
+  --model-path Alibaba-NLP/Tongyi-DeepResearch-30B-A3B \
   --host 0.0.0.0 \
   --port 8000
 ```
@@ -213,7 +213,7 @@ RESEARCH_LLM_MODEL=alibaba/tongyi-deepresearch-30b-a3b
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking",
+    "model": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B",
     "messages": [{"role":"user","content":"hello"}],
     "max_tokens": 64
   }'

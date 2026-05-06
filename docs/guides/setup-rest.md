@@ -119,7 +119,7 @@ Example for vLLM:
 ```bash
 RESEARCH_LLM_API_BASE=http://192.0.2.50:8000/v1
 RESEARCH_LLM_API_KEY=local-anything   # placeholder — see note above
-RESEARCH_LLM_MODEL=Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking
+RESEARCH_LLM_MODEL=Alibaba-NLP/Tongyi-DeepResearch-30B-A3B
 ```
 
 See [setup-local-inference.md](setup-local-inference.md) for the model-server side.

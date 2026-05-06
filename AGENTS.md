@@ -61,7 +61,7 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 |---|---|---|
 | `RESEARCH_LLM_API_BASE` | `http://localhost:8000/v1` | LLM endpoint. For Ollama set `http://localhost:11434/v1`; for hosted services point at their `/v1` URL. |
 | `RESEARCH_LLM_API_KEY` | *(empty — required, set any non-empty placeholder for local servers without auth)* | LLM API key |
-| `RESEARCH_LLM_MODEL` | `Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking` | Any OpenAI-compatible chat-completions model |
+| `RESEARCH_LLM_MODEL` | `Alibaba-NLP/Tongyi-DeepResearch-30B-A3B` | Any OpenAI-compatible chat-completions model |
 | `RESEARCH_LLM_TEMPERATURE` | `0.85` | |
 | `RESEARCH_LLM_TOP_P` | `0.95` | |
 | `RESEARCH_LLM_MAX_TOKENS` | `16384` | |
