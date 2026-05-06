@@ -1,13 +1,13 @@
 # Quickstart for Gigaxity Deep Research MCP
 
-> **You are reading this on the `local-inference` branch.** This quickstart shows the OpenRouter-hosted path — fastest path to a working setup, but it requires an OpenRouter key. If you'd prefer to keep using OpenRouter, you can stay on this branch and override the env vars below; for a default-OpenRouter experience without overrides, check out the [`main` branch](https://github.com/yoloshii/gigaxity-deep-research/tree/main). For self-hosted local inference (the branch's default path), see [`setup-local-inference.md`](guides/setup-local-inference.md) instead.
+> **You are reading this on the `local-inference` branch.** This quickstart shows the branch default — a self-hosted OpenAI-compatible LLM server. Need OpenRouter (or any other hosted endpoint) instead? Either check out the [`main` branch](https://github.com/yoloshii/gigaxity-deep-research/tree/main) for an OpenRouter-default config, or stay here and use the OpenRouter override block at the bottom of [step 4](#4-register-with-claude-code). For LLM-server setup (vLLM, SGLang, llama.cpp, Ollama) and the recommended Q4_K_M GGUF quant on 24 GB consumer GPUs, see [`setup-local-inference.md`](guides/setup-local-inference.md).
 
-A five-minute install that gets the six MCP tools (`search`, `research`, `ask`, `discover`, `synthesize`, `reason`) registered with Claude Code, calling Tongyi DeepResearch 30B on OpenRouter, and resolving real queries.
+A five-minute install that gets the six MCP tools (`search`, `research`, `ask`, `discover`, `synthesize`, `reason`) registered with Claude Code, calling Tongyi DeepResearch 30B on a self-hosted OpenAI-compatible server, and resolving real queries.
 
 ## Prerequisites
 
 - Python 3.11 or newer
-- An OpenRouter API key — get one at https://openrouter.ai/keys
+- A local OpenAI-compatible LLM server (vLLM, SGLang, llama.cpp, or Ollama) reachable at `http://localhost:8000/v1` — see [`setup-local-inference.md`](guides/setup-local-inference.md) for the setup walkthrough plus the recommended Q4_K_M GGUF quant
 - A SearXNG instance — easiest path is [Docker self-host](https://docs.searxng.org/admin/installation-docker.html); a public instance also works as long as it exposes the JSON API
 
 ## 1. Clone and install
@@ -30,7 +30,7 @@ cp .env.example .env
 Edit `.env`:
 
 ```bash
-RESEARCH_LLM_API_KEY=sk-or-v1-your-openrouter-key-here
+RESEARCH_LLM_API_KEY=local-anything               # any non-empty placeholder works for local servers without auth
 RESEARCH_SEARXNG_HOST=http://localhost:8888       # or your SearXNG URL
 ```
 
@@ -56,14 +56,22 @@ Open `~/.claude.json`, find the `mcpServers` object, and add:
   "command": "/absolute/path/to/gigaxity-deep-research/.venv/bin/python",
   "args": ["/absolute/path/to/gigaxity-deep-research/run_mcp.py"],
   "env": {
-    "RESEARCH_LLM_API_BASE": "https://openrouter.ai/api/v1",
-    "RESEARCH_LLM_API_KEY": "YOUR_OPENROUTER_API_KEY",
-    "RESEARCH_LLM_MODEL": "alibaba/tongyi-deepresearch-30b-a3b"
+    "RESEARCH_LLM_API_BASE": "http://localhost:8000/v1",
+    "RESEARCH_LLM_API_KEY": "local-anything",
+    "RESEARCH_LLM_MODEL": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking"
   }
 }
 ```
 
-Use **absolute paths**. Replace `YOUR_OPENROUTER_API_KEY` with your actual key (or omit the `env` block and rely on `.env`).
+Use **absolute paths**. For local servers without auth, `local-anything` (or any non-empty placeholder) is fine for the API key. Omit the `env` block entirely to rely on `.env`.
+
+**Want OpenRouter (or another hosted endpoint) instead?** Override the three LLM variables in the `env` block above:
+
+```json
+"RESEARCH_LLM_API_BASE": "https://openrouter.ai/api/v1",
+"RESEARCH_LLM_API_KEY": "sk-or-v1-your-real-key",
+"RESEARCH_LLM_MODEL": "alibaba/tongyi-deepresearch-30b-a3b"
+```
 
 ## 5. Restart Claude Code
 

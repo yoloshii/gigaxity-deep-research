@@ -1,6 +1,6 @@
 # Setting up Gigaxity Deep Research as an MCP server for Claude Code
 
-> **You are reading this on the `local-inference` branch.** The example config below shows the OpenRouter path — easiest if you don't have GPU capacity. To use a self-hosted OpenAI-compatible server (this branch's default), follow [`setup-local-inference.md`](setup-local-inference.md) and adapt the `env` block in step 4 to point at your local endpoint.
+> **You are reading this on the `local-inference` branch.** The example config below shows the branch default — a self-hosted OpenAI-compatible LLM server. For LLM-server setup walkthroughs (vLLM, SGLang, llama.cpp, Ollama) and the recommended Q4_K_M GGUF quant on 24 GB consumer GPUs, see [`setup-local-inference.md`](setup-local-inference.md). To use OpenRouter (or another hosted endpoint) instead, override the `env` block per the OpenRouter callout below the MCP block.
 
 This guide walks through registering the server with Claude Code as an MCP stdio server, the recommended setup for individual developers.
 
@@ -18,7 +18,7 @@ After this setup, six tools become available to Claude Code — two primitives p
 ## Prerequisites
 
 - Python 3.11+
-- An OpenRouter API key — https://openrouter.ai/keys
+- A local OpenAI-compatible LLM server (vLLM / SGLang / llama.cpp / Ollama) reachable at `http://localhost:8000/v1` — see [`setup-local-inference.md`](setup-local-inference.md) for the setup walkthrough plus the recommended Q4_K_M GGUF quant for 24 GB consumer GPUs
 - A SearXNG instance — see [Setting up SearXNG](#setting-up-searxng) below if you don't have one
 - Claude Code installed
 
@@ -44,11 +44,11 @@ cp .env.example .env
 Edit `.env`:
 
 ```bash
-RESEARCH_LLM_API_KEY=sk-or-v1-your-key-placeholder
+RESEARCH_LLM_API_KEY=local-anything           # any non-empty placeholder works for local servers without auth
 RESEARCH_SEARXNG_HOST=http://localhost:8888
 ```
 
-That's the minimum. The rest of the variables have working defaults.
+That's the minimum. The rest of the variables have working defaults — including `RESEARCH_LLM_API_BASE=http://localhost:8000/v1` and `RESEARCH_LLM_MODEL=Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking`.
 
 ## Smoke test
 
@@ -68,15 +68,25 @@ Open `~/.claude.json` (or wherever your global Claude Code config lives). Find t
   "command": "/absolute/path/to/gigaxity-deep-research/.venv/bin/python",
   "args": ["/absolute/path/to/gigaxity-deep-research/run_mcp.py"],
   "env": {
-    "RESEARCH_LLM_API_BASE": "https://openrouter.ai/api/v1",
-    "RESEARCH_LLM_API_KEY": "YOUR_OPENROUTER_API_KEY",
-    "RESEARCH_LLM_MODEL": "alibaba/tongyi-deepresearch-30b-a3b",
+    "RESEARCH_LLM_API_BASE": "http://localhost:8000/v1",
+    "RESEARCH_LLM_API_KEY": "local-anything",
+    "RESEARCH_LLM_MODEL": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking",
     "RESEARCH_SEARXNG_HOST": "http://localhost:8888"
   }
 }
 ```
 
-Use **absolute paths**. Replace `YOUR_OPENROUTER_API_KEY` with your real key, or omit `env` entirely and rely on the `.env` file the venv reads at startup.
+Use **absolute paths**. For local servers without auth, `local-anything` (or any non-empty placeholder) is fine for `RESEARCH_LLM_API_KEY`. Omit the `env` block entirely to rely on the `.env` file the venv reads at startup.
+
+**Want OpenRouter (or another hosted endpoint) instead?** Override the three LLM variables:
+
+```json
+"RESEARCH_LLM_API_BASE": "https://openrouter.ai/api/v1",
+"RESEARCH_LLM_API_KEY": "sk-or-v1-your-real-key",
+"RESEARCH_LLM_MODEL": "alibaba/tongyi-deepresearch-30b-a3b"
+```
+
+For Ollama, use `http://localhost:11434/v1` and the model tag you registered (e.g. `tongyi-deepresearch:30b-q4`).
 
 ## Restart Claude Code
 
@@ -97,7 +107,7 @@ Symlinking lets you edit the skill in the repo and have changes picked up withou
 
 Ask Claude Code something outside its training cutoff or something requiring fresh sources:
 
-- "What's the current latency profile of OpenRouter's `alibaba/tongyi-deepresearch-30b-a3b` model?"
+- "How do vLLM and SGLang differ in throughput for 30B reasoning models in 2026?"
 - "Compare the 2026 versions of FastAPI and Litestar."
 - "What's the latest CVE on `httpx`?"
 
