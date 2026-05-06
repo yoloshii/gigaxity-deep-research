@@ -292,14 +292,6 @@ The pipeline implements techniques from the recent literature:
 - Optional: Tavily API key, LinkUp API key for fallback search
 - Optional: Docker + Docker Compose for REST mode
 
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, test commands, and PR guidelines. Bug reports and feature requests use the templates under [`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE/).
-
-## Security
-
-See [SECURITY.md](SECURITY.md) for the threat model and the private vulnerability reporting flow.
-
 ## License
 
 [MIT](LICENSE). Copyright (c) 2026 Yoloshii.
