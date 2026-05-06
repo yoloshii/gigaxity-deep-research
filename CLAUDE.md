@@ -4,7 +4,7 @@ This is the agent reference for Gigaxity Deep Research, an open-source deep rese
 
 This file is loaded by Claude Code (`CLAUDE.md`) and other MCP-compatible agents (`AGENTS.md` is byte-identical). It documents how to operate the six MCP tools this server exposes (two primitives plus four deep-research tools) and how to plug them into the broader deep research stack.
 
-If you maintain a global `~/.claude/CLAUDE.md`, copy the **instruction block** at the bottom of this file into it. That single block makes Claude Code automatically route research queries through this MCP plus the six companion MCPs (Ref, Exa, Exa Answer, Jina, Brightdata fallback, gptr-mcp) in the full deep research stack.
+If your harness loads a global `CLAUDE.md` or `AGENTS.md` (Claude Code, Codex, Cursor, Hermes, etc.), copy the **instruction block** at the bottom of this file into that global file. For standalone agents that take a system prompt instead, paste the block directly into the system prompt. That single block makes any compatible agent automatically route research queries through this MCP plus the six companion MCPs (Ref, Exa, Exa Answer, Jina, Brightdata fallback, gptr-mcp) in the full deep research stack.
 
 ---
 
@@ -211,9 +211,9 @@ ln -s /path/to/gigaxity-deep-research/skills/research-workflow ~/.claude/skills/
 
 ---
 
-## Instruction block — paste into your global CLAUDE.md
+## Instruction block — paste into your harness's global CLAUDE.md / AGENTS.md (or system prompt)
 
-Drop the block below into your global `~/.claude/CLAUDE.md` (or `~/.claude/AGENTS.md`). It tells Claude Code when to trigger the `research-workflow` skill, how to route between MCPs, and what the standard subagent dispatch looks like.
+Drop the block below into the global file your harness loads (`~/.claude/CLAUDE.md` for Claude Code; the equivalent `AGENTS.md` for Codex / Cursor / Hermes / other AGENTS-compatible harnesses), or paste it directly into the system prompt of a standalone agent. It tells the agent when to trigger the `research-workflow` skill, how to route between MCPs, and what the standard subagent dispatch looks like.
 
 ````markdown
 ## Research Skill Trigger (DEFAULT BEHAVIOR)
