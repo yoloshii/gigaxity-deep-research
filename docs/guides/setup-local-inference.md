@@ -101,31 +101,19 @@ python -m sglang.launch_server \
   --port 8000
 ```
 
-## Host the model with Ollama (lower hardware bar)
+## Lower hardware bar (24 GB consumer GPU or Apple Silicon)
 
-For modest GPUs (24 GB) or CPU-only experiments, Ollama works with quantized GGUF builds:
-
-```bash
-ollama pull tongyi-deepresearch:30b-q4
-ollama serve
-```
-
-Ollama's OpenAI-compatible endpoint is at `http://localhost:11434/v1`.
+For modest GPUs (24 GB) or Apple Silicon, pull a quantized GGUF build from [`mradermacher/Tongyi-DeepResearch-30B-A3B-GGUF`](https://huggingface.co/mradermacher/Tongyi-DeepResearch-30B-A3B-GGUF) — the most reliable static quant ladder for this model (Q2_K through Q8_0; Q4_K_M ≈ 18.7 GB, flagged "fast, recommended" by the quanter). Imatrix variants are at [`mradermacher/Tongyi-DeepResearch-30B-A3B-i1-GGUF`](https://huggingface.co/mradermacher/Tongyi-DeepResearch-30B-A3B-i1-GGUF). Serve the GGUF with any runtime that loads it (llama.cpp's `llama-server`, vLLM with `--quantization gguf`, LM Studio, or Jan) — each exposes an OpenAI-compatible endpoint that the orchestrator can talk to.
 
 ## Configure the orchestrator
 
 In `.env`:
 
 ```bash
-# vLLM / SGLang
+# vLLM / SGLang / llama.cpp / any OpenAI-compatible GGUF runtime
 RESEARCH_LLM_API_BASE=http://localhost:8000/v1
 RESEARCH_LLM_API_KEY=local-anything   # placeholder string — see note below
 RESEARCH_LLM_MODEL=Alibaba-NLP/Tongyi-DeepResearch-30B-A3B
-
-# Ollama
-RESEARCH_LLM_API_BASE=http://localhost:11434/v1
-RESEARCH_LLM_API_KEY=local-anything   # placeholder string — see note below
-RESEARCH_LLM_MODEL=tongyi-deepresearch:30b-q4
 ```
 
 `RESEARCH_LLM_API_KEY` must be **non-empty** because every entrypoint calls `settings.require_llm_key()` and fails fast on an empty key — this is the OpenRouter-mode safety check that prevents the server from coming up without a configured key. For local servers that do not enforce auth, set the variable to any placeholder string (`local-anything`, `na`, etc.). If your model server uses bearer tokens, set this to the actual token value.
