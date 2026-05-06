@@ -1,6 +1,6 @@
 # Introduction to Gigaxity Deep Research
 
-> **You are reading this on the `local-inference` branch.** The default LLM endpoint is a self-hosted OpenAI-compatible server (vLLM, SGLang, llama.cpp, Ollama). The hosted-OpenRouter framing in the rest of this page applies on `main`; this branch swaps the default to local inference but the synthesis pipeline is identical.
+> **You are reading this on the `local-inference` branch.** The default LLM endpoint is a self-hosted OpenAI-compatible server (vLLM, SGLang, or llama.cpp). The hosted-OpenRouter framing in the rest of this page applies on `main`; this branch swaps the default to local inference but the synthesis pipeline is identical.
 
 Gigaxity Deep Research is an MCP server that gives any MCP-compatible agent (Claude Code, Codex, Cursor, Hermes, and others) a deep research capability — multi-source search, citation-aware synthesis, contradiction detection, and chain-of-thought reasoning — backed by [Tongyi DeepResearch 30B](https://huggingface.co/Alibaba-NLP/Tongyi-DeepResearch-30B-A3B) running locally on this branch (or hosted on [OpenRouter](https://openrouter.ai/) when configured for that). It exposes six tools — two primitives (`search`, `research`) plus four deep-research tools (`ask`, `discover`, `synthesize`, `reason`) — over both an MCP stdio surface and a FastAPI REST API. Standalone agents that take a system prompt instead of MCP can use the REST API for the same capability set.
 
@@ -46,13 +46,13 @@ The bundled [`research-workflow` skill](../skills/research-workflow/SKILL.md) an
 
 ## What models does it work with?
 
-Default on this branch is `Alibaba-NLP/Tongyi-DeepResearch-30B-A3B` running on a local OpenAI-compatible server (vLLM, SGLang, llama.cpp, Ollama), chosen for its reasoning-tuned multi-hop research behavior. The synthesis pipeline is model-agnostic, so any OpenAI-compatible chat-completions model works:
+Default on this branch is `Alibaba-NLP/Tongyi-DeepResearch-30B-A3B` running on a local OpenAI-compatible server (vLLM, SGLang, or llama.cpp), chosen for its reasoning-tuned multi-hop research behavior. The synthesis pipeline is model-agnostic, so any OpenAI-compatible chat-completions model works:
 
 - DeepSeek-R1 (and any reasoning variant)
 - Qwen-QwQ
 - Llama-3.x (locally hosted or via a hosted endpoint)
 - Anthropic / OpenAI / Gemini via OpenRouter or another aggregator
-- A self-hosted model exposed over an OpenAI-compatible endpoint (vLLM, SGLang, Ollama, llama.cpp)
+- A self-hosted model exposed over an OpenAI-compatible endpoint (vLLM, SGLang, or llama.cpp)
 
 Switch models by setting `RESEARCH_LLM_MODEL` in `.env` or the MCP `env` block. No code changes needed.
 

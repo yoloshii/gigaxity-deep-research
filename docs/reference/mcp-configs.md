@@ -190,7 +190,7 @@ Bundled in this repo at [`companions/gptr-mcp/`](../../companions/gptr-mcp/). In
 | Ref | https://ref.tools | Free credits, then ~$9/mo Basic |
 | Exa (one key for both `exa` and `exa-answer`) | https://exa.ai | Paid; generous free trial credits. A fresh Google account allocation buys another round of free credits if you exhaust the first. |
 | Jina | https://jina.ai | Paid; generous free 10M trial tier — hundreds of full pipeline sessions before key rotation |
-| Self-hosted LLM (for `gigaxity-deep-research`) | vLLM, SGLang, llama.cpp, Ollama | Hardware cost only — zero ongoing usage charges. Tongyi 30B fits in ~24-60 GB VRAM at INT4-FP16. |
+| Self-hosted LLM (for `gigaxity-deep-research`) | vLLM, SGLang, llama.cpp | Hardware cost only — zero ongoing usage charges. Tongyi 30B fits in ~24-60 GB VRAM at INT4-FP16. |
 | Brightdata Web Unlocker | [brightdata.com](https://brightdata.com) | Monthly free-tier limit, then paid; only fires on ~5–15% of URL fetches |
 | OpenAI (for `gptr-mcp`) | https://platform.openai.com/api-keys | Pay-per-call |
 | Tavily (free tier — for `gptr-mcp` fallback) | https://tavily.com | Free tier |

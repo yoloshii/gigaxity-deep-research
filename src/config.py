@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     linkup_api_key: str = Field(default="", description="LinkUp API key")
     linkup_depth: str = Field(default="standard", description="Search depth: standard or deep")
 
-    # LLM Configuration (any OpenAI-compatible endpoint: vLLM, SGLang, Ollama, llama.cpp, OpenRouter)
+    # LLM Configuration (any OpenAI-compatible endpoint: vLLM, SGLang, llama.cpp, OpenRouter)
     llm_api_base: str = Field(default="http://localhost:8000/v1", description="LLM API base URL (defaults to a local OpenAI-compatible server on port 8000)")
     llm_api_key: str = Field(default="", description="LLM API key; for local servers without auth, set any non-empty placeholder")
     llm_model: str = Field(default="Alibaba-NLP/Tongyi-DeepResearch-30B-A3B", description="DeepResearch model (HuggingFace path that vLLM/SGLang load by default)")
@@ -55,7 +55,7 @@ class Settings(BaseSettings):
             raise RuntimeError(
                 "RESEARCH_LLM_API_KEY is not set. "
                 "Set it in .env (in the project root), export it, or pass it via the MCP `env` block. "
-                "For local servers without auth (vLLM, SGLang, Ollama default), set any non-empty placeholder "
+                "For local servers without auth (vLLM, SGLang, llama.cpp default), set any non-empty placeholder "
                 "such as `local-anything`. For remote services that enforce bearer auth (OpenRouter, hosted "
                 "endpoints), use the actual key."
             )

@@ -8,7 +8,7 @@ Variables can be set in `.env` (read at startup), in the MCP `env` block of `~/.
 
 | Variable | Default | Required? | Notes |
 |---|---|---|---|
-| `RESEARCH_LLM_API_BASE` | `http://localhost:8000/v1` | No | Any OpenAI-compatible base URL. Defaults match a local vLLM/SGLang server; for Ollama set `http://localhost:11434/v1`; for hosted services set the provider's `/v1` URL. |
+| `RESEARCH_LLM_API_BASE` | `http://localhost:8000/v1` | No | Any OpenAI-compatible base URL. Defaults match a local vLLM/SGLang server; for llama.cpp's `llama-server` set `http://localhost:8080/v1`; for hosted services set the provider's `/v1` URL. |
 | `RESEARCH_LLM_API_KEY` | *(empty)* | **Yes** | Bearer token for the LLM endpoint. For local servers without auth, set any non-empty placeholder. |
 | `RESEARCH_LLM_MODEL` | `Alibaba-NLP/Tongyi-DeepResearch-30B-A3B` | No | Any model the endpoint serves |
 | `RESEARCH_LLM_TEMPERATURE` | `0.85` | No | 0.0–1.0; lower = more deterministic |
@@ -18,9 +18,8 @@ Variables can be set in `.env` (read at startup), in the MCP `env` block of `~/.
 
 ### Common model values
 
-vLLM / SGLang / Ollama (local — default on this branch):
-- `Alibaba-NLP/Tongyi-DeepResearch-30B-A3B` (HF model ID)
-- `tongyi-deepresearch:30b-q4` (Ollama tag)
+vLLM / SGLang / llama.cpp (local — default on this branch):
+- `Alibaba-NLP/Tongyi-DeepResearch-30B-A3B` (HF model ID; `llama-server` exposes whatever alias it derives from the GGUF)
 
 Hosted endpoints (OpenRouter and similar):
 - `alibaba/tongyi-deepresearch-30b-a3b` — OpenRouter slug, reasoning-tuned for research
@@ -84,12 +83,12 @@ RESEARCH_LLM_API_KEY=local-anything    # placeholder; required to be non-empty
 RESEARCH_SEARXNG_HOST=http://localhost:8888
 ```
 
-### Local inference with Ollama
+### Local inference with llama.cpp's `llama-server`
 
 ```bash
-RESEARCH_LLM_API_BASE=http://localhost:11434/v1
+RESEARCH_LLM_API_BASE=http://localhost:8080/v1
 RESEARCH_LLM_API_KEY=local-anything
-RESEARCH_LLM_MODEL=tongyi-deepresearch:30b-q4
+RESEARCH_LLM_MODEL=Tongyi-DeepResearch-30B-A3B   # alias llama-server reports
 RESEARCH_SEARXNG_HOST=http://localhost:8888
 ```
 

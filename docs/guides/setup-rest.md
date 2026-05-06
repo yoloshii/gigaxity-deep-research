@@ -12,7 +12,7 @@ If you're a single Claude Code user on one machine, use [the MCP setup](setup-mc
 ## Prerequisites
 
 - Docker + Docker Compose, OR Python 3.11+ if running natively
-- An OpenAI-compatible LLM endpoint reachable from the orchestrator (local vLLM/SGLang/Ollama, or a hosted service such as OpenRouter)
+- An OpenAI-compatible LLM endpoint reachable from the orchestrator (local vLLM/SGLang/llama.cpp, or a hosted service such as OpenRouter)
 - A SearXNG instance reachable from the server
 
 ## Option A: Docker (recommended)

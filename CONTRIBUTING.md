@@ -5,7 +5,7 @@ Gigaxity Deep Research is an MCP server (and REST API) that wraps Alibaba's Tong
 ## Prerequisites
 
 - Python >= 3.11
-- An OpenAI-compatible LLM endpoint (a local vLLM/SGLang/Ollama server, or a hosted service such as OpenRouter) for live LLM tests
+- An OpenAI-compatible LLM endpoint (a local vLLM/SGLang/llama.cpp server, or a hosted service such as OpenRouter) for live LLM tests
 - A SearXNG instance — self-hosted (https://docs.searxng.org/) or third-party — for live search tests
 - Optional: Docker + Docker Compose if you want to run the server in a container
 

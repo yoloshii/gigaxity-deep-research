@@ -1,7 +1,7 @@
 """LLM client for any OpenAI-compatible chat-completions endpoint.
 
 Wraps AsyncOpenAI with per-request API key support. Works against vLLM, SGLang,
-Ollama, llama.cpp, and remote services that follow the OpenAI chat-completions
+llama.cpp, and remote services that follow the OpenAI chat-completions
 contract.
 """
 

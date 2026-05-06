@@ -18,7 +18,7 @@ Symptom-fix lookup table for common boot and runtime errors. Find your symptom i
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `ConnectionError` / `APIConnectionError` on every call | Configured `RESEARCH_LLM_API_BASE` not reachable | For local servers, start vLLM/SGLang/Ollama; `curl $RESEARCH_LLM_API_BASE/models` should return 200. For hosted services, check DNS/firewall to the upstream. |
+| `ConnectionError` / `APIConnectionError` on every call | Configured `RESEARCH_LLM_API_BASE` not reachable | For local servers, start vLLM/SGLang/llama.cpp; `curl $RESEARCH_LLM_API_BASE/models` should return 200. For hosted services, check DNS/firewall to the upstream. |
 | 401 from LLM endpoint | Invalid bearer token | Match `RESEARCH_LLM_API_KEY` to what your endpoint expects (real key for hosted; placeholder for open local servers) |
 | 402 from hosted endpoint (e.g. OpenRouter) | Account out of credits | Top up on the provider dashboard |
 | 429 rate limit | Quota or per-tenant limit hit | Reduce `RESEARCH_DEFAULT_TOP_K`, switch to `fast` preset, or wait the indicated retry-after |
@@ -70,7 +70,7 @@ Symptom-fix lookup table for common boot and runtime errors. Find your symptom i
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `ConnectionError` on every call | Model server not running on `RESEARCH_LLM_API_BASE` | Start vLLM/SGLang/Ollama; verify with `curl $RESEARCH_LLM_API_BASE/models` |
+| `ConnectionError` on every call | Model server not running on `RESEARCH_LLM_API_BASE` | Start vLLM/SGLang/llama.cpp; verify with `curl $RESEARCH_LLM_API_BASE/models` |
 | `Unauthorized` from model server | Bearer token mismatch | Set `RESEARCH_LLM_API_KEY` to whatever your model server expects; non-empty placeholder for open endpoints |
 | OOM at model-server startup | Model larger than VRAM | Switch to a quantized variant (AWQ, INT4) or smaller model |
 | Slow first request after model load | Prompt-eval cold-start | Send a warmup request after the model server reports loaded |

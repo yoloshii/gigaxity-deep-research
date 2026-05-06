@@ -10,7 +10,7 @@ version: 1.0.0
 
 This skill orchestrates research queries using the optimal workflow based on query type. It integrates:
 - **Triple Stack**: Ref (docs) + Exa (code/web) + Jina (web/academic/parallel)
-- **gigaxity-deep-research**: synthesis engine over any OpenAI-compatible chat-completions endpoint (self-hosted vLLM/SGLang/llama.cpp/Ollama on the `local-inference` branch, OpenRouter on `main`)
+- **gigaxity-deep-research**: synthesis engine over any OpenAI-compatible chat-completions endpoint (self-hosted vLLM/SGLang/llama.cpp on the `local-inference` branch, OpenRouter on `main`)
 - **exa-answer**: speed-critical 1–2 s factual lookups
 - **brightdata_fallback**: blocked-URL recovery (CAPTCHA / paywall / Cloudflare)
 - **gptr-mcp**: social-first research over Reddit, X/Twitter, YouTube — wraps [GPT Researcher](https://github.com/assafelovic/gpt-researcher)

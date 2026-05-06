@@ -59,7 +59,7 @@ Both the MCP and REST surfaces accept a per-request `api_key` parameter (or `X-L
 
 ## Local inference — zero ongoing inference cost
 
-For users with GPU capacity, the `local-inference` branch swaps OpenRouter for any OpenAI-compatible inference server (Ollama, llama.cpp, vLLM, SGLang). Tongyi DeepResearch 30B at 4-bit quantization fits in roughly 24 GB of VRAM, so a single RTX 3090 / 4090 / 5090 or an Apple Silicon machine with 32 GB+ unified memory can run it locally. Smaller variants (DeepSeek-R1 distilled, Qwen3, Llama 3.3) work too — anything OpenAI-compatible plugs in.
+For users with GPU capacity, the `local-inference` branch swaps OpenRouter for any OpenAI-compatible inference server (vLLM, SGLang, or llama.cpp). Tongyi DeepResearch 30B at 4-bit quantization fits in roughly 24 GB of VRAM, so a single RTX 3090 / 4090 / 5090 or an Apple Silicon machine with 32 GB+ unified memory can run it locally. Smaller variants (DeepSeek-R1 distilled, Qwen3, Llama 3.3) work too — anything OpenAI-compatible plugs in.
 
 See [`docs/guides/setup-local-inference.md`](setup-local-inference.md) for the branch swap and inference-server setup.
 

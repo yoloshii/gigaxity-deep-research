@@ -1,6 +1,6 @@
 # Setting up Gigaxity Deep Research as an MCP server for Claude Code
 
-> **You are reading this on the `local-inference` branch.** The example config below shows the branch default — a self-hosted OpenAI-compatible LLM server. For LLM-server setup walkthroughs (vLLM, SGLang, llama.cpp, Ollama) and the recommended Q4_K_M GGUF quant on 24 GB consumer GPUs, see [`setup-local-inference.md`](setup-local-inference.md). To use OpenRouter (or another hosted endpoint) instead, override the `env` block per the OpenRouter callout below the MCP block.
+> **You are reading this on the `local-inference` branch.** The example config below shows the branch default — a self-hosted OpenAI-compatible LLM server. For LLM-server setup walkthroughs (vLLM, SGLang, llama.cpp) and the recommended Q4_K_M GGUF quant on 24 GB consumer GPUs from [`mradermacher/Tongyi-DeepResearch-30B-A3B-GGUF`](https://huggingface.co/mradermacher/Tongyi-DeepResearch-30B-A3B-GGUF), see [`setup-local-inference.md`](setup-local-inference.md). To use OpenRouter (or another hosted endpoint) instead, override the `env` block per the OpenRouter callout below the MCP block.
 
 This guide walks through registering the server with Claude Code as an MCP stdio server, the recommended setup for individual developers.
 
@@ -18,7 +18,7 @@ After this setup, six tools become available to Claude Code — two primitives p
 ## Prerequisites
 
 - Python 3.11+
-- A local OpenAI-compatible LLM server (vLLM / SGLang / llama.cpp / Ollama) reachable at `http://localhost:8000/v1` — see [`setup-local-inference.md`](setup-local-inference.md) for the setup walkthrough. The recommended Q4_K_M GGUF quant runs on llama.cpp, Ollama, or vLLM; SGLang requires AWQ or GPTQ instead.
+- A local OpenAI-compatible LLM server (vLLM / SGLang / llama.cpp) reachable at `http://localhost:8000/v1` (llama.cpp's `llama-server` defaults to 8080 — adjust accordingly) — see [`setup-local-inference.md`](setup-local-inference.md) for the setup walkthrough. The recommended Q4_K_M GGUF quant runs on llama.cpp or vLLM; SGLang requires AWQ or GPTQ instead.
 - A SearXNG instance — see [Setting up SearXNG](#setting-up-searxng) below if you don't have one
 - Claude Code installed
 
@@ -86,7 +86,7 @@ Use **absolute paths**. For local servers without auth, `local-anything` (or any
 "RESEARCH_LLM_MODEL": "alibaba/tongyi-deepresearch-30b-a3b"
 ```
 
-For Ollama, use `http://localhost:11434/v1` and the model tag you registered (e.g. `tongyi-deepresearch:30b-q4`).
+For llama.cpp's `llama-server`, use `http://localhost:8080/v1` and the alias `llama-server` reports for the loaded GGUF (typically the model name from the `.gguf` filename or HF repo, e.g. `Tongyi-DeepResearch-30B-A3B`).
 
 ## Restart Claude Code
 

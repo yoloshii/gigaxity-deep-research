@@ -2,7 +2,7 @@
 
 Exposes research tools via Model Context Protocol using stdio transport.
 Uses LLMClient for inference against any OpenAI-compatible chat-completions
-endpoint (vLLM, SGLang, Ollama, llama.cpp, OpenRouter).
+endpoint (vLLM, SGLang, llama.cpp, OpenRouter).
 
 Usage:
     python -m src.mcp_server

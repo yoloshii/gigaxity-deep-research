@@ -1,6 +1,6 @@
 # Gigaxity Deep Research — Agent Reference
 
-This is the agent reference for Gigaxity Deep Research, an open-source deep research MCP server for Claude Code, Hermes, Cursor, and other MCP-compatible agents — `local-inference` branch. Tongyi DeepResearch 30B (or any OpenAI-compatible chat-completions model) runs on a self-hosted server (vLLM, SGLang, llama.cpp, Ollama). The Triple Stack search MCPs (Ref, Exa, Jina) handle web/docs/code retrieval, and the bundled `research-workflow` skill routes queries to the right tool per query class.
+This is the agent reference for Gigaxity Deep Research, an open-source deep research MCP server for Claude Code, Hermes, Cursor, and other MCP-compatible agents — `local-inference` branch. Tongyi DeepResearch 30B (or any OpenAI-compatible chat-completions model) runs on a self-hosted server (vLLM, SGLang, or llama.cpp). The Triple Stack search MCPs (Ref, Exa, Jina) handle web/docs/code retrieval, and the bundled `research-workflow` skill routes queries to the right tool per query class.
 
 This file is loaded by Claude Code (`CLAUDE.md`) and other MCP-compatible agents (`AGENTS.md` is byte-identical). It documents how to operate the six MCP tools this server exposes (two primitives plus four deep-research tools) and how to plug them into the broader deep research stack.
 
@@ -59,7 +59,7 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `RESEARCH_LLM_API_BASE` | `http://localhost:8000/v1` | LLM endpoint. For Ollama set `http://localhost:11434/v1`; for hosted services point at their `/v1` URL. |
+| `RESEARCH_LLM_API_BASE` | `http://localhost:8000/v1` | LLM endpoint. For llama.cpp's `llama-server` set `http://localhost:8080/v1`; for hosted services point at their `/v1` URL. |
 | `RESEARCH_LLM_API_KEY` | *(empty — required, set any non-empty placeholder for local servers without auth)* | LLM API key |
 | `RESEARCH_LLM_MODEL` | `Alibaba-NLP/Tongyi-DeepResearch-30B-A3B` | Any OpenAI-compatible chat-completions model |
 | `RESEARCH_LLM_TEMPERATURE` | `0.85` | |
@@ -108,7 +108,7 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 | Symptom | Cause | Fix |
 |---|---|---|
 | `RESEARCH_LLM_API_KEY` missing on startup | env var not set | Set in `.env` or MCP `env` block; for local servers without auth, set any non-empty placeholder |
-| `ConnectionError` / `APIConnectionError` on first call | Local LLM server not running | Start vLLM/SGLang/Ollama on the configured `RESEARCH_LLM_API_BASE`; `curl <base>/models` should return 200 |
+| `ConnectionError` / `APIConnectionError` on first call | Local LLM server not running | Start vLLM/SGLang/llama.cpp on the configured `RESEARCH_LLM_API_BASE`; `curl <base>/models` should return 200 |
 | 401 from LLM endpoint | Invalid bearer token | Match `RESEARCH_LLM_API_KEY` to what your server expects (real key for hosted; placeholder for unauthenticated local) |
 | Empty results from `discover` / `synthesize` | SearXNG host unreachable | `curl $RESEARCH_SEARXNG_HOST/healthz` — should return 200 |
 | `model not found` from local server | Model not loaded | vLLM/SGLang load 30B in 30-120 s; check the model-server logs and use the exact slug they registered |
@@ -195,7 +195,7 @@ Sign-up links:
 - OpenAI (for gptr-mcp): https://platform.openai.com/api-keys
 - Tavily (for gptr-mcp fallback retriever): https://tavily.com
 
-`gigaxity-deep-research` on this branch uses a self-hosted OpenAI-compatible endpoint (vLLM, SGLang, llama.cpp, Ollama). No external sign-up needed for the LLM unless you point `RESEARCH_LLM_API_BASE` at a hosted service (e.g. OpenRouter).
+`gigaxity-deep-research` on this branch uses a self-hosted OpenAI-compatible endpoint (vLLM, SGLang, or llama.cpp). No external sign-up needed for the LLM unless you point `RESEARCH_LLM_API_BASE` at a hosted service (e.g. OpenRouter).
 
 `exa-answer` and `brightdata_fallback` are minimal wrappers **bundled in this repo** under [`companions/`](companions/). `gptr-mcp` is the [upstream MCP shim](https://github.com/assafelovic/gptr-mcp) around [GPT Researcher](https://github.com/assafelovic/gpt-researcher) — `companions/gptr-mcp/install.sh` clones it into a sibling directory rather than vendoring source. Install per [`docs/guides/setup-companions.md`](docs/guides/setup-companions.md).
 
