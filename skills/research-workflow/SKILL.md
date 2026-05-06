@@ -10,7 +10,10 @@ version: 1.0.0
 
 This skill orchestrates research queries using the optimal workflow based on query type. It integrates:
 - **Triple Stack**: Ref (docs) + Exa (code/web) + Jina (web/academic/parallel)
-- **gigaxity-deep-research**: OpenRouter-backed synthesis engine
+- **gigaxity-deep-research**: synthesis engine over any OpenAI-compatible chat-completions endpoint (self-hosted vLLM/SGLang/llama.cpp/Ollama on the `local-inference` branch, OpenRouter on `main`)
+- **exa-answer**: speed-critical 1–2 s factual lookups
+- **brightdata_fallback**: blocked-URL recovery (CAPTCHA / paywall / Cloudflare)
+- **gptr-mcp**: social-first research over Reddit, X/Twitter, YouTube — wraps [GPT Researcher](https://github.com/assafelovic/gpt-researcher)
 
 ## Query Classification
 
@@ -1264,9 +1267,12 @@ mcp__gigaxity-deep-research__synthesize(
 
 This skill integrates with existing global MCP configuration:
 
-**Global MCPs (Direct Access):**
-- Ref, Exa, Jina (Triple Stack)
+**Global MCPs (Direct Access — full deep research stack, 7 MCPs):**
+- Ref, Exa, Jina (the **Triple Stack** — search/docs/code trio)
+- exa-answer (speed-critical factual lookups)
 - gigaxity-deep-research (synthesis engine)
+- brightdata_fallback (blocked-URL recovery)
+- gptr-mcp (social-first research via [GPT Researcher](https://github.com/assafelovic/gpt-researcher))
 
 **Tool Naming (6 stdio MCP tools — 2 primitives + 4 deep-research):**
 - `mcp__gigaxity-deep-research__search` — raw multi-source aggregation, no LLM call
