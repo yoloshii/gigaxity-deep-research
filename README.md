@@ -61,6 +61,17 @@ The MCP server exposes **two primitives** plus **four deep-research tools** — 
 - **Multi-tenant**: accepts a per-request `X-OpenRouter-Api-Key` header so multiple users can share one server instance and bill their own OpenRouter accounts.
 - **MCP and REST**: the same orchestration logic powers both surfaces.
 
+## What the full install includes
+
+The Quick Starts below cover the orchestrator MCP — one of seven in the full stack. The complete deep research workflow (automatic per-query routing across the whole stack) comprises four parts:
+
+1. **Seven MCPs.** This repo's orchestrator (`gigaxity-deep-research`) plus the **Triple Stack** (`Ref` + `exa` + `jina` — search/docs/code trio) plus three more (`exa-answer`, `brightdata_fallback`, `gptr-mcp`).
+2. **Companion projects and dependencies.** [SearXNG](https://github.com/searxng/searxng) (primary search source, bundled at [`companions/searxng/`](companions/searxng/)) and [GPT Researcher](https://github.com/assafelovic/gpt-researcher) (transitive dependency of `gptr-mcp`); plus the minimal MCP wrappers bundled at [`companions/exa-answer/`](companions/exa-answer/) and [`companions/brightdata-fallback/`](companions/brightdata-fallback/).
+3. **The pasteable instruction block** in [`CLAUDE.md`](CLAUDE.md#instruction-block--paste-into-your-global-claudemd) — drop into your global `~/.claude/CLAUDE.md` (or `AGENTS.md`) so the agent fires the research workflow on external-knowledge queries and routes each query class to the right MCP.
+4. **The bundled [`research-workflow`](skills/research-workflow/SKILL.md) skill** — the deep reference for the routing classifier (token costs per tool, presets, fallback chains).
+
+Walk the [Setup roadmap](#setup-roadmap) below for a stage-by-stage path through all four.
+
 ## Quick start: MCP for Claude Code
 
 For individual setups, run as an MCP stdio server and register it in your global `~/.claude.json`.
