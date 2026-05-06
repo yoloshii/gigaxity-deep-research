@@ -206,30 +206,37 @@ This branch ships with `RESEARCH_LLM_API_BASE` defaulted to `http://localhost:80
 ┌────────────────────── Gigaxity Deep Research ──────────────────────┐
 │                                                                    │
 │  MCP stdio (run_mcp.py) ──┐               ┌── REST (FastAPI)       │
-│                            ▼               ▼                         │
-│                       ┌─────────────────────────┐                   │
-│                       │      Discovery layer     │                   │
-│                       │  routing · expansion ·   │                   │
-│                       │  decomposition · focus   │                   │
-│                       └────────────┬────────────┘                   │
-│                                    ▼                                 │
-│  ┌──────── Search aggregator (parallel, fail-graceful) ─────────┐   │
-│  │   SearXNG     ·     Tavily     ·     LinkUp                  │   │
-│  │              ↓ all results unioned ↓                         │   │
-│  │                      RRF fusion                              │   │
-│  └─────────────────────────┬────────────────────────────────────┘   │
-│                            ▼                                         │
-│                       ┌─────────────────────────┐                   │
-│                       │     Synthesis layer      │                   │
-│                       │  CRAG quality gate ·     │                   │
-│                       │  contradiction detector ·│                   │
-│                       │  outline guide · RCS     │                   │
-│                       └────────────┬────────────┘                   │
-│                                    ▼                                 │
-│              OpenAI-compatible LLM (OpenRouter / local)              │
-│                          Tongyi 30B et al.                           │
+│                           ▼               ▼                        │
+│                      ┌─────────────────────────┐                   │
+│                      │      Discovery layer     │                   │
+│                      │  routing · expansion ·   │                   │
+│                      │  decomposition · focus   │                   │
+│                      │  (invokes LLM)           │                   │
+│                      └────────────┬────────────┘                   │
+│                                   ▼                                │
+│  ┌──────── Search aggregator (parallel, fail-graceful) ─────────┐  │
+│  │   SearXNG     ·     Tavily     ·     LinkUp                  │  │
+│  │       ↓ rank-merged across connectors ↓                      │  │
+│  │                      RRF fusion                              │  │
+│  └─────────────────────────┬────────────────────────────────────┘  │
+│                            ▼                                       │
+│                      ┌─────────────────────────┐                   │
+│                      │     Synthesis layer      │                   │
+│                      │  CRAG quality gate ·     │                   │
+│                      │  contradiction detector ·│                   │
+│                      │  outline guide · RCS     │                   │
+│                      │  (invokes LLM)           │                   │
+│                      └────────────┬────────────┘                   │
+│                                   ▼                                │
+│             Citation-bound markdown answer                         │
+│      (+ contradictions, outline when preset enables)               │
+│                                                                    │
+│  Shared dependency: OpenAI-compatible LLM                          │
+│  (OpenRouter or local; Tongyi 30B et al.)                          │
 └────────────────────────────────────────────────────────────────────┘
 ```
+
+Different tools enter the pipeline at different stages: `research()` runs the whole flow; `discover()` stops after the search aggregator (returns ranked sources + gaps); `synthesize()` and `reason()` skip Discovery and Search and operate on pre-gathered sources; `ask()` calls the LLM directly with no search hop; `search()` returns RRF-fused results without touching the LLM.
 
 ## The bigger stack
 
