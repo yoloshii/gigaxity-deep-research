@@ -288,7 +288,7 @@ The pipeline implements techniques from the recent literature:
 | :white_check_mark: | MCP + REST surfaces | Both stable, share orchestration logic |
 | :white_check_mark: | search · research · ask · discover · synthesize · reason | All six tools wired and tested |
 | :white_check_mark: | Multi-tenant via per-request key | `X-LLM-Api-Key` header passthrough |
-| :construction: | Self-hosted Tongyi guide | vLLM and SGLang reference deployments — see [setup-local-inference.md](docs/guides/setup-local-inference.md) |
+| :white_check_mark: | Self-hosted Tongyi guide | vLLM, SGLang, llama.cpp, and Ollama walkthroughs plus Q4_K_M GGUF quant recommendation, threshold table, and quant-format-per-server matrix in [setup-local-inference.md](docs/guides/setup-local-inference.md) |
 | :memo: | Streaming responses | SSE for `synthesize` / `reason` long-running calls |
 | :memo: | Pluggable rerankers | Optional Jina or Cohere rerank stage between fusion and synthesis |
 
