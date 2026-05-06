@@ -272,8 +272,8 @@ The pipeline implements techniques from the recent literature:
 | :white_check_mark: | MCP + REST surfaces | Both stable, share orchestration logic |
 | :white_check_mark: | search · research · ask · discover · synthesize · reason | All six tools wired and tested |
 | :white_check_mark: | Multi-tenant via per-request key | `X-OpenRouter-Api-Key` header passthrough |
-| :construction: | Local inference branch | Bring-your-own Tongyi/DeepSeek/Qwen, parity with OpenRouter mode. Placeholder branch exists; client-and-default swap pending. |
-| :construction: | Self-hosted Tongyi guide | vLLM and SGLang reference deployments |
+| :white_check_mark: | Local inference branch | Bring-your-own Tongyi/DeepSeek/Qwen with full parity to OpenRouter mode. Live on the [`local-inference`](https://github.com/yoloshii/gigaxity-deep-research/tree/local-inference) branch — generic OpenAI-compatible client (`LLMClient`), `localhost:8000/v1` defaults, `X-LLM-Api-Key` per-request header. |
+| :white_check_mark: | Self-hosted Tongyi guide | vLLM, SGLang, llama.cpp, and Ollama walkthroughs plus Q4_K_M GGUF quant recommendation, threshold table, and quant-format-per-server matrix in [setup-local-inference.md](docs/guides/setup-local-inference.md) |
 | :memo: | Streaming responses | SSE for `synthesize` / `reason` long-running calls |
 | :memo: | Pluggable rerankers | Optional Jina or Cohere rerank stage between fusion and synthesis |
 
