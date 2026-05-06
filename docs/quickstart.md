@@ -7,7 +7,7 @@ A five-minute install that gets the six MCP tools (`search`, `research`, `ask`, 
 ## Prerequisites
 
 - Python 3.11 or newer
-- A local OpenAI-compatible LLM server (vLLM, SGLang, llama.cpp, or Ollama) reachable at `http://localhost:8000/v1` — see [`setup-local-inference.md`](guides/setup-local-inference.md) for the setup walkthrough plus the recommended Q4_K_M GGUF quant
+- A local OpenAI-compatible LLM server (vLLM, SGLang, llama.cpp, or Ollama) reachable at `http://localhost:8000/v1` — see [`setup-local-inference.md`](guides/setup-local-inference.md) for the setup walkthrough. The recommended Q4_K_M GGUF quant runs on llama.cpp, Ollama, or vLLM; SGLang requires AWQ or GPTQ instead.
 - A SearXNG instance — easiest path is [Docker self-host](https://docs.searxng.org/admin/installation-docker.html); a public instance also works as long as it exposes the JSON API
 
 ## 1. Clone and install

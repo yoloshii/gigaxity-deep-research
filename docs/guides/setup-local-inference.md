@@ -20,8 +20,8 @@ Tongyi DeepResearch 30B (A3B variant) needs:
 
 - ~60 GB VRAM at FP16
 - ~30 GB VRAM at INT8
-- ~18-19 GB VRAM at Q4_K_M (GGUF, llama.cpp/Ollama) — the **recommended** path for consumer GPUs
-- ~16 GB VRAM at INT4 AWQ (vLLM/SGLang) — slightly tighter, slightly faster
+- ~18-19 GB VRAM at Q4_K_M GGUF — the **recommended** path for consumer GPUs
+- ~16 GB VRAM at INT4 AWQ or GPTQ — slightly tighter, slightly faster than Q4_K_M GGUF on the same hardware
 
 Single-GPU friendly options:
 - 1× A100 80 GB (FP16, comfortable headroom)
@@ -33,6 +33,23 @@ Single-GPU friendly options:
 Multi-GPU:
 - 2× A100 40 GB (FP16, tensor-parallel)
 - 4× RTX 3090 24 GB (FP16, tensor-parallel)
+
+### Quant format support per server
+
+Not every server loads every quant format. As of May 2026:
+
+| Server | GGUF | AWQ | GPTQ | safetensors FP16 |
+|---|---|---|---|---|
+| llama.cpp | ✅ Native (canonical GGUF runtime) | ❌ | ❌ | ❌ |
+| Ollama | ✅ (wraps llama.cpp internally) | ❌ | ❌ | ❌ |
+| vLLM | ✅ since [PR #5191](https://github.com/vllm-project/vllm/pull/5191) — covers most modern architectures, verify yours via [vLLM's GGUF docs](https://docs.vllm.ai/en/latest/api/vllm/model_executor/model_loader/gguf_loader) | ✅ | ✅ | ✅ |
+| SGLang | ❌ — tracked at [issue #1937](https://github.com/sgl-project/sglang/issues/1937), not merged as of May 2026 | ✅ | ✅ | ✅ |
+
+Implications:
+
+- **GGUF route (Q4_K_M and friends, on llama.cpp / Ollama / vLLM):** the recommended path for 24 GB consumer GPUs. Production-validated on this stack via Ollama on VM 200.
+- **SGLang users:** swap the model path to an AWQ or GPTQ build — search HuggingFace for `Tongyi-DeepResearch-30B-A3B-Thinking-AWQ` (or `-GPTQ`) instead of pulling a `.gguf`. See the [SGLang section](#host-the-model-with-sglang) below.
+- **Not locked to GGUF:** AWQ and GPTQ at INT4 land in roughly the same 16-19 GB VRAM footprint as Q4_K_M GGUF and run on both vLLM and SGLang. If your stack is already on vLLM/SGLang and you don't want a second runtime, AWQ is the natural alternative.
 
 ### Recommended quant for 24 GB consumer GPUs
 
@@ -118,6 +135,8 @@ vLLM exposes `/v1/chat/completions` at the OpenAI-compatible path.
 
 SGLang is faster for multi-turn / structured generation workloads and has built-in support for reasoning models.
 
+> **Note on quant format:** SGLang doesn't load GGUF as of May 2026 ([#1937](https://github.com/sgl-project/sglang/issues/1937)). The launch command below loads the FP16 HuggingFace model. For a quantized SGLang deployment that fits in 24 GB VRAM, swap the `--model-path` to an AWQ or GPTQ build (e.g. `Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-Thinking-AWQ`) and add `--quantization awq`.
+
 ```bash
 pip install "sglang[all]"
 
@@ -129,7 +148,7 @@ python -m sglang.launch_server \
 
 ## Host the model with Ollama (lower hardware bar)
 
-For modest GPUs (24 GB) or CPU-only experiments, Ollama works with the Q4_K_M GGUF. There's no first-party Ollama tag — pull the GGUF from one of the community quanters and import it with a Modelfile:
+For modest GPUs (24 GB) or CPU-only experiments, Ollama runs the Q4_K_M GGUF directly. The Ollama import path below is the simplest of the three GGUF runtimes (llama.cpp + Ollama + vLLM all load the same `.gguf` file — see the llama.cpp block at the bottom of this section for a no-import path, and [vLLM's GGUF docs](https://docs.vllm.ai/en/latest/api/vllm/model_executor/model_loader/gguf_loader) for that route). There's no first-party Ollama tag for Tongyi DeepResearch — pull the GGUF from one of the community quanters and import it with a Modelfile:
 
 ```bash
 # 1. Download the Q4_K_M GGUF (~18.5 GB) into Ollama's import staging dir.

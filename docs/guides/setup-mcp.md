@@ -18,7 +18,7 @@ After this setup, six tools become available to Claude Code — two primitives p
 ## Prerequisites
 
 - Python 3.11+
-- A local OpenAI-compatible LLM server (vLLM / SGLang / llama.cpp / Ollama) reachable at `http://localhost:8000/v1` — see [`setup-local-inference.md`](setup-local-inference.md) for the setup walkthrough plus the recommended Q4_K_M GGUF quant for 24 GB consumer GPUs
+- A local OpenAI-compatible LLM server (vLLM / SGLang / llama.cpp / Ollama) reachable at `http://localhost:8000/v1` — see [`setup-local-inference.md`](setup-local-inference.md) for the setup walkthrough. The recommended Q4_K_M GGUF quant runs on llama.cpp, Ollama, or vLLM; SGLang requires AWQ or GPTQ instead.
 - A SearXNG instance — see [Setting up SearXNG](#setting-up-searxng) below if you don't have one
 - Claude Code installed
 
