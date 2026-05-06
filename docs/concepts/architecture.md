@@ -37,9 +37,9 @@ Both surfaces invoke the same orchestration layer underneath. Choosing one over 
 
 `src/connectors/` holds one client per provider:
 
-- `searxng.py` — primary, talks JSON to a self-hosted or third-party SearXNG instance
-- `tavily.py` — optional fallback via `tavily-python`
-- `linkup.py` — optional fallback via `linkup-sdk`
+- `searxng.py` — required (when configured), talks JSON to a self-hosted or third-party SearXNG instance
+- `tavily.py` — optional additional connector via `tavily-python`
+- `linkup.py` — optional additional connector via `linkup-sdk`
 
 Connectors run in parallel via `asyncio.gather`. If a connector fails (timeout, 5xx, missing API key), the aggregator logs and continues with whatever returned. Empty results from all connectors propagate as an empty `sources` array — the caller decides whether to retry or surface the failure.
 

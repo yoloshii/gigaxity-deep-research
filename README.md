@@ -185,7 +185,7 @@ If a query routes somewhere unexpected, the most common cause is the global inst
 
 ### Common pitfalls
 
-- **Stage 2 is required, not optional.** SearXNG is the primary search source — Tavily and LinkUp are fallbacks, not replacements. Skipping it leaves the synthesis layer with nothing to fuse.
+- **Stage 2 is required, not optional.** SearXNG is the only required search connector — Tavily and LinkUp are optional additional connectors that run in parallel and contribute to RRF fusion. Skipping SearXNG leaves the synthesis layer with nothing to fuse unless you configure Tavily or LinkUp as a substitute.
 - **Verify Stage 4 before adding companions.** A failing `research` call after Stage 5 is hard to debug because the failure could be any of seven MCPs misfiring; confirm the orchestrator alone works first.
 - **Stage 6 is what makes the agent route automatically.** Without the skill plus the instruction block, the seven MCPs are visible but the agent treats them as raw tools, not a stack.
 - **`local-inference` branch defaults to `http://localhost:8000/v1`; `main` defaults to OpenRouter.** Stage 3's verify command is the same either way, but the env var values differ — match them to your branch.
@@ -299,8 +299,8 @@ The pipeline implements techniques from the recent literature:
 - Python 3.11+
 - A local OpenAI-compatible inference server: vLLM, SGLang, llama.cpp, or Ollama (or override `RESEARCH_LLM_API_BASE` to point at a hosted endpoint such as OpenRouter)
 - A GPU sized for your chosen model — Tongyi DeepResearch 30B fits in a 24 GB consumer GPU (RTX 3090 / 4090 / 5090) at the **Q4_K_M GGUF** quant (~18.5 GB on disk, ~18.9 GB VRAM at runtime; loads on llama.cpp, Ollama, or vLLM — SGLang doesn't load GGUF as of May 2026, use an AWQ or GPTQ build instead). See [`setup-local-inference.md`](docs/guides/setup-local-inference.md#quant-format-support-per-server) for the per-server format matrix and recommended quants. Smaller models (Qwen, Llama 3.x, DeepSeek-R1 distilled) run on lighter hardware.
-- A SearXNG instance, self-hosted (https://docs.searxng.org/) or third-party, as the primary search source
-- Optional: Tavily API key, LinkUp API key for fallback search
+- A SearXNG instance, self-hosted (https://docs.searxng.org/) or third-party, as the required search connector
+- Optional: Tavily API key and/or LinkUp API key — each runs in parallel with SearXNG and contributes to RRF fusion when configured
 - Optional: Docker + Docker Compose for REST mode
 
 ## License

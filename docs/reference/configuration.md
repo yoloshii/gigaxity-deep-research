@@ -44,16 +44,16 @@ Hosted endpoints (OpenRouter and similar):
 - **Public instance** — pick from https://searx.space/ (verify JSON API enabled)
 - **Local network** — point at any reachable SearXNG with JSON API enabled
 
-## Optional fallback search
+## Optional additional search connectors
 
 | Variable | Default | Required? | Notes |
 |---|---|---|---|
-| `RESEARCH_TAVILY_API_KEY` | *(empty)* | No | Tavily fallback (https://tavily.com) |
+| `RESEARCH_TAVILY_API_KEY` | *(empty)* | No | Tavily — additional parallel source (https://tavily.com) |
 | `RESEARCH_TAVILY_SEARCH_DEPTH` | `advanced` | No | `basic` or `advanced` |
-| `RESEARCH_LINKUP_API_KEY` | *(empty)* | No | LinkUp fallback (https://linkup.so) |
+| `RESEARCH_LINKUP_API_KEY` | *(empty)* | No | LinkUp — additional parallel source (https://linkup.so) |
 | `RESEARCH_LINKUP_DEPTH` | `standard` | No | `standard` or `deep` |
 
-When the corresponding API key is empty, the connector is disabled. When set, the connector runs in parallel with SearXNG and contributes to RRF fusion.
+When the corresponding API key is empty, the connector is disabled. When set, the connector runs in parallel with SearXNG and contributes to RRF fusion — it is **not** a failover-on-error fallback.
 
 ## Search aggregation
 
@@ -113,7 +113,7 @@ RESEARCH_LLM_MODEL=alibaba/tongyi-deepresearch-30b-a3b
 RESEARCH_SEARXNG_HOST=http://localhost:8888
 ```
 
-### Hosted endpoint + Tavily fallback (no SearXNG)
+### Hosted endpoint + Tavily as the search source (no SearXNG)
 
 ```bash
 RESEARCH_LLM_API_BASE=https://openrouter.ai/api/v1

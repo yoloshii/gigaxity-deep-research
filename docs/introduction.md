@@ -19,7 +19,7 @@ Gigaxity Deep Research handles the second wall by running the search-read-synthe
 
 ```
 Query → Discovery layer (route, expand, decompose, focus)
-      → Search aggregator (SearXNG primary; Tavily, LinkUp fallback)
+      → Search aggregator (SearXNG required; Tavily, LinkUp optional — all configured connectors run in parallel)
       → RRF fusion (rank-merge across providers)
       → Synthesis layer (CRAG quality gate, contradiction detection, outline-guided generation)
       → OpenAI-compatible LLM (Tongyi 30B by default)
