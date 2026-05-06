@@ -68,8 +68,8 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 | `RESEARCH_LLM_TIMEOUT` | `120` | Seconds |
 | `RESEARCH_SEARXNG_HOST` | `http://localhost:8888` | Primary search source — required |
 | `RESEARCH_SEARXNG_ENGINES` | `brave,bing,duckduckgo,startpage,mojeek,wikipedia` | Matches the bundled SearXNG `settings.yml.example` enabled list |
-| `RESEARCH_TAVILY_API_KEY` | *(empty)* | Optional fallback search |
-| `RESEARCH_LINKUP_API_KEY` | *(empty)* | Optional fallback search |
+| `RESEARCH_TAVILY_API_KEY` | *(empty)* | Optional additional connector — runs in parallel with SearXNG, RRF-fused |
+| `RESEARCH_LINKUP_API_KEY` | *(empty)* | Optional additional connector — runs in parallel with SearXNG, RRF-fused |
 | `RESEARCH_DEFAULT_TOP_K` | `10` | Results per source |
 | `RESEARCH_RRF_K` | `60` | RRF fusion constant |
 | `RESEARCH_HOST` | `127.0.0.1` | REST mode only. Default loopback; bind `0.0.0.0` only behind an authenticated reverse proxy. |
@@ -94,8 +94,8 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 ❌ Pass the same OpenRouter key in every request body
 ✅ Set RESEARCH_LLM_API_KEY in env, override per-request only when multi-tenant
 
-❌ Skip SearXNG and rely on Tavily/LinkUp alone
-✅ SearXNG is primary; Tavily and LinkUp are fallback. Set up SearXNG first.
+❌ Treat Tavily and LinkUp as failover-on-error for SearXNG
+✅ SearXNG, Tavily, and LinkUp all run in parallel via `asyncio.gather` and get RRF-fused. Tavily and LinkUp are optional **additional** parallel sources, not fallbacks — they fire whenever their key is configured. SearXNG is the only one that's required (the others silently drop out when their key is empty).
 
 ❌ Run REST mode bound to 0.0.0.0 on a shared/exposed machine
 ✅ Bind to 127.0.0.1 unless behind an authenticated reverse proxy

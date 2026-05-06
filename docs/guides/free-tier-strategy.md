@@ -87,6 +87,6 @@ Sanitized JSON configs for all seven MCPs in the stack are in [`docs/reference/m
 - Exa (one key for both `exa` and `exa-answer`): [exa.ai](https://exa.ai)
 - Ref: [ref.tools](https://ref.tools)
 - Brightdata Web Unlocker (optional, blocked-URL fallback): [brightdata.com](https://brightdata.com)
-- Tavily (optional, free fallback for built-in connectors): [tavily.com](https://tavily.com)
+- Tavily (optional, free additional parallel connector for the built-in aggregator): [tavily.com](https://tavily.com)
 
 The same configs work for any MCP-compatible client (Claude Code, Cursor, Hermes, Windsurf).

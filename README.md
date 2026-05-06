@@ -170,7 +170,7 @@ If a query routes somewhere unexpected, the most common cause is the global inst
 
 ### Common pitfalls
 
-- **Stage 2 is required, not optional.** SearXNG is the primary search source — Tavily and LinkUp are fallbacks, not replacements. Skipping it leaves the synthesis layer with nothing to fuse.
+- **Stage 2 is required, not optional.** SearXNG is the only required search connector — Tavily and LinkUp are optional additional connectors that run in parallel and contribute to RRF fusion. Skipping SearXNG leaves the synthesis layer with nothing to fuse unless you configure Tavily or LinkUp as a substitute.
 - **Verify Stage 4 before adding companions.** A failing `research` call after Stage 5 is hard to debug because the failure could be any of seven MCPs misfiring; confirm the orchestrator alone works first.
 - **Stage 6 is what makes the agent route automatically.** Without the skill plus the instruction block, the seven MCPs are visible but the agent treats them as raw tools, not a stack.
 - **`local-inference` branch defaults to `http://localhost:8000/v1`; `main` defaults to OpenRouter.** Stage 3's verify command is the same either way, but the env var values differ — match them to your branch.
@@ -284,7 +284,7 @@ The pipeline implements techniques from the recent literature:
 - Python 3.11+
 - An OpenRouter API key (https://openrouter.ai/keys) for default mode
 - A SearXNG instance, self-hosted (https://docs.searxng.org/) or third-party, as the primary search source
-- Optional: Tavily API key, LinkUp API key for fallback search
+- Optional: Tavily API key and/or LinkUp API key — each runs in parallel with SearXNG and contributes to RRF fusion when configured
 - Optional: Docker + Docker Compose for REST mode
 
 ## License
