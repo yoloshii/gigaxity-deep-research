@@ -1,6 +1,6 @@
 ---
 name: gigaxity-deep-research
-description: Deep research MCP server wrapping Tongyi DeepResearch 30B via OpenRouter. Use when an agent needs cross-source synthesis with citations, exploratory expansion of an unfamiliar topic, chain-of-thought reasoning over evidence, or fast conversational lookups grounded in live web search. Exposes six MCP tools — two primitives (search, research) plus four deep-research tools (discover, synthesize, reason, ask) — with matching REST endpoints for each.
+description: Deep research MCP server wrapping Tongyi DeepResearch 30B over any OpenAI-compatible chat-completions endpoint (self-hosted vLLM/SGLang/llama.cpp/Ollama on the local-inference branch, OpenRouter on main). Use when an agent needs cross-source synthesis with citations, exploratory expansion of an unfamiliar topic, chain-of-thought reasoning over evidence, or fast conversational lookups grounded in live web search. Exposes six MCP tools — two primitives (search, research) plus four deep-research tools (discover, synthesize, reason, ask) — with matching REST endpoints for each.
 version: 1.0.0
 ---
 
@@ -235,8 +235,8 @@ All POST endpoints accept the optional header `X-LLM-Api-Key: <key>` to override
 | Error | Action |
 |---|---|
 | `RESEARCH_LLM_API_KEY` missing | Fail fast at startup with clear message |
-| 401 from OpenRouter | Propagate as 401 to caller; do not retry with same key |
-| 429 from OpenRouter | Exponential backoff (3 attempts), then propagate |
+| 401 from LLM endpoint | Propagate as 401 to caller; do not retry with same key |
+| 429 from LLM endpoint | Exponential backoff (3 attempts), then propagate |
 | SearXNG host unreachable | Fail open — fall back to Tavily/LinkUp if configured |
 | All search sources fail | Return empty `sources` with `error` field — let the agent decide |
 | LLM timeout | Honor `RESEARCH_LLM_TIMEOUT`; return partial result if streaming, else 504 |
