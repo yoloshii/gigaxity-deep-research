@@ -46,7 +46,7 @@ Not every server loads every quant format. As of May 2026:
 
 Implications:
 
-- **GGUF route (Q4_K_M and friends, on llama.cpp or vLLM):** the recommended path for 24 GB consumer GPUs. Production-validated on this stack at Q4_K_M on VM 200.
+- **GGUF route (Q4_K_M and friends, on llama.cpp or vLLM):** the recommended path for 24 GB consumer GPUs. Q4_K_M is the sweet spot for this footprint — small quality drop versus FP16 for synthesis with citation binding.
 - **SGLang users:** swap the model path to an AWQ or GPTQ build — search HuggingFace for `Tongyi-DeepResearch-30B-A3B-AWQ` (or `-GPTQ`) instead of pulling a `.gguf`. See the [SGLang section](#host-the-model-with-sglang) below.
 - **Not locked to GGUF:** AWQ and GPTQ at INT4 land in roughly the same 16-19 GB VRAM footprint as Q4_K_M GGUF and run on both vLLM and SGLang. If your stack is already on vLLM/SGLang and you don't want a second runtime, AWQ is the natural alternative.
 
