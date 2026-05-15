@@ -246,6 +246,18 @@ class SynthesisAttributionSchema(BaseModel):
     contribution: float = Field(..., description="Contribution percentage")
 
 
+class SynthesisVerdictSchema(BaseModel):
+    """Post-synthesis verification verdict.
+
+    `passed` is False when there is a blocking (hard) failure - the content
+    must not be treated as a reliable synthesis. `soft_warnings` are advisory.
+    """
+
+    passed: bool
+    hard_failures: list[str] = Field(default_factory=list)
+    soft_warnings: list[str] = Field(default_factory=list)
+
+
 class SynthesizeResponse(BaseModel):
     """Response from synthesis endpoint (SYNTHESIS workflow)."""
 
@@ -261,6 +273,7 @@ class SynthesizeResponse(BaseModel):
     word_count: int
     model: str | None = None
     usage: dict | None = None
+    verification: SynthesisVerdictSchema | None = None
 
 
 # =============================================================================
@@ -302,6 +315,7 @@ class ReasonResponse(BaseModel):
     word_count: int
     model: str | None = None
     usage: dict | None = None
+    verification: SynthesisVerdictSchema | None = None
 
 
 # =============================================================================
@@ -419,6 +433,7 @@ class SynthesizeResponseEnhanced(BaseModel):
     quality_gate: QualityGateSchema | None = None
     contradictions: list[ContradictionSchema] = Field(default_factory=list)
     verified_claims: list[VerifiedClaimSchema] = Field(default_factory=list)
+    verification: SynthesisVerdictSchema | None = None
 
 
 # =============================================================================
@@ -566,6 +581,7 @@ class SynthesizeResponseP1(BaseModel):
     quality_gate: QualityGateSchema | None = None
     contradictions: list[ContradictionSchema] = Field(default_factory=list)
     verified_claims: list[VerifiedClaimSchema] = Field(default_factory=list)
+    verification: SynthesisVerdictSchema | None = None
     # P1 Enhancement fields
     preset_used: str | None = None
     outline: list[str] | None = Field(

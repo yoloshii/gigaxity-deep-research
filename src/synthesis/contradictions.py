@@ -17,7 +17,7 @@ from enum import Enum
 from typing import Optional
 
 from ..config import settings
-from ..llm_utils import get_llm_content
+from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction
 
 
 class ContradictionSeverity(str, Enum):
@@ -50,15 +50,31 @@ class ContradictionReport:
     has_major_contradictions: bool
 
 
+@dataclass
+class ContradictionDetectionResult:
+    """Outcome of contradiction detection over a source set.
+
+    A bare list cannot distinguish a genuine "no contradictions found" from a
+    failure to parse the detector's output, or from an exception during
+    detection - callers would silently treat all three as "no contradictions".
+    This result type makes the failure modes explicit so callers (and the
+    post-synthesis verifier) can react to them.
+    """
+    contradictions: list[Contradiction]
+    parse_failed: bool = False    # detector output could not be parsed
+    fallback_used: bool = False   # heuristic detector was used instead of the LLM
+    error: Optional[str] = None   # exception text if detection raised
+
+
 class ContradictionDetector:
     """
     Detect contradictions between sources.
 
     Usage:
         detector = ContradictionDetector(llm_client)
-        contradictions = await detector.detect(query, sources)
+        result = await detector.detect(query, sources)
 
-        for c in contradictions:
+        for c in result.contradictions:
             if c.severity == ContradictionSeverity.MAJOR:
                 # Flag in synthesis output
     """
@@ -110,7 +126,7 @@ If no contradictions found, respond with: NO_CONTRADICTIONS"""
         self,
         query: str,
         sources: list,
-    ) -> list[Contradiction]:
+    ) -> ContradictionDetectionResult:
         """
         Detect contradictions between sources.
 
@@ -119,30 +135,52 @@ If no contradictions found, respond with: NO_CONTRADICTIONS"""
             sources: Sources to check for disagreements
 
         Returns:
-            List of detected contradictions
+            ContradictionDetectionResult: the detected contradictions plus
+            explicit parse_failed / fallback_used / error signals, so a caller
+            can tell a genuine "none found" from a parse failure or an error.
         """
         if len(sources) < 2:
-            return []  # Need at least 2 sources to contradict
+            return ContradictionDetectionResult(contradictions=[])  # Need at least 2 sources to contradict
 
         if not self.llm_client:
-            # Fall back to heuristic detection
-            return self._detect_heuristic(query, sources)
+            # No LLM client - heuristic detection.
+            return ContradictionDetectionResult(
+                contradictions=self._detect_heuristic(query, sources),
+                fallback_used=True,
+            )
 
         try:
             prompt = self.DETECTION_PROMPT.format(
                 query=query,
                 sources=self._format_sources(sources),
             )
+            output = await self._call_llm(prompt, mode=ExtractionMode.PARSE_REQUIRED)
+        except Exception as e:
+            # Transport/LLM error - fall back to the heuristic detector.
+            return ContradictionDetectionResult(
+                contradictions=self._detect_heuristic(query, sources),
+                fallback_used=True,
+                error=str(e),
+            )
 
-            response = await self._call_llm(prompt)
+        response = output.text
 
-            if "NO_CONTRADICTIONS" in response:
-                return []
+        # PARSE_REQUIRED: an empty response is not a valid "no contradictions"
+        # answer - the model never produced the structured output.
+        if not response.strip():
+            return ContradictionDetectionResult(contradictions=[], parse_failed=True)
 
-            return self._parse_contradictions(response)
-        except Exception:
-            # On error, try heuristic
-            return self._detect_heuristic(query, sources)
+        if "NO_CONTRADICTIONS" in response:
+            return ContradictionDetectionResult(contradictions=[])
+
+        contradictions = self._parse_contradictions(response)
+        if not contradictions:
+            # Non-empty response, no NO_CONTRADICTIONS marker, yet nothing
+            # parsed - the structured format was not understood. Surface it as
+            # a parse failure instead of silently reporting zero contradictions.
+            return ContradictionDetectionResult(contradictions=[], parse_failed=True)
+
+        return ContradictionDetectionResult(contradictions=contradictions)
 
     def _format_sources(self, sources: list) -> str:
         """Format sources for detection prompt."""
@@ -338,12 +376,19 @@ Indicate which position has more support, if clear.""")
             return source
         return ""
 
-    async def _call_llm(self, prompt: str) -> str:
-        """Call LLM for detection."""
-        response = await self.llm_client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=2000,
+    async def _call_llm(
+        self,
+        prompt: str,
+        max_tokens: int = 2000,
+        *,
+        mode: ExtractionMode,
+    ) -> LLMOutput:
+        """Call LLM with prompt and extract output according to `mode`."""
+        return await call_with_extraction(
+            self.llm_client,
+            self.model,
+            [{"role": "user", "content": prompt}],
+            max_tokens,
+            mode,
             temperature=0.3,
         )
-        return get_llm_content(response.choices[0].message)

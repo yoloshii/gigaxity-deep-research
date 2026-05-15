@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from ..config import settings
-from ..llm_utils import get_llm_content
+from ..llm_utils import ExtractionMode, call_with_extraction
 
 
 @dataclass
@@ -204,11 +204,13 @@ Generate exactly 4 variants. Keep each under 10 words."""
         return self._heuristic_expand(query, num_variants or self.default_num_variants)
 
     async def _call_llm(self, prompt: str) -> str:
-        """Call LLM for expansion."""
-        response = await self.llm_client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=500,
+        """Call LLM for expansion (LENIENT extraction - uses raw text)."""
+        output = await call_with_extraction(
+            self.llm_client,
+            self.model,
+            [{"role": "user", "content": prompt}],
+            500,
+            ExtractionMode.LENIENT,
             temperature=0.7,  # Higher temp for diversity
         )
-        return get_llm_content(response.choices[0].message)
+        return output.text

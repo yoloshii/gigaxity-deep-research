@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.cache import HotCache, cache, cached, CacheEntry
+from src.llm_utils import LLMOutput
 
 
 class TestHotCacheBasics:
@@ -464,8 +465,21 @@ class TestSynthesizeSourceAwareCaching:
         with patch('src.mcp_server.SynthesisAggregator') as mock_agg:
             mock_instance = MagicMock()
             mock_result = MagicMock()
-            mock_result.content = "synthesis result"
-            mock_result.citations = []
+            mock_result.content = "synthesis result [1] [2]"
+            mock_result.citations = [
+                {"number": 1, "title": "Source 1", "url": "http://a.com"},
+                {"number": 2, "title": "Source 2", "url": "http://b.com"},
+            ]
+            # A valid synthesis result: not truncated, not reasoning-only, with
+            # citations - so the post-synthesis verifier passes and the result
+            # is cached (an unverified/hard-gated result is not cached).
+            mock_result.llm_output = LLMOutput(
+                text="synthesis result [1] [2]",
+                source_field="content",
+                finish_reason="stop",
+                truncated=False,
+                reasoning_only=False,
+            )
             mock_instance.synthesize = AsyncMock(return_value=mock_result)
             mock_agg.return_value = mock_instance
 
@@ -485,8 +499,21 @@ class TestSynthesizeSourceAwareCaching:
         with patch('src.mcp_server.SynthesisAggregator') as mock_agg:
             mock_instance = MagicMock()
             mock_result = MagicMock()
-            mock_result.content = "synthesis result"
-            mock_result.citations = []
+            mock_result.content = "synthesis result [1] [2]"
+            mock_result.citations = [
+                {"number": 1, "title": "Source 1", "url": "http://a.com"},
+                {"number": 2, "title": "Source 2", "url": "http://b.com"},
+            ]
+            # A valid synthesis result: not truncated, not reasoning-only, with
+            # citations - so the post-synthesis verifier passes and the result
+            # is cached (an unverified/hard-gated result is not cached).
+            mock_result.llm_output = LLMOutput(
+                text="synthesis result [1] [2]",
+                source_field="content",
+                finish_reason="stop",
+                truncated=False,
+                reasoning_only=False,
+            )
             mock_instance.synthesize = AsyncMock(return_value=mock_result)
             mock_agg.return_value = mock_instance
 
@@ -502,8 +529,21 @@ class TestSynthesizeSourceAwareCaching:
         with patch('src.mcp_server.SynthesisAggregator') as mock_agg:
             mock_instance = MagicMock()
             mock_result = MagicMock()
-            mock_result.content = "synthesis result"
-            mock_result.citations = []
+            mock_result.content = "synthesis result [1] [2]"
+            mock_result.citations = [
+                {"number": 1, "title": "Source 1", "url": "http://a.com"},
+                {"number": 2, "title": "Source 2", "url": "http://b.com"},
+            ]
+            # A valid synthesis result: not truncated, not reasoning-only, with
+            # citations - so the post-synthesis verifier passes and the result
+            # is cached (an unverified/hard-gated result is not cached).
+            mock_result.llm_output = LLMOutput(
+                text="synthesis result [1] [2]",
+                source_field="content",
+                finish_reason="stop",
+                truncated=False,
+                reasoning_only=False,
+            )
             mock_instance.synthesize = AsyncMock(return_value=mock_result)
             mock_agg.return_value = mock_instance
 
@@ -665,3 +705,84 @@ class TestEdgeCases:
 
         # Should complete without errors
         assert len(results) >= 0  # Some reads may have succeeded
+
+
+class TestBuildSynthesisCacheExtra:
+    """build_synthesis_cache_extra discriminates on everything that changes output.
+
+    Locks the Turn 8 codex-review fix: the fingerprint must include origin and
+    source_type (both are rendered into the synthesis prompt; origin also keys
+    the attribution breakdown) and must be order-sensitive (citations bind to
+    input order).
+    """
+
+    @staticmethod
+    def _src(**overrides):
+        base = {
+            "origin": "exa", "source_type": "article",
+            "url": "http://a.com", "title": "T", "content": "body",
+        }
+        base.update(overrides)
+        return base
+
+    @pytest.mark.unit
+    def test_identical_sources_same_key(self):
+        """Identical inputs produce an identical discriminator."""
+        from src.cache import build_synthesis_cache_extra
+        s = [self._src()]
+        k1 = build_synthesis_cache_extra(s, model="m", max_tokens=3000, mode="x")
+        k2 = build_synthesis_cache_extra(s, model="m", max_tokens=3000, mode="x")
+        assert k1 == k2
+
+    @pytest.mark.unit
+    def test_source_order_changes_key(self):
+        """Reordering sources changes the key - citations bind to input order."""
+        from src.cache import build_synthesis_cache_extra
+        a = self._src(url="http://a.com", title="A")
+        b = self._src(url="http://b.com", title="B")
+        k_ab = build_synthesis_cache_extra([a, b], model="m", max_tokens=3000, mode="x")
+        k_ba = build_synthesis_cache_extra([b, a], model="m", max_tokens=3000, mode="x")
+        assert k_ab != k_ba
+
+    @pytest.mark.unit
+    def test_origin_changes_key(self):
+        """Same url/title/content but different origin must not collide."""
+        from src.cache import build_synthesis_cache_extra
+        k_exa = build_synthesis_cache_extra(
+            [self._src(origin="exa")], model="m", max_tokens=3000, mode="x")
+        k_ref = build_synthesis_cache_extra(
+            [self._src(origin="ref")], model="m", max_tokens=3000, mode="x")
+        assert k_exa != k_ref
+
+    @pytest.mark.unit
+    def test_source_type_changes_key(self):
+        """Same url/title/content but different source_type must not collide."""
+        from src.cache import build_synthesis_cache_extra
+        k_art = build_synthesis_cache_extra(
+            [self._src(source_type="article")], model="m", max_tokens=3000, mode="x")
+        k_doc = build_synthesis_cache_extra(
+            [self._src(source_type="documentation")], model="m", max_tokens=3000, mode="x")
+        assert k_art != k_doc
+
+    @pytest.mark.unit
+    def test_model_budget_mode_change_key(self):
+        """Model, effective budget, and pipeline mode are all part of the key."""
+        from src.cache import build_synthesis_cache_extra
+        s = [self._src()]
+        base = build_synthesis_cache_extra(s, model="m1", max_tokens=3000, mode="x")
+        assert build_synthesis_cache_extra(s, model="m2", max_tokens=3000, mode="x") != base
+        assert build_synthesis_cache_extra(s, model="m1", max_tokens=9000, mode="x") != base
+        assert build_synthesis_cache_extra(s, model="m1", max_tokens=3000, mode="y") != base
+
+    @pytest.mark.unit
+    def test_works_with_object_sources(self):
+        """The fingerprint reads object sources (PreGatheredSource), not just dicts."""
+        from src.cache import build_synthesis_cache_extra
+        from src.synthesis.aggregator import PreGatheredSource
+        obj = PreGatheredSource(
+            origin="exa", url="http://a.com", title="T",
+            content="body", source_type="article",
+        )
+        k_obj = build_synthesis_cache_extra([obj], model="m", max_tokens=3000, mode="x")
+        k_dict = build_synthesis_cache_extra([self._src()], model="m", max_tokens=3000, mode="x")
+        assert k_obj == k_dict

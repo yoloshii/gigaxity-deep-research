@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Literal, Optional
 
 from ..config import settings
-from ..llm_utils import get_llm_content
+from ..llm_utils import ExtractionMode, call_with_extraction
 
 
 AspectType = Literal["factual", "procedural", "comparative", "evaluative"]
@@ -250,11 +250,13 @@ QUERY: FastAPI production configuration settings
         )]
 
     async def _call_llm(self, prompt: str) -> str:
-        """Call LLM for decomposition."""
-        response = await self.llm_client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=1000,
+        """Call LLM for decomposition (LENIENT extraction - uses raw text)."""
+        output = await call_with_extraction(
+            self.llm_client,
+            self.model,
+            [{"role": "user", "content": prompt}],
+            1000,
+            ExtractionMode.LENIENT,
             temperature=0.3,
         )
-        return get_llm_content(response.choices[0].message)
+        return output.text

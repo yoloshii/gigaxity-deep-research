@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
-from ..llm_utils import get_llm_content
+from ..llm_utils import ExtractionMode, call_with_extraction
 
 
 class FocusModeType(str, Enum):
@@ -215,14 +215,16 @@ Respond with just the mode name (one word)."""
         """Classify query using LLM."""
         prompt = self.CLASSIFICATION_PROMPT.format(query=query)
 
-        response = await self.llm_client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=20,
+        output = await call_with_extraction(
+            self.llm_client,
+            self.model,
+            [{"role": "user", "content": prompt}],
+            20,
+            ExtractionMode.LENIENT,
             temperature=0.1,
         )
 
-        mode_name = get_llm_content(response.choices[0].message).strip().lower()
+        mode_name = output.text.strip().lower()
 
         try:
             return FocusModeType(mode_name)

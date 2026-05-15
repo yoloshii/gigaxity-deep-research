@@ -1,12 +1,11 @@
 """FastAPI routes for research tool."""
 
-import hashlib
 import re
 from fastapi import APIRouter, HTTPException, Header
 from typing import Annotated
 from ..llm_client import get_llm_client, LLMClient
-from ..llm_utils import get_llm_content
-from ..cache import cache
+from ..llm_utils import get_llm_content, derive_effective_budget
+from ..cache import cache, build_synthesis_cache_extra
 from .schemas import (
     # Existing
     SearchRequest,
@@ -27,6 +26,7 @@ from .schemas import (
     SynthesizeResponse,
     PreGatheredSourceSchema,
     SynthesisAttributionSchema,
+    SynthesisVerdictSchema,
     # Reasoning
     ReasonRequest,
     ReasonResponse,
@@ -69,6 +69,9 @@ from ..synthesis import (
     get_preset_by_enum,
     list_presets,
     PresetName,
+    # Post-synthesis verification
+    verify_synthesis_output,
+    annotate_with_verdict,
 )
 from ..search import SearchAggregator
 from ..discovery import (
@@ -253,13 +256,14 @@ async def research(
             if gate_result.decision == QualityDecision.PARTIAL:
                 sources_for_synthesis = gate_result.good_sources
 
-        # RCS Preprocessing
+        # RCS Preprocessing (guidance-only: summaries become advisory guidance
+        # passed alongside the full sources, never a replacement for them)
+        rcs_guidance = None
         if preset.use_rcs and len(sources_for_synthesis) > 1:
             rcs = RCSPreprocessor(llm_client=llm_client, model=settings.llm_model)
             rcs_result = await rcs.prepare(
                 query=request.query,
                 sources=sources_for_synthesis,
-                top_k=5,
             )
             rcs_summaries_list = [
                 ContextualSummarySchema(
@@ -271,12 +275,13 @@ async def research(
                 )
                 for s in rcs_result.summaries
             ]
-            sources_for_synthesis = [s.source for s in rcs_result.summaries]
+            rcs_guidance = [s.summary for s in rcs_result.summaries]
 
         # Contradiction Detection
         if preset.detect_contradictions and len(sources_for_synthesis) >= 2:
             detector = ContradictionDetector(llm_client=llm_client, model=settings.llm_model)
-            contradictions = await detector.detect(request.query, sources_for_synthesis)
+            detection = await detector.detect(request.query, sources_for_synthesis)
+            contradictions = detection.contradictions
             contradictions_list = [
                 ContradictionSchema(
                     topic=c.topic,
@@ -290,13 +295,15 @@ async def research(
                 for c in contradictions
             ]
 
-        # Synthesis
+        # Synthesis (full sources reach the model; RCS summaries ride along as
+        # advisory guidance)
         synth_aggregator = SynthesisAggregator(llm_client=llm_client, model=settings.llm_model)
         result = await synth_aggregator.synthesize(
             query=request.query,
             sources=sources_for_synthesis,
             style=preset.style,
             max_tokens=preset.max_tokens,
+            guidance=rcs_guidance,
         )
 
         return ResearchResponse(
@@ -560,10 +567,16 @@ async def synthesize(
 
     This is the final step after Triple Stack research.
     """
-    # Source-aware caching: hash source URLs to prevent false cache hits
-    source_urls = sorted([s.url for s in request.sources])
-    source_hash = hashlib.sha256(":".join(source_urls).encode()).hexdigest()[:8]
-    cache_extra = f"style={request.style}:sources={source_hash}"
+    # Source-aware caching: fingerprint source content in input order (citations
+    # bind to input order) plus model + effective budget + version, so a reorder
+    # or a content/model/budget change never returns a stale or mis-bound result.
+    effective_max_tokens = derive_effective_budget(request.max_tokens, settings.llm_model)
+    cache_extra = build_synthesis_cache_extra(
+        request.sources,
+        model=settings.llm_model,
+        max_tokens=effective_max_tokens,
+        mode=f"style={request.style}",
+    )
     cached_result = cache.get(request.query, tier="synthesis", extra=cache_extra)
     if cached_result:
         cached_result["_cached"] = True
@@ -611,9 +624,25 @@ async def synthesize(
             detail=f"Synthesis error: {e}"
         )
 
+    # Post-synthesis verification (Defect 4).
+    verdict = verify_synthesis_output(
+        content=result.content,
+        llm_output=result.llm_output,
+        cited_count=len(result.citations),
+        source_count=len(sources),
+        contradiction_result=None,
+    )
+    # On a hard-gate failure, annotate the content in-band so a client that
+    # ignores the structured `verification` field still cannot mistake it for
+    # a clean synthesis (mirrors the MCP synthesize path).
+    safe_content = (
+        result.content if verdict.passed
+        else annotate_with_verdict(result.content, verdict)
+    )
+
     response = SynthesizeResponse(
         query=request.query,
-        content=result.content,
+        content=safe_content,
         citations=[
             CitationSchema(
                 id=str(c.get("number", "")),
@@ -630,10 +659,16 @@ async def synthesize(
         style_used=result.style_used.value,
         word_count=result.word_count,
         model=settings.llm_model,
+        verification=SynthesisVerdictSchema(
+            passed=verdict.passed,
+            hard_failures=verdict.hard_failures,
+            soft_warnings=verdict.soft_warnings,
+        ),
     )
 
-    # Cache the response
-    cache.set(request.query, response.model_dump(), tier="synthesis", extra=cache_extra)
+    # Cache only a verified synthesis - never cache a hard-gated failure.
+    if verdict.passed:
+        cache.set(request.query, response.model_dump(), tier="synthesis", extra=cache_extra)
     return response
 
 
@@ -652,11 +687,17 @@ async def reason(
     4. Determine confident vs uncertain claims
     5. Synthesize with reasoning trace
     """
-    # Source-aware caching with reasoning_depth
-    source_urls = sorted([s.url for s in request.sources])
-    source_hash = hashlib.sha256(":".join(source_urls).encode()).hexdigest()[:8]
+    # Source-aware caching: fingerprint source content in input order plus model
+    # + effective budget + version. 4000 is synthesize_with_reasoning's
+    # answer-budget base default; the route uses that default.
     reasoning_depth = getattr(request, 'reasoning_depth', 'moderate')
-    cache_extra = f"reasoning_depth={reasoning_depth}:sources={source_hash}"
+    effective_max_tokens = derive_effective_budget(4000, settings.llm_model)
+    cache_extra = build_synthesis_cache_extra(
+        request.sources,
+        model=settings.llm_model,
+        max_tokens=effective_max_tokens,
+        mode=f"reasoning_depth={reasoning_depth}",
+    )
     cached_result = cache.get(request.query, tier="reason", extra=cache_extra)
     if cached_result:
         cached_result["_cached"] = True
@@ -693,17 +734,32 @@ async def reason(
         )
 
     # `synthesize_with_reasoning` consumes the chain-of-thought inside its
-    # prompt and extracts only the <synthesis> block into `result.content`,
-    # so the reasoning trace is not echoed back. If the model fails to emit
-    # the expected tags, the full raw response is returned in `result.content`
-    # as a fallback. The `reasoning` field on the response stays None on this
-    # path — it is reserved for future prompt configurations that explicitly
-    # emit a separable trace. See ReasonResponse.reasoning docstring.
+    # prompt and extracts only the <synthesis> block into result.content. If
+    # the model fails to emit the <synthesis> structure, result.content is ""
+    # (a degraded result) — the raw chain-of-thought is never dumped as if it
+    # were the answer. The reasoning field stays None on this path — reserved
+    # for future prompt configurations that explicitly emit a separable trace.
     reasoning = None
+
+    # Post-synthesis verification (Defect 4): a degraded/empty reasoning result
+    # must not be relayed as a clean answer or cached. On a hard-gate failure,
+    # annotate the content in-band so a client that ignores the structured
+    # `verification` field still cannot mistake it for a clean synthesis.
+    verdict = verify_synthesis_output(
+        content=result.content,
+        llm_output=result.llm_output,
+        cited_count=len(result.citations),
+        source_count=len(sources),
+        contradiction_result=None,
+    )
+    safe_content = (
+        result.content if verdict.passed
+        else annotate_with_verdict(result.content, verdict)
+    )
 
     response = ReasonResponse(
         query=request.query,
-        content=result.content,
+        content=safe_content,
         reasoning=reasoning,
         citations=[
             CitationSchema(
@@ -720,10 +776,16 @@ async def reason(
         confidence=result.confidence,
         word_count=result.word_count,
         model=settings.llm_model,
+        verification=SynthesisVerdictSchema(
+            passed=verdict.passed,
+            hard_failures=verdict.hard_failures,
+            soft_warnings=verdict.soft_warnings,
+        ),
     )
 
-    # Cache the response
-    cache.set(request.query, response.model_dump(), tier="reason", extra=cache_extra)
+    # Cache only a verified reasoning result — never cache a hard-gated failure.
+    if verdict.passed:
+        cache.set(request.query, response.model_dump(), tier="reason", extra=cache_extra)
     return response
 
 
@@ -803,12 +865,14 @@ async def synthesize_enhanced(
             sources_for_synthesis = gate_result.good_sources
 
     # Step 2: Contradiction Detection (PaperQA2-style)
+    detection = None
     if request.detect_contradictions and len(sources_for_synthesis) >= 2:
         detector = ContradictionDetector(
             llm_client=llm_client,
             model=settings.llm_model,
         )
-        contradictions = await detector.detect(request.query, sources_for_synthesis)
+        detection = await detector.detect(request.query, sources_for_synthesis)
+        contradictions = detection.contradictions
 
         contradictions_list = [
             ContradictionSchema(
@@ -844,34 +908,16 @@ async def synthesize_enhanced(
     style = style_map.get(request.style, SynthesisStyle.COMPREHENSIVE)
 
     try:
-        # If contradictions found, append to synthesis context
-        if contradiction_context:
-            # Inject contradiction awareness by temporarily modifying sources
-            enhanced_sources = sources_for_synthesis.copy()
-            if enhanced_sources:
-                # Add contradiction context to first source for LLM awareness
-                first = enhanced_sources[0]
-                enhanced_sources[0] = PreGatheredSource(
-                    origin=first.origin,
-                    url=first.url,
-                    title=first.title,
-                    content=f"{first.content}\n\n{contradiction_context}",
-                    source_type=first.source_type,
-                    metadata=first.metadata,
-                )
-            result = await aggregator.synthesize(
-                query=request.query,
-                sources=enhanced_sources,
-                style=style,
-                max_tokens=request.max_tokens,
-            )
-        else:
-            result = await aggregator.synthesize(
-                query=request.query,
-                sources=sources_for_synthesis,
-                style=style,
-                max_tokens=request.max_tokens,
-            )
+        # Contradiction guidance (if any) is passed as a separate advisory
+        # formatter section - never merged into a source's content, so it
+        # cannot be cited as source evidence or consume a source's budget.
+        result = await aggregator.synthesize(
+            query=request.query,
+            sources=sources_for_synthesis,
+            style=style,
+            max_tokens=request.max_tokens,
+            contradiction_notes=contradiction_context or None,
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -895,9 +941,25 @@ async def synthesize_enhanced(
                 confidence=verified.confidence,
             ))
 
+    # Post-synthesis verification (Defect 4).
+    verdict = verify_synthesis_output(
+        content=result.content,
+        llm_output=result.llm_output,
+        cited_count=len(result.citations),
+        source_count=len(sources_for_synthesis),
+        contradiction_result=detection,
+    )
+    # On a hard-gate failure, annotate the content in-band so a client that
+    # ignores the structured `verification` field still cannot mistake it for
+    # a clean synthesis (mirrors the MCP synthesize path).
+    safe_content = (
+        result.content if verdict.passed
+        else annotate_with_verdict(result.content, verdict)
+    )
+
     return SynthesizeResponseEnhanced(
         query=request.query,
-        content=result.content,
+        content=safe_content,
         citations=[
             CitationSchema(
                 id=str(c.get("number", "")),
@@ -917,6 +979,11 @@ async def synthesize_enhanced(
         quality_gate=quality_gate_result,
         contradictions=contradictions_list,
         verified_claims=verified_claims_list,
+        verification=SynthesisVerdictSchema(
+            passed=verdict.passed,
+            hard_failures=verdict.hard_failures,
+            soft_warnings=verdict.soft_warnings,
+        ),
     )
 
 
@@ -1082,6 +1149,9 @@ async def synthesize_p1(
             sources_for_synthesis = gate_result.good_sources
 
     # Step 2: RCS Contextual Summarization (PaperQA2-style)
+    # Guidance-only: the contextual summaries become advisory guidance passed
+    # alongside the full sources - they never replace or drop sources.
+    rcs_guidance = None
     if use_rcs and len(sources_for_synthesis) > 1:
         rcs = RCSPreprocessor(
             llm_client=llm_client,
@@ -1090,7 +1160,6 @@ async def synthesize_p1(
         rcs_result = await rcs.prepare(
             query=request.query,
             sources=sources_for_synthesis,
-            top_k=request.rcs_top_k,
         )
 
         sources_filtered = rcs_result.total_sources - rcs_result.kept_sources
@@ -1105,17 +1174,18 @@ async def synthesize_p1(
             for s in rcs_result.summaries
         ]
 
-        # Use top-ranked sources for synthesis
-        sources_for_synthesis = [s.source for s in rcs_result.summaries]
+        rcs_guidance = [s.summary for s in rcs_result.summaries]
 
     # Step 3: Contradiction Detection (PaperQA2-style)
     contradiction_context = ""
+    detection = None
     if detect_contradictions and len(sources_for_synthesis) >= 2:
         detector = ContradictionDetector(
             llm_client=llm_client,
             model=settings.llm_model,
         )
-        contradictions = await detector.detect(request.query, sources_for_synthesis)
+        detection = await detector.detect(request.query, sources_for_synthesis)
+        contradictions = detection.contradictions
 
         contradictions_list = [
             ContradictionSchema(
@@ -1143,10 +1213,13 @@ async def synthesize_p1(
             query=request.query,
             sources=sources_for_synthesis,
             style=style,
-            max_tokens_per_section=max_tokens // 4,
+            max_tokens=max_tokens,
+            guidance=rcs_guidance,
+            contradiction_notes=contradiction_context or None,
         )
 
         content = outlined_result.content
+        synthesis_llm_output = outlined_result.llm_output
         outline_sections = outlined_result.outline.sections
         sections_dict = outlined_result.sections
         word_count = outlined_result.word_count
@@ -1169,34 +1242,20 @@ async def synthesize_p1(
             model=settings.llm_model,
         )
 
-        # Inject contradiction awareness if present
-        if contradiction_context:
-            enhanced_sources = sources_for_synthesis.copy()
-            if enhanced_sources:
-                first = enhanced_sources[0]
-                enhanced_sources[0] = PreGatheredSource(
-                    origin=first.origin,
-                    url=first.url,
-                    title=first.title,
-                    content=f"{first.content}\n\n{contradiction_context}",
-                    source_type=first.source_type,
-                    metadata=first.metadata,
-                )
-            result = await aggregator.synthesize(
-                query=request.query,
-                sources=enhanced_sources,
-                style=style,
-                max_tokens=max_tokens,
-            )
-        else:
-            result = await aggregator.synthesize(
-                query=request.query,
-                sources=sources_for_synthesis,
-                style=style,
-                max_tokens=max_tokens,
-            )
+        # Contradiction guidance (if any) and RCS guidance ride along as
+        # separate advisory formatter sections - never merged into a source's
+        # content.
+        result = await aggregator.synthesize(
+            query=request.query,
+            sources=sources_for_synthesis,
+            style=style,
+            max_tokens=max_tokens,
+            guidance=rcs_guidance,
+            contradiction_notes=contradiction_context or None,
+        )
 
         content = result.content
+        synthesis_llm_output = result.llm_output
         word_count = result.word_count
         citations = [
             CitationSchema(
@@ -1229,9 +1288,25 @@ async def synthesize_p1(
                 confidence=verified.confidence,
             ))
 
+    # Post-synthesis verification (Defect 4).
+    verdict = verify_synthesis_output(
+        content=content,
+        llm_output=synthesis_llm_output,
+        cited_count=len(citations),
+        source_count=len(sources_for_synthesis),
+        contradiction_result=detection,
+    )
+    # On a hard-gate failure, annotate the content in-band so a client that
+    # ignores the structured `verification` field still cannot mistake it for
+    # a clean synthesis (mirrors the MCP synthesize path).
+    safe_content = (
+        content if verdict.passed
+        else annotate_with_verdict(content, verdict)
+    )
+
     return SynthesizeResponseP1(
         query=request.query,
-        content=content,
+        content=safe_content,
         citations=citations,
         source_attribution=source_attribution,
         confidence=confidence,
@@ -1241,6 +1316,11 @@ async def synthesize_p1(
         quality_gate=quality_gate_result,
         contradictions=contradictions_list,
         verified_claims=verified_claims_list,
+        verification=SynthesisVerdictSchema(
+            passed=verdict.passed,
+            hard_failures=verdict.hard_failures,
+            soft_warnings=verdict.soft_warnings,
+        ),
         preset_used=preset_used,
         outline=outline_sections,
         sections=sections_dict,

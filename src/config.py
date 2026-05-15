@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     llm_temperature: float = Field(default=0.85, description="Generation temperature")
     llm_top_p: float = Field(default=0.95, description="Top-p sampling")
     llm_max_tokens: int = Field(default=16384, description="Max output tokens")
+    llm_reasoning_headroom: int = Field(default=8192, description="Extra output tokens added to the answer-budget base for reasoning models (chain-of-thought overhead); effective budget = base + headroom, capped at llm_max_tokens")
     llm_timeout: int = Field(default=120, description="LLM request timeout in seconds")
 
     # Search Configuration

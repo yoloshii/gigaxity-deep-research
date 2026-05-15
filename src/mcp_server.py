@@ -8,8 +8,6 @@ Usage:
     python -m src.mcp_server
 """
 
-import hashlib
-import json
 import os
 from typing import Literal
 
@@ -22,7 +20,7 @@ fastmcp.settings.log_level = "ERROR"
 
 from .config import settings
 from .llm_client import get_llm_client
-from .llm_utils import get_llm_content
+from .llm_utils import get_llm_content, derive_effective_budget
 from .search import SearchAggregator
 from .synthesis import (
     SynthesisEngine,
@@ -35,6 +33,8 @@ from .synthesis import (
     OutlineGuidedSynthesizer,
     RCSPreprocessor,
     get_preset,
+    verify_synthesis_output,
+    annotate_with_verdict,
 )
 from .discovery import (
     Explorer,
@@ -43,7 +43,7 @@ from .discovery import (
     get_focus_mode,
     get_search_params,
 )
-from .cache import cache, cached
+from .cache import cache, cached, build_synthesis_cache_extra
 
 
 # Initialize FastMCP server
@@ -262,11 +262,17 @@ async def synthesize(
         preset: Processing pipeline preset (comprehensive, fast, contracrow, academic, tutorial)
         api_key: Per-request LLM key override; defaults to RESEARCH_LLM_API_KEY.
     """
-    # Source-aware cache key
-    sources_hash = hashlib.md5(
-        json.dumps(sorted([s.get("url", s.get("title", "")) for s in sources])).encode()
-    ).hexdigest()[:8]
-    cache_extra = f"preset={preset}:style={style}:src={sources_hash}"
+    # Source-aware cache key: fingerprint source content in input order plus
+    # model + effective budget + pipeline mode + version, so a reorder or a
+    # content/model/budget change never returns a stale or mis-bound result.
+    base_max_tokens = get_preset(preset).max_tokens if preset else settings.llm_max_tokens
+    effective_max_tokens = derive_effective_budget(base_max_tokens, settings.llm_model)
+    cache_extra = build_synthesis_cache_extra(
+        sources,
+        model=settings.llm_model,
+        max_tokens=effective_max_tokens,
+        mode=f"preset={preset}:style={style}",
+    )
 
     cached_result = cache.get(query, tier="synthesis", extra=cache_extra)
     if cached_result is not None:
@@ -312,39 +318,36 @@ async def synthesize(
                 "avg_quality": gate_result.avg_quality,
             }
 
-        # RCS preprocessing
+        # RCS preprocessing (guidance-only: the contextual summaries become
+        # advisory guidance passed alongside the full sources - they never
+        # replace source content or drop sources)
+        rcs_guidance = None
         if preset_config.use_rcs and processed_sources:
             rcs = RCSPreprocessor(client, model=settings.llm_model)
-            rcs_result = await rcs.prepare(query=query, sources=processed_sources, top_k=min(len(processed_sources), 5))
+            rcs_result = await rcs.prepare(query=query, sources=processed_sources)
             if rcs_result.summaries:
-                rcs_processed = []
-                for ctx_summary in rcs_result.summaries:
-                    new_source = PreGatheredSource(
-                        origin=ctx_summary.source.origin,
-                        url=ctx_summary.source.url,
-                        title=ctx_summary.source.title,
-                        content=f"{ctx_summary.summary}\n\nKey Points:\n" + "\n".join(f"- {p}" for p in ctx_summary.key_points),
-                        source_type=ctx_summary.source.source_type,
-                    )
-                    rcs_processed.append(new_source)
-                processed_sources = rcs_processed
+                rcs_guidance = [cs.summary for cs in rcs_result.summaries]
             metadata["rcs_applied"] = True
             metadata["rcs_kept"] = len(rcs_result.summaries)
 
         # Contradiction detection
         contradictions = []
+        detection = None
         if preset_config.detect_contradictions and processed_sources:
             detector = ContradictionDetector(client, model=settings.llm_model)
-            contradictions = await detector.detect(query=query, sources=processed_sources)
+            detection = await detector.detect(query=query, sources=processed_sources)
+            contradictions = detection.contradictions
             metadata["contradictions_found"] = len(contradictions)
 
-        # Synthesis
+        # Synthesis (full sources reach the model; RCS summaries ride along as
+        # advisory guidance). preset.max_tokens is the answer-budget base; the
+        # synthesis methods derive the model-aware effective budget from it.
         if preset_config.use_outline:
             outline_synth = OutlineGuidedSynthesizer(client, model=settings.llm_model)
-            result = await outline_synth.synthesize(query=query, sources=processed_sources, style=synth_style)
+            result = await outline_synth.synthesize(query=query, sources=processed_sources, style=synth_style, max_tokens=preset_config.max_tokens, guidance=rcs_guidance)
         else:
             aggregator = SynthesisAggregator(client, model=settings.llm_model)
-            result = await aggregator.synthesize(query=query, sources=processed_sources, style=synth_style)
+            result = await aggregator.synthesize(query=query, sources=processed_sources, style=synth_style, max_tokens=preset_config.max_tokens, guidance=rcs_guidance)
 
         lines = [f"# Synthesis: {query}\n"]
         lines.append(f"*Preset: {preset_config.name}*\n")
@@ -367,17 +370,32 @@ async def synthesize(
 
         if metadata.get("quality_gate"):
             qg = metadata["quality_gate"]
-            lines.append(f"\n---\n*Quality gate: {qg['passed']} passed, {qg['filtered']} filtered (avg quality: {qg['avg_quality']:.2f})*")
+            lines.append(
+                f"\n---\n*Pre-synthesis source-relevance gate: {qg['passed']} passed, "
+                f"{qg['filtered']} filtered (avg source relevance: {qg['avg_quality']:.2f}). "
+                f"Scores input source relevance, not output quality.*"
+            )
         if metadata.get("rcs_applied"):
             lines.append(f"*RCS: {metadata.get('rcs_kept', 0)} sources processed*")
 
-        output = "\n".join(lines)
-        cache.set(query, output, tier="synthesis", extra=cache_extra)
+        # Post-synthesis verification (Defect 4: a failed synthesis must not be
+        # reported as a success or cached).
+        verdict = verify_synthesis_output(
+            content=result.content,
+            llm_output=result.llm_output,
+            cited_count=len(result.citations) if getattr(result, "citations", None) else 0,
+            source_count=len(processed_sources),
+            contradiction_result=detection,
+        )
+        output = annotate_with_verdict("\n".join(lines), verdict)
+        if verdict.passed:
+            cache.set(query, output, tier="synthesis", extra=cache_extra)
         return output
 
-    # Standard synthesis (no preset)
+    # Standard synthesis (no preset). settings.llm_max_tokens is the
+    # answer-budget base; the aggregator derives the effective budget from it.
     aggregator = SynthesisAggregator(client, model=settings.llm_model)
-    result = await aggregator.synthesize(query=query, sources=pre_sources, style=synth_style)
+    result = await aggregator.synthesize(query=query, sources=pre_sources, style=synth_style, max_tokens=settings.llm_max_tokens)
 
     lines = [f"# Synthesis: {query}\n"]
     lines.append(result.content)
@@ -387,8 +405,17 @@ async def synthesize(
         for c in result.citations:
             lines.append(f"- [{c.get('number', '?')}] [{c.get('title', 'Unknown')}]({c.get('url', '')})")
 
-    output = "\n".join(lines)
-    cache.set(query, output, tier="synthesis", extra=cache_extra)
+    # Post-synthesis verification (Defect 4).
+    verdict = verify_synthesis_output(
+        content=result.content,
+        llm_output=result.llm_output,
+        cited_count=len(result.citations) if result.citations else 0,
+        source_count=len(pre_sources),
+        contradiction_result=None,
+    )
+    output = annotate_with_verdict("\n".join(lines), verdict)
+    if verdict.passed:
+        cache.set(query, output, tier="synthesis", extra=cache_extra)
     return output
 
 
@@ -451,7 +478,19 @@ async def reason(
             lines.append("\n## Citations\n")
             for c in result.citations:
                 lines.append(f"- [{c.get('number', '?')}] [{c.get('title', 'Unknown')}]({c.get('url', '')})")
-        return "\n".join(lines)
+        # Post-synthesis verification (Defect 4): the sources-aware reason path
+        # is a synthesize surface, so a degraded/empty result must not be
+        # relayed as a clean answer. Port-time adaptation: this MCP `reason`
+        # sources mode is gigaxity-deep-research-specific (tool-openrouter has
+        # no equivalent), so it is covered here by the same reviewed verifier.
+        verdict = verify_synthesis_output(
+            content=result.content,
+            llm_output=result.llm_output,
+            cited_count=len(result.citations) if result.citations else 0,
+            source_count=len(pre_sources),
+            contradiction_result=None,
+        )
+        return annotate_with_verdict("\n".join(lines), verdict)
 
     depth_prompts = {
         "shallow": "Provide a brief analysis.",

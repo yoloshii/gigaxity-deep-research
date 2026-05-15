@@ -1,5 +1,8 @@
 """Tests for synthesis engine."""
 
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from src.synthesis import SynthesisEngine, RESEARCH_SYSTEM_PROMPT, build_research_prompt
 from src.synthesis.prompts import format_citations
@@ -153,3 +156,124 @@ class TestCitationExtraction:
         assert not re.findall(pattern, "[1]")
         assert not re.findall(pattern, "[source]")
         assert not re.findall(pattern, "[sx_]")
+
+
+class TestSourceFormatting:
+    """Budget-aware source formatting keeps advisory guidance OUT of evidence.
+
+    Locks the Turn 8 codex-review fix: under budget pressure the formatter used
+    to substitute a source's RCS guidance summary into its `Content:` block in
+    the SOURCE EVIDENCE section, making advisory text citable as source
+    evidence. Under pressure it must truncate the VERBATIM source instead; the
+    guidance summary stays only in the CONTEXTUAL GUIDANCE section, and no
+    source is dropped.
+    """
+
+    @staticmethod
+    def _src(title, content, origin="exa", source_type="article"):
+        from src.synthesis.aggregator import PreGatheredSource
+        return PreGatheredSource(
+            origin=origin, url=f"http://{title}.com", title=title,
+            content=content, source_type=source_type,
+        )
+
+    @pytest.mark.unit
+    def test_no_pressure_includes_full_verbatim_content(self):
+        """When everything fits, every source appears verbatim and in full."""
+        from src.synthesis.source_formatting import format_sources_for_synthesis
+        sources = [self._src("A", "alpha body text"), self._src("B", "beta body text")]
+        out = format_sources_for_synthesis(sources, input_budget_tokens=100_000)
+        assert "alpha body text" in out
+        assert "beta body text" in out
+
+    @pytest.mark.unit
+    def test_budget_pressure_truncates_verbatim_not_summary(self):
+        """Under pressure, SOURCE EVIDENCE holds truncated VERBATIM text, never the summary."""
+        from src.synthesis.source_formatting import format_sources_for_synthesis
+        sources = [
+            self._src("A", "AAAA " * 500),
+            self._src("B", "BBBB " * 500),
+        ]
+        guidance = ["ADVISORY-SUMMARY-FOR-A", "ADVISORY-SUMMARY-FOR-B"]
+        # A tiny budget guarantees budget pressure.
+        out = format_sources_for_synthesis(
+            sources, input_budget_tokens=200, guidance=guidance,
+        )
+
+        assert "SOURCE EVIDENCE:" in out
+        advisory_part, evidence_part = out.split("SOURCE EVIDENCE:", 1)
+
+        # Guidance summaries belong ONLY in the advisory section.
+        assert "ADVISORY-SUMMARY-FOR-A" in advisory_part
+        assert "ADVISORY-SUMMARY-FOR-A" not in evidence_part
+        assert "ADVISORY-SUMMARY-FOR-B" not in evidence_part
+        # The evidence section carries truncated VERBATIM source text.
+        assert "AAAA" in evidence_part
+        assert "[truncated under prompt budget pressure]" in evidence_part
+
+    @pytest.mark.unit
+    def test_budget_pressure_drops_no_source(self):
+        """Even under heavy pressure, every source still appears in the output."""
+        from src.synthesis.source_formatting import format_sources_for_synthesis
+        sources = [self._src(f"S{i}", "x" * 4000) for i in range(6)]
+        out = format_sources_for_synthesis(sources, input_budget_tokens=100)
+        for i in range(6):
+            assert f"S{i}" in out
+
+
+class TestRCSContextualSummarize:
+    """RCS parse failure must not duplicate full source content into guidance.
+
+    Locks the Turn 9 codex-review fix: when _contextual_summarize cannot parse
+    a structured summary (unparseable, empty, or truncated LLM output) it must
+    return an EMPTY summary. RCS is guidance-only - the source's full verbatim
+    content already reaches synthesis via the SOURCE EVIDENCE section - so
+    falling back to source.content would only duplicate the whole source into
+    the advisory guidance section and consume the evidence budget.
+    """
+
+    @staticmethod
+    def _client(content):
+        """A mock LLM client whose chat completion returns `content`."""
+        client = MagicMock()
+        response = SimpleNamespace(choices=[SimpleNamespace(
+            message=SimpleNamespace(content=content, reasoning="", reasoning_content=""),
+            finish_reason="stop",
+        )])
+        client.chat.completions.create = AsyncMock(return_value=response)
+        return client
+
+    @staticmethod
+    def _source():
+        from src.synthesis.aggregator import PreGatheredSource
+        return PreGatheredSource(
+            origin="exa", url="http://a.com", title="A",
+            content="THE FULL SOURCE BODY THAT MUST NOT BE DUPLICATED INTO GUIDANCE",
+            source_type="article",
+        )
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_parse_failure_returns_empty_summary_not_source_content(self):
+        """Unparseable LLM output -> empty summary, never the full source content."""
+        from src.synthesis.rcs import RCSPreprocessor
+        source = self._source()
+        rcs = RCSPreprocessor(
+            llm_client=self._client("garbled output with no SUMMARY structure"),
+            model="m",
+        )
+        result = await rcs._contextual_summarize(source, "the query")
+        assert result.summary == ""
+        assert source.content not in result.summary
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_parse_success_keeps_summary(self):
+        """A well-formed structured response is parsed into a real summary."""
+        from src.synthesis.rcs import RCSPreprocessor
+        rcs = RCSPreprocessor(
+            llm_client=self._client("SUMMARY: a real query-focused summary\nRELEVANCE: 0.8"),
+            model="m",
+        )
+        result = await rcs._contextual_summarize(self._source(), "the query")
+        assert result.summary == "a real query-focused summary"

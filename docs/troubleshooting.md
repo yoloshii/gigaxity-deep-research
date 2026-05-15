@@ -26,6 +26,8 @@ Symptom-fix lookup table for common boot and runtime errors. Find your symptom i
 | `Context length exceeded` | Sources too large for model context | Lower `RESEARCH_DEFAULT_TOP_K`, enable RCS via `synthesize/p1` endpoint, or shorten source content |
 | Empty completions | Model not loaded yet, or rate-limited | vLLM/SGLang takes 30–120 s to load 30B; for hosted services, check the provider dashboard |
 | Inconsistent quality on repeated calls | Temperature too high | Lower `RESEARCH_LLM_TEMPERATURE` to 0.3–0.5 |
+| Response starts with `# Synthesis verification FAILED` | LLM produced degraded synthesis output. The header lists which condition(s) hit: empty completion, a reasoning trace returned in place of an answer, truncation by `max_tokens` even after a one-shot retry at the ceiling, a failed contributing sub-call, or zero citations when sources exist. | Lower `RESEARCH_DEFAULT_TOP_K`, switch preset to `fast`, verify the model is fully loaded and not rate-limited; raise `RESEARCH_LLM_MAX_TOKENS` if truncation persists on reasoning models. Hard-failed outputs are not cached — the next call re-runs. |
+| Response ends with `*Verification notes: partial citation coverage...*` | Soft warning: model answered but cited fewer sources than provided. Output is usable; the note flags the coverage gap. | Inspect the answer for claims not tied to provided sources. Acceptable on heterogenous source sets where some inputs are off-topic. |
 
 ## Search / connector errors
 
@@ -65,6 +67,7 @@ Symptom-fix lookup table for common boot and runtime errors. Find your symptom i
 | First call after long idle is slow | LLM endpoint cold-start (model unload, hosted-provider routing) | Send a warmup `ask` call before traffic; for vLLM/SGLang, keep the server warm |
 | High RAM usage | Large source content + RCS off | Enable RCS via `/synthesize/p1` endpoint |
 | Per-request latency uneven (hosted endpoints) | Provider routing across multiple backends | Pin a specific provider via the provider's model-path syntax (e.g. `alibaba/tongyi-deepresearch-30b-a3b:openrouter/auto` on OpenRouter) |
+| First `synthesize` call after upgrade is slow | `SYNTH_CACHE_VERSION` was bumped (cache key now includes the effective output budget plus source order), invalidating prior entries. | One-time cost; subsequent calls re-cache. No action required. |
 
 ## Local inference (default on this branch)
 

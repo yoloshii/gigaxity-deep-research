@@ -131,6 +131,52 @@ class HotCache:
 cache = HotCache()
 
 
+# Synthesis cache key versioning. Bump this whenever a change to the synthesis
+# pipeline could change output for the same inputs, or whenever the cache-key
+# fingerprint format changes - it invalidates every previously cached synthesis
+# so a stale (e.g. pre-fix) result is never served.
+SYNTH_CACHE_VERSION = "3"
+
+
+def _source_field(source: Any, field: str) -> str:
+    """Read a source field from either a dict or an object, defaulting to ''."""
+    if isinstance(source, dict):
+        return source.get(field, "") or ""
+    return getattr(source, field, "") or ""
+
+
+def build_synthesis_cache_extra(
+    sources: list,
+    *,
+    model: str,
+    max_tokens: int,
+    mode: str,
+) -> str:
+    """Build the cache `extra` discriminator for a synthesis result.
+
+    The fingerprint hashes each source's origin + source_type + url + title +
+    content IN INPUT ORDER (not sorted): citations bind to input order, so a
+    reordered source set must not return cached citations bound to the wrong
+    documents; and origin + source_type are rendered into the synthesis prompt
+    (origin also keys the attribution breakdown), so two source sets differing
+    only in those fields must not collide. The key also carries the model, the
+    effective output budget, the pipeline mode, and SYNTH_CACHE_VERSION, so a
+    change to any of those never returns a stale hit.
+    """
+    fingerprint = hashlib.sha256(
+        "\x1e".join(
+            f"{_source_field(s, 'origin')}\x1f{_source_field(s, 'source_type')}"
+            f"\x1f{_source_field(s, 'url')}\x1f{_source_field(s, 'title')}"
+            f"\x1f{_source_field(s, 'content')}"
+            for s in sources
+        ).encode()
+    ).hexdigest()[:16]
+    return (
+        f"v={SYNTH_CACHE_VERSION}:model={model}:max_tokens={max_tokens}"
+        f":mode={mode}:src={fingerprint}"
+    )
+
+
 def cached(tier: str = "", ttl: Optional[int] = None, key_params: list[str] = None):
     """
     Decorator for caching async tool results.

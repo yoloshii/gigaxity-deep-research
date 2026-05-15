@@ -4,7 +4,7 @@ import re
 from openai import AsyncOpenAI
 from ..connectors.base import Source
 from ..config import settings
-from ..llm_utils import get_llm_content
+from ..llm_utils import ExtractionMode, extract_llm_output
 from ..llm_client import LLMClient, get_llm_client
 from .prompts import RESEARCH_SYSTEM_PROMPT, build_research_prompt, format_citations
 
@@ -81,18 +81,48 @@ class SynthesisEngine:
         user_prompt = build_research_prompt(query, sources)
 
         try:
+            messages = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user_prompt},
+            ]
             response = await self.client.chat.completions.create(
                 model=self.model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user_prompt},
-                ],
+                messages=messages,
                 temperature=self.temperature,
                 top_p=self.top_p,
                 max_tokens=self.max_tokens,
             )
+            output = extract_llm_output(
+                response.choices[0] if getattr(response, "choices", None) else None,
+                ExtractionMode.FINAL_ANSWER,
+            )
 
-            content = get_llm_content(response.choices[0].message)
+            # FINAL_ANSWER: retry once at the ceiling if the answer was
+            # truncated by the token limit and there is headroom.
+            if output.truncated and self.max_tokens < settings.llm_max_tokens:
+                response = await self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=self.temperature,
+                    top_p=self.top_p,
+                    max_tokens=settings.llm_max_tokens,
+                )
+                output = extract_llm_output(
+                    response.choices[0] if getattr(response, "choices", None) else None,
+                    ExtractionMode.FINAL_ANSWER,
+                )
+
+            content = output.text
+
+            # FINAL_ANSWER fail-fast: an empty result (truly empty, or a
+            # reasoning-only trace) is not a synthesis answer.
+            if not content:
+                return {
+                    "content": "Synthesis produced no answer content.",
+                    "citations": [],
+                    "sources_used": [],
+                    "error": "empty_synthesis",
+                }
 
             # Extract cited source IDs from response
             cited_ids = set(re.findall(r'\[([a-z]{2}_[a-f0-9]+)\]', content))

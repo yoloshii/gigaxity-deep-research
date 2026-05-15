@@ -601,11 +601,11 @@ class TestP1SynthesisIntegration:
         result = await rcs.prepare(
             "FastAPI performance and features",
             pre_gathered_sources,
-            top_k=3,
         )
 
         assert isinstance(result, RCSResult)
-        assert result.kept_sources <= 3
+        # RCS is guidance-only now: every source is kept, none dropped.
+        assert result.kept_sources == result.total_sources
 
         # LLM summaries should have more structured content
         for summary in result.summaries:

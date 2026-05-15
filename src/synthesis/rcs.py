@@ -12,7 +12,7 @@ Key insight: Context-aware summarization > raw content.
 from dataclasses import dataclass, field
 from typing import Optional
 
-from ..llm_utils import get_llm_content
+from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction
 from .aggregator import PreGatheredSource
 
 
@@ -39,12 +39,10 @@ class RCSPreprocessor:
 
     Usage:
         rcs = RCSPreprocessor(llm_client)
-        result = await rcs.prepare(
-            "How does React useState work?",
-            sources,
-            top_k=5
-        )
-        # Use result.summaries for synthesis
+        result = await rcs.prepare("How does React useState work?", sources)
+        # result.summaries holds one query-focused summary per source, in
+        # source order - pass them as advisory guidance alongside the full
+        # sources, not as a replacement for them.
     """
 
     SUMMARIZE_PROMPT = """Summarize this source specifically for answering the query.
@@ -102,20 +100,23 @@ Ranking:"""
         self,
         query: str,
         sources: list[PreGatheredSource],
-        top_k: int = 5,
-        use_llm_rerank: bool = True,
     ) -> RCSResult:
         """
-        Create contextual summaries and rank by relevance.
+        Create a contextual summary for every source, in source order.
+
+        RCS is guidance-only: it produces a query-focused summary per source
+        but never drops, filters, or reorders the source set. The summaries are
+        advisory metadata for the synthesis prompt; the full source content is
+        what reaches the model. (Relevance-filtered heuristic preparation
+        remains available via prepare_sync, and _llm_rerank for callers that
+        explicitly opt into reranking.)
 
         Args:
             query: Research query
             sources: Pre-gathered sources
-            top_k: Number of top sources to keep
-            use_llm_rerank: Whether to use LLM for re-ranking
 
         Returns:
-            RCSResult with ranked contextual summaries
+            RCSResult with one ContextualSummary per source, in source order.
         """
         if not sources:
             return RCSResult(summaries=[], total_sources=0, kept_sources=0)
@@ -129,23 +130,13 @@ Ranking:"""
                 summary = self._heuristic_summarize(source, query)
             summaries.append(summary)
 
-        # Filter by minimum relevance
-        summaries = [s for s in summaries if s.relevance_score >= self.min_relevance]
-
-        # Re-rank if requested
-        if use_llm_rerank and self.llm_client and len(summaries) > 1:
-            summaries = await self._llm_rerank(summaries, query)
-        else:
-            # Sort by relevance score
-            summaries.sort(key=lambda x: x.relevance_score, reverse=True)
-
-        # Take top_k
-        kept = summaries[:top_k]
-
+        # Guidance-only: no filter, no drop, no reorder. Every source is kept
+        # and the summaries stay aligned with the input order so callers can
+        # zip them back to the sources they describe.
         return RCSResult(
-            summaries=kept,
+            summaries=summaries,
             total_sources=len(sources),
-            kept_sources=len(kept),
+            kept_sources=len(summaries),
         )
 
     async def _contextual_summarize(
@@ -160,14 +151,14 @@ Ranking:"""
             content=source.content[:2000],
         )
 
-        response = await self._call_llm(prompt, max_tokens=400)
+        output = await self._call_llm(prompt, max_tokens=400, mode=ExtractionMode.PARSE_REQUIRED)
 
         # Parse response
         summary = ""
         key_points = []
         relevance = 0.5
 
-        lines = response.split("\n")
+        lines = output.text.split("\n")
         in_key_points = False
 
         for line in lines:
@@ -188,9 +179,26 @@ Ranking:"""
                     relevance = 0.5
                 in_key_points = False
 
+        # PARSE_REQUIRED fallback: if the structured response could not be
+        # parsed (no SUMMARY line, an empty response, or a truncated one),
+        # emit an EMPTY summary. RCS is guidance-only - the source's full
+        # verbatim content already reaches synthesis via the SOURCE EVIDENCE
+        # section regardless of this summary. Falling back to source.content
+        # here would duplicate the entire source into the advisory guidance
+        # section and consume the evidence budget; an empty summary is dropped
+        # by the formatter's guidance filter, and the source still stands on
+        # its verbatim evidence.
+        if not summary:
+            return ContextualSummary(
+                source=source,
+                summary="",
+                relevance_score=relevance,
+                key_points=key_points[:5],
+            )
+
         return ContextualSummary(
             source=source,
-            summary=summary or f"Summary of {source.title}",
+            summary=summary,
             relevance_score=relevance,
             key_points=key_points[:5],
         )
@@ -254,7 +262,8 @@ Ranking:"""
             summaries=summary_text,
         )
 
-        response = await self._call_llm(prompt, max_tokens=50)
+        output = await self._call_llm(prompt, max_tokens=50, mode=ExtractionMode.LENIENT)
+        response = output.text
 
         # Parse ranking
         try:
@@ -290,15 +299,22 @@ Ranking:"""
         # Fallback to original order
         return summaries
 
-    async def _call_llm(self, prompt: str, max_tokens: int = 400) -> str:
-        """Call LLM with prompt."""
-        response = await self.llm_client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=max_tokens,
+    async def _call_llm(
+        self,
+        prompt: str,
+        max_tokens: int = 400,
+        *,
+        mode: ExtractionMode,
+    ) -> LLMOutput:
+        """Call LLM with prompt and extract output according to `mode`."""
+        return await call_with_extraction(
+            self.llm_client,
+            self.model,
+            [{"role": "user", "content": prompt}],
+            max_tokens,
+            mode,
             temperature=0.3,
         )
-        return get_llm_content(response.choices[0].message)
 
     def prepare_sync(
         self,

@@ -28,7 +28,13 @@ from .contradictions import (
     ContradictionDetector,
     Contradiction,
     ContradictionReport,
+    ContradictionDetectionResult,
     ContradictionSeverity,
+)
+from .output_verifier import (
+    SynthesisVerdict,
+    verify_synthesis_output,
+    annotate_with_verdict,
 )
 # P1 Enhancements
 from .outline import (
@@ -80,7 +86,12 @@ __all__ = [
     "ContradictionDetector",
     "Contradiction",
     "ContradictionReport",
+    "ContradictionDetectionResult",
     "ContradictionSeverity",
+    # Post-synthesis output verification
+    "SynthesisVerdict",
+    "verify_synthesis_output",
+    "annotate_with_verdict",
     # P1: Outline-Guided Synthesis
     "OutlineGuidedSynthesizer",
     "OutlinedSynthesis",

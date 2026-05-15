@@ -16,7 +16,7 @@ from enum import Enum
 from typing import Optional
 
 from ..config import settings
-from ..llm_utils import get_llm_content
+from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction
 
 
 class QualityDecision(str, Enum):
@@ -195,11 +195,18 @@ Format: One query per line."""
         )
 
         try:
-            response = await self._call_llm(prompt)
-            scores = self._parse_scores(response, len(sources))
+            output = await self._call_llm(prompt, mode=ExtractionMode.PARSE_REQUIRED)
         except Exception:
-            # Fall back to heuristic on error
-            scores = self._score_sources_heuristic(query, sources)
+            # Network/transport error - fall back to the deterministic heuristic.
+            return self._score_sources_heuristic(query, sources)
+
+        scores = self._parse_scores(output.text)
+        # PARSE_REQUIRED: a valid parse yields exactly one score per source.
+        # A short, over-long, or otherwise wrong count means the structured
+        # response was not understood - fall back to the heuristic rather than
+        # synthesizing over 0.5-padded guesses.
+        if len(scores) != len(sources):
+            return self._score_sources_heuristic(query, sources)
 
         return scores
 
@@ -232,8 +239,13 @@ Format: One query per line."""
 
         return scores
 
-    def _parse_scores(self, response: str, expected_count: int) -> list[float]:
-        """Parse scores from LLM response."""
+    def _parse_scores(self, response: str) -> list[float]:
+        """Parse scores from an LLM response, one score per non-empty line.
+
+        Returns exactly the scores it could parse - no padding, no truncation.
+        The caller compares the count against the source count to decide
+        whether the structured response was understood.
+        """
         scores = []
         for line in response.strip().split("\n"):
             line = line.strip()
@@ -248,11 +260,7 @@ Format: One query per line."""
             except ValueError:
                 continue
 
-        # Pad if needed
-        while len(scores) < expected_count:
-            scores.append(0.5)
-
-        return scores[:expected_count]
+        return scores
 
     async def _suggest_searches(
         self,
@@ -271,8 +279,8 @@ Format: One query per line."""
         )
 
         try:
-            response = await self._call_llm(prompt)
-            return f"Consider searching for: {response.strip()}"
+            output = await self._call_llm(prompt, mode=ExtractionMode.LENIENT)
+            return f"Consider searching for: {output.text.strip()}"
         except Exception:
             return f"Try more specific searches related to: {query}"
 
@@ -301,15 +309,22 @@ Format: One query per line."""
             return source
         return ""
 
-    async def _call_llm(self, prompt: str) -> str:
-        """Call LLM."""
-        response = await self.llm_client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=500,
+    async def _call_llm(
+        self,
+        prompt: str,
+        max_tokens: int = 500,
+        *,
+        mode: ExtractionMode,
+    ) -> LLMOutput:
+        """Call LLM with prompt and extract output according to `mode`."""
+        return await call_with_extraction(
+            self.llm_client,
+            self.model,
+            [{"role": "user", "content": prompt}],
+            max_tokens,
+            mode,
             temperature=0.3,
         )
-        return get_llm_content(response.choices[0].message)
 
     def evaluate_sync(
         self,
