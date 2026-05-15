@@ -16,7 +16,7 @@ from enum import Enum
 from typing import Optional
 
 from ..config import settings
-from ..llm_utils import get_llm_content
+from ..llm_utils import ExtractionMode, call_with_extraction
 
 
 class QueryType(str, Enum):
@@ -235,14 +235,16 @@ Respond with just the category name."""
         return QueryType.GENERAL, 0.5
 
     async def _call_llm(self, prompt: str) -> str:
-        """Call LLM for classification."""
-        response = await self.llm_client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=50,
+        """Call LLM for classification (LENIENT extraction - uses raw text)."""
+        output = await call_with_extraction(
+            self.llm_client,
+            self.model,
+            [{"role": "user", "content": prompt}],
+            50,
+            ExtractionMode.LENIENT,
             temperature=0.1,
         )
-        return get_llm_content(response.choices[0].message)
+        return output.text
 
     def classify_sync(self, query: str) -> tuple[QueryType, float]:
         """

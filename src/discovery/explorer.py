@@ -26,7 +26,7 @@ from typing import Optional, TYPE_CHECKING
 
 from ..connectors.base import Source
 from ..config import settings
-from ..llm_utils import get_llm_content
+from ..llm_utils import ExtractionMode, call_with_extraction
 
 if TYPE_CHECKING:
     from .routing import ConnectorRouter
@@ -541,11 +541,13 @@ Brief overview:"""
         )
 
     async def _call_llm(self, prompt: str, max_tokens: int = 500) -> str:
-        """Call LLM with prompt."""
-        response = await self.llm_client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=max_tokens,
+        """Call LLM with prompt (LENIENT extraction - discovery uses raw text)."""
+        output = await call_with_extraction(
+            self.llm_client,
+            self.model,
+            [{"role": "user", "content": prompt}],
+            max_tokens,
+            ExtractionMode.LENIENT,
             temperature=0.7,
         )
-        return get_llm_content(response.choices[0].message)
+        return output.text

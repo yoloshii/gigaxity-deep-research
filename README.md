@@ -53,6 +53,7 @@ The MCP server exposes **two primitives** plus **four deep-research tools** — 
 - **Contradiction detection**: PaperQA2-style disagreement surfacing flags conflicting claims rather than averaging them out.
 - **Citation binding**: VeriCite-style claim-to-evidence mapping in the final answer.
 - **Outline-guided synthesis**: SciRAG-style structured generation for tutorial and academic presets.
+- **Output verification**: post-synthesis hard-gate on empty, truncated, reasoning-only, or uncited synthesis output — failed outputs are flagged with a verdict header and not cached, rather than being relayed as clean successes. Soft conditions (partial citation coverage, surfaced contradictions) append an advisory note.
 - **Focus modes**: `general`, `academic`, `documentation`, `comparison`, `debugging`, `tutorial`, `news`.
 
 ### Compatibility

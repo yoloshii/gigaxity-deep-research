@@ -13,8 +13,10 @@ Key insight: Planning before synthesis improves structure and coverage.
 from dataclasses import dataclass, field
 from typing import Optional
 
-from ..llm_utils import get_llm_content
+from ..config import settings
+from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction, combine_llm_outputs, derive_effective_budget
 from .aggregator import PreGatheredSource, SynthesisStyle
+from .source_formatting import derive_input_budget, format_sources_for_synthesis
 
 
 @dataclass
@@ -40,6 +42,7 @@ class OutlinedSynthesis:
     critique: Optional[CritiqueResult] = None
     refined: bool = False
     word_count: int = 0
+    llm_output: Optional[LLMOutput] = None  # provenance/truncation signal from the synthesis calls
 
 
 class OutlineGuidedSynthesizer:
@@ -120,7 +123,7 @@ Provide the improved synthesis with proper [N] citations:"""
         max_refinement_rounds: int = 1,
     ):
         self.llm_client = llm_client
-        self.model = model
+        self.model = model or settings.llm_model
         self.max_refinement_rounds = max_refinement_rounds
 
     async def synthesize(
@@ -128,7 +131,9 @@ Provide the improved synthesis with proper [N] citations:"""
         query: str,
         sources: list[PreGatheredSource],
         style: SynthesisStyle = SynthesisStyle.COMPREHENSIVE,
-        max_tokens_per_section: int = 800,
+        max_tokens: int = 3000,
+        guidance: Optional[list[str]] = None,
+        contradiction_notes: Optional[str] = None,
     ) -> OutlinedSynthesis:
         """
         Synthesize using plan-critique-refine cycle.
@@ -137,7 +142,13 @@ Provide the improved synthesis with proper [N] citations:"""
             query: Research query
             sources: Pre-gathered sources
             style: Synthesis style
-            max_tokens_per_section: Max tokens per section
+            max_tokens: Answer-budget base. The model-aware effective budget is
+                derived from it once here; each section gets effective // 4 and
+                the refinement pass gets the full effective budget.
+            guidance: Optional per-source advisory summaries (aligned with
+                `sources`), rendered as a section distinct from the evidence.
+            contradiction_notes: Optional cross-source contradiction analysis,
+                rendered as its own advisory section.
 
         Returns:
             OutlinedSynthesis with structure and content
@@ -150,15 +161,24 @@ Provide the improved synthesis with proper [N] citations:"""
                 word_count=0,
             )
 
+        # Model-aware effective budget, derived once: each section gets a
+        # quarter share, the refinement pass gets the full budget.
+        effective = derive_effective_budget(max_tokens, self.model)
+        per_section_budget = max(1, effective // 4)
+
         # Step 1: Generate outline
         outline = await self._generate_outline(query, sources, style)
 
         # Step 2: Fill each section
         sections = {}
+        section_outputs = []
         for section in outline.sections:
-            sections[section] = await self._fill_section(
-                section, query, sources, max_tokens_per_section
+            section_output = await self._fill_section(
+                section, query, sources, per_section_budget,
+                guidance=guidance, contradiction_notes=contradiction_notes,
             )
+            sections[section] = section_output.text
+            section_outputs.append(section_output)
 
         # Step 3: Assemble draft
         draft = self._assemble(outline.sections, sections)
@@ -168,9 +188,25 @@ Provide the improved synthesis with proper [N] citations:"""
 
         # Step 5: Refine if needed
         refined = False
+        refine_output = None
         if critique.issues and self.max_refinement_rounds > 0:
-            draft = await self._refine(draft, critique.issues, sources)
-            refined = True
+            refine_output = await self._refine(
+                draft, critique.issues, sources, effective,
+                guidance=guidance, contradiction_notes=contradiction_notes,
+            )
+            # FINAL_ANSWER fail-fast: only replace the assembled draft if the
+            # refine call actually produced an answer. An empty/reasoning-only
+            # refine result must not discard a non-empty pre-refine draft.
+            if refine_output.text:
+                draft = refine_output.text
+                refined = True
+
+        # Carry a representative provenance/truncation signal for the verifier,
+        # built only from the calls that actually contributed to `draft`.
+        contributing = list(section_outputs)
+        if refined:
+            contributing.append(refine_output)
+        llm_output = combine_llm_outputs(draft, contributing)
 
         return OutlinedSynthesis(
             content=draft,
@@ -179,6 +215,7 @@ Provide the improved synthesis with proper [N] citations:"""
             critique=critique if critique.issues else None,
             refined=refined,
             word_count=len(draft.split()),
+            llm_output=llm_output,
         )
 
     async def _generate_outline(
@@ -196,7 +233,8 @@ Provide the improved synthesis with proper [N] citations:"""
             style=style.value,
         )
 
-        response = await self._call_llm(prompt, max_tokens=300)
+        output = await self._call_llm(prompt, max_tokens=300, mode=ExtractionMode.LENIENT)
+        response = output.text
         sections = [
             s.strip() for s in response.strip().split("\n")
             if s.strip() and not s.strip().startswith("#")
@@ -216,9 +254,22 @@ Provide the improved synthesis with proper [N] citations:"""
         query: str,
         sources: list[PreGatheredSource],
         max_tokens: int,
-    ) -> str:
-        """Fill a single section with content."""
-        formatted_sources = self._format_sources(sources)
+        guidance: Optional[list[str]] = None,
+        contradiction_notes: Optional[str] = None,
+    ) -> LLMOutput:
+        """Fill a single section with content.
+
+        `max_tokens` is the effective per-section budget - already model-aware,
+        derived once by synthesize(). Not re-derived here.
+        """
+        fixed_overhead = self.SECTION_PROMPT.format(
+            section=section, query=query, sources=""
+        )
+        input_budget = derive_input_budget(self.model, max_tokens, fixed_overhead)
+        formatted_sources = self._format_sources(
+            sources, input_budget,
+            guidance=guidance, contradiction_notes=contradiction_notes,
+        )
 
         prompt = self.SECTION_PROMPT.format(
             section=section,
@@ -226,7 +277,7 @@ Provide the improved synthesis with proper [N] citations:"""
             sources=formatted_sources,
         )
 
-        return await self._call_llm(prompt, max_tokens=max_tokens)
+        return await self._call_llm(prompt, max_tokens=max_tokens, mode=ExtractionMode.FINAL_ANSWER)
 
     async def _critique(
         self,
@@ -243,7 +294,8 @@ Provide the improved synthesis with proper [N] citations:"""
             source_summary=source_summary,
         )
 
-        response = await self._call_llm(prompt, max_tokens=500)
+        output = await self._call_llm(prompt, max_tokens=500, mode=ExtractionMode.LENIENT)
+        response = output.text
 
         if "NO_ISSUES" in response.upper():
             return CritiqueResult(issues=[], has_critical=False)
@@ -267,10 +319,24 @@ Provide the improved synthesis with proper [N] citations:"""
         draft: str,
         issues: list[str],
         sources: list[PreGatheredSource],
-    ) -> str:
-        """Refine the draft based on critique."""
-        formatted_sources = self._format_sources(sources)
+        max_tokens: int,
+        guidance: Optional[list[str]] = None,
+        contradiction_notes: Optional[str] = None,
+    ) -> LLMOutput:
+        """Refine the draft based on critique.
+
+        `max_tokens` is the effective budget - already model-aware, derived
+        once by synthesize(). Not re-derived here.
+        """
         issues_text = "\n".join(f"- {issue}" for issue in issues)
+        fixed_overhead = self.REFINE_PROMPT.format(
+            draft=draft, issues=issues_text, sources=""
+        )
+        input_budget = derive_input_budget(self.model, max_tokens, fixed_overhead)
+        formatted_sources = self._format_sources(
+            sources, input_budget,
+            guidance=guidance, contradiction_notes=contradiction_notes,
+        )
 
         prompt = self.REFINE_PROMPT.format(
             draft=draft,
@@ -278,7 +344,7 @@ Provide the improved synthesis with proper [N] citations:"""
             sources=formatted_sources,
         )
 
-        return await self._call_llm(prompt, max_tokens=3000)
+        return await self._call_llm(prompt, max_tokens=max_tokens, mode=ExtractionMode.FINAL_ANSWER)
 
     def _assemble(self, section_titles: list[str], sections: dict[str, str]) -> str:
         """Assemble sections into final document."""
@@ -299,26 +365,34 @@ Provide the improved synthesis with proper [N] citations:"""
     def _format_sources(
         self,
         sources: list[PreGatheredSource],
-        max_per_source: int = 1500,
+        input_budget_tokens: int,
+        guidance: Optional[list[str]] = None,
+        contradiction_notes: Optional[str] = None,
     ) -> str:
-        """Format sources for prompts."""
-        parts = []
-        for i, s in enumerate(sources, 1):
-            content = s.content[:max_per_source]
-            if len(s.content) > max_per_source:
-                content += "..."
-            parts.append(f"[{i}] {s.title}\n{content}")
-        return "\n\n".join(parts)
+        """Format sources for prompts, budget-aware (see source_formatting)."""
+        return format_sources_for_synthesis(
+            sources,
+            input_budget_tokens,
+            guidance=guidance,
+            contradiction_notes=contradiction_notes,
+        )
 
-    async def _call_llm(self, prompt: str, max_tokens: int = 1000) -> str:
-        """Call LLM with prompt."""
-        response = await self.llm_client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=max_tokens,
+    async def _call_llm(
+        self,
+        prompt: str,
+        max_tokens: int = 1000,
+        *,
+        mode: ExtractionMode,
+    ) -> LLMOutput:
+        """Call LLM with prompt and extract output according to `mode`."""
+        return await call_with_extraction(
+            self.llm_client,
+            self.model,
+            [{"role": "user", "content": prompt}],
+            max_tokens,
+            mode,
             temperature=0.7,
         )
-        return get_llm_content(response.choices[0].message)
 
 
 # Heuristic fallback for outline generation

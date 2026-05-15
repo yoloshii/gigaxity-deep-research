@@ -20,6 +20,7 @@ from src.synthesis import (
     SourceQualityGate,
     QualityDecision,
     ContradictionDetector,
+    ContradictionDetectionResult,
     ContradictionSeverity,
     CitationVerifier,
     extract_claims_with_citations,
@@ -236,15 +237,19 @@ class TestContradictionDetector:
     async def test_heuristic_detection_contradictions(self, contradicting_sources):
         """Heuristic detection finds contradictions."""
         detector = ContradictionDetector()  # No LLM client = uses heuristic
-        contradictions = await detector.detect(
+        result = await detector.detect(
             "Is Redux necessary for React state management?",
             contradicting_sources
         )
 
-        # Should find at least some potential contradiction
-        assert isinstance(contradictions, list)
+        # detect() returns a ContradictionDetectionResult, not a bare list, so
+        # callers can distinguish "none found" from a parse failure / error.
+        assert isinstance(result, ContradictionDetectionResult)
+        assert isinstance(result.contradictions, list)
+        # No LLM client -> the heuristic detector ran as a fallback.
+        assert result.fallback_used is True
         # Heuristic may or may not find contradictions
-        for c in contradictions:
+        for c in result.contradictions:
             assert c.topic
             assert c.severity in ContradictionSeverity
 
@@ -262,12 +267,12 @@ class TestContradictionDetector:
     async def test_format_for_synthesis(self, contradicting_sources):
         """Contradiction context formats correctly."""
         detector = ContradictionDetector()
-        contradictions = await detector.detect(
+        result = await detector.detect(
             "Is Redux necessary?",
             contradicting_sources
         )
 
-        formatted = detector.format_for_synthesis(contradictions)
+        formatted = detector.format_for_synthesis(result.contradictions)
         assert isinstance(formatted, str)
 
 
@@ -473,19 +478,19 @@ class TestP0SynthesisIntegration:
             model=settings.llm_model,
         )
 
-        contradictions = await detector.detect(
+        result = await detector.detect(
             "Is Redux necessary for React applications?",
             contradicting_sources
         )
 
         # LLM may or may not find contradictions depending on model and response format
         # The test verifies the detection pipeline works, not specific LLM behavior
-        assert isinstance(contradictions, list), "Should return a list"
+        assert isinstance(result, ContradictionDetectionResult), "Should return a ContradictionDetectionResult"
 
         # If contradictions were found, verify structure
-        if len(contradictions) >= 1:
+        if len(result.contradictions) >= 1:
             # Check that it found a relevant topic
-            topics = [c.topic.lower() for c in contradictions]
+            topics = [c.topic.lower() for c in result.contradictions]
             # Topics should relate to the query (Redux, state management, React)
             relevant_keywords = ["redux", "state", "react", "management", "necessary", "essential"]
             has_relevant_topic = any(

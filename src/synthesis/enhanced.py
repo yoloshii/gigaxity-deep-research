@@ -23,7 +23,7 @@ from typing import Optional
 
 from ..config import settings
 from ..connectors.base import Source
-from ..llm_utils import get_llm_content
+from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction, combine_llm_outputs
 from ..ranking.passage import Passage
 
 
@@ -43,6 +43,7 @@ class SynthesisResult:
     coverage: float  # How much of the query was addressed
     methodology: str  # What approach was used
     trace: list[dict] = field(default_factory=list)  # Debugging trace
+    llm_output: Optional[LLMOutput] = None  # provenance/truncation signal from the synthesis calls
 
 
 @dataclass
@@ -228,7 +229,8 @@ COVERAGE: [percentage of query addressed]"""
 
         # Stage 4: Refine for coherence
         issues = self._identify_issues(draft, bindings)
-        refined = await self._refine(query, draft, issues)
+        refine_output = await self._refine(query, draft, issues)
+        refined = refine_output.text
         trace.append({"stage": "refinement", "issues_fixed": len(issues)})
 
         # Stage 5: Self-evaluation
@@ -244,6 +246,14 @@ COVERAGE: [percentage of query addressed]"""
         # Extract citations from final text
         citations = self._extract_citations(refined, sources)
 
+        # Carry a representative provenance/truncation signal for the verifier,
+        # built from the section drafts and the refinement call.
+        section_outputs = [
+            s["llm_output"] for s in sections
+            if isinstance(s, dict) and s.get("llm_output")
+        ]
+        llm_output = combine_llm_outputs(refined, section_outputs + [refine_output])
+
         return SynthesisResult(
             content=refined,
             citations=citations,
@@ -251,6 +261,7 @@ COVERAGE: [percentage of query addressed]"""
             coverage=coverage,
             methodology="multi-stage-synthesis",
             trace=trace,
+            llm_output=llm_output,
         )
 
     async def _generate_outline(
@@ -268,12 +279,14 @@ COVERAGE: [percentage of query addressed]"""
             sources=source_text
         )
 
-        response = await self._call_llm(
+        output = await self._call_llm(
             prompt,
             client=self.fast_llm_client,
             model=self.fast_model,
             max_tokens=1000,
+            mode=ExtractionMode.FINAL_ANSWER,
         )
+        response = output.text
 
         # Parse outline into sections
         sections = self._parse_outline(response)
@@ -360,15 +373,17 @@ COVERAGE: [percentage of query addressed]"""
             passages=passage_text,
         )
 
-        response = await self._call_llm(
+        output = await self._call_llm(
             prompt,
             max_tokens=1500,
+            mode=ExtractionMode.FINAL_ANSWER,
         )
 
         return {
             "title": section_title,
-            "content": response,
+            "content": output.text,
             "sources_used": [s.id for s in relevant_sources],
+            "llm_output": output,
         }
 
     async def _draft_single(
@@ -382,12 +397,13 @@ COVERAGE: [percentage of query addressed]"""
         from .prompts import build_research_prompt
         prompt = build_research_prompt(query, sources)
 
-        response = await self._call_llm(prompt, max_tokens=3000)
+        output = await self._call_llm(prompt, max_tokens=3000, mode=ExtractionMode.FINAL_ANSWER)
 
         return {
             "title": "Response",
-            "content": response,
+            "content": output.text,
             "sources_used": [s.id for s in sources],
+            "llm_output": output,
         }
 
     def _combine_sections(self, sections: list[dict]) -> str:
@@ -464,10 +480,18 @@ COVERAGE: [percentage of query addressed]"""
 
         return issues
 
-    async def _refine(self, query: str, draft: str, issues: list[str]) -> str:
+    async def _refine(self, query: str, draft: str, issues: list[str]) -> LLMOutput:
         """Refine draft for coherence."""
+        # No refinement needed - the assembled draft is the result as-is.
+        unrefined = LLMOutput(
+            text=draft,
+            source_field="content",
+            finish_reason="stop",
+            truncated=False,
+            reasoning_only=False,
+        )
         if not issues:
-            return draft  # No refinement needed
+            return unrefined
 
         prompt = self.REFINEMENT_PROMPT.format(
             query=query,
@@ -475,14 +499,21 @@ COVERAGE: [percentage of query addressed]"""
             issues="\n".join(f"- {issue}" for issue in issues),
         )
 
-        response = await self._call_llm(
+        refine_output = await self._call_llm(
             prompt,
             client=self.fast_llm_client,
             model=self.fast_model,
             max_tokens=4000,
+            mode=ExtractionMode.FINAL_ANSWER,
         )
 
-        return response
+        # FINAL_ANSWER fail-fast: if refinement produced no answer (empty, or a
+        # reasoning-only trace), keep the pre-refine draft rather than
+        # discarding it.
+        if not refine_output.text:
+            return unrefined
+
+        return refine_output
 
     async def _evaluate(self, query: str, synthesis: str) -> dict:
         """Self-evaluate the synthesis."""
@@ -491,15 +522,16 @@ COVERAGE: [percentage of query addressed]"""
             synthesis=synthesis,
         )
 
-        response = await self._call_llm(
+        output = await self._call_llm(
             prompt,
             client=self.fast_llm_client,
             model=self.fast_model,
             max_tokens=500,
+            mode=ExtractionMode.FINAL_ANSWER,
         )
 
         # Parse evaluation
-        return self._parse_evaluation(response)
+        return self._parse_evaluation(output.text)
 
     def _parse_outline(self, outline_text: str) -> list[dict]:
         """Parse outline text into structured sections."""
@@ -629,16 +661,17 @@ COVERAGE: [percentage of query addressed]"""
         client=None,
         model: str = None,
         max_tokens: int = 2000,
-    ) -> str:
-        """Call LLM with prompt."""
+        *,
+        mode: ExtractionMode,
+    ) -> LLMOutput:
+        """Call LLM with prompt and extract output according to `mode`."""
         client = client or self.llm_client
         model = model or self.model
-
-        response = await client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=max_tokens,
+        return await call_with_extraction(
+            client,
+            model,
+            [{"role": "user", "content": prompt}],
+            max_tokens,
+            mode,
             temperature=0.7,
         )
-
-        return get_llm_content(response.choices[0].message)

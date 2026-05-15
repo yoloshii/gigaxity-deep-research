@@ -205,6 +205,10 @@ Citation-aware synthesis over caller-provided sources. Does not search.
 }
 ```
 
+**Output verification.** The `content` field is post-verified before return. Hard-failure conditions — empty completion, a reasoning trace returned in place of an answer, generation truncated by `max_tokens` even after a one-shot retry at the ceiling, a contributing sub-call producing no usable answer, or zero citations when sources are present — prepend a `# Synthesis verification FAILED` header listing the specific failure(s), with the unverified output following below for debugging. Soft conditions (partial citation coverage, parse-failed contradiction detection, surfaced contradictions) append a `*Verification notes: ...*` advisory at the end. Hard-failed outputs are not cached.
+
+**`max_tokens` budgeting.** `max_tokens` is treated as a base output budget — the server derives the effective budget per call internally, adding reasoning-model headroom and capping at `RESEARCH_LLM_MAX_TOKENS`. The accepted request range is unchanged (500–16384). The synthesis cache fingerprint is order-sensitive: reordering the `sources` list produces a different cache key.
+
 ---
 
 ## POST /api/v1/synthesize/enhanced
@@ -255,6 +259,8 @@ Deep reasoning over pre-gathered sources with a fixed chain-of-thought prompt. T
 ```
 
 `reasoning` is reserved for prompt configurations that emit a separable CoT trace and is `null` on the default reasoning path. The default path consumes the chain-of-thought inside the prompt and returns only the synthesized answer in `content` — the trace is *not* echoed back. If the model fails to emit the expected `<synthesis>` block, the full raw response is returned in `content` as a fallback.
+
+When `sources` is non-empty, `/api/v1/reason` runs the same post-synthesis verifier as `/api/v1/synthesize` (see above): a degraded output is prepended with a `# Synthesis verification FAILED` header listing what went wrong.
 
 ---
 

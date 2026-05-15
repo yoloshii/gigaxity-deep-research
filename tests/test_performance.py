@@ -311,7 +311,6 @@ class TestLLMPerformance:
             await rcs.prepare(
                 "FastAPI performance and features",
                 pre_gathered_sources,
-                top_k=3,
             )
 
         result = await async_benchmark("RCSPreprocessor.prepare (LLM)", prepare, iterations=3)
@@ -340,7 +339,7 @@ class TestLLMPerformance:
                 "Compare FastAPI vs Flask",
                 pre_gathered_sources,
                 style=SynthesisStyle.COMPARATIVE,
-                max_tokens_per_section=500,
+                max_tokens=2000,
             )
 
         result = await async_benchmark("OutlineGuidedSynthesizer.synthesize (LLM)", synthesize, iterations=2)
@@ -433,7 +432,6 @@ class TestPipelinePerformance:
             rcs_result = await rcs.prepare(
                 "Compare FastAPI vs Flask",
                 gate_result.good_sources,
-                top_k=3
             )
 
             # Step 3: Contradiction detection

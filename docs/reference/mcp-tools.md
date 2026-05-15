@@ -196,6 +196,8 @@ Each `sources[i]` dict:
 
 The `Contradictions Detected` section appears only when a preset that runs contradiction detection is selected (e.g. `comprehensive`, `contracrow`). The `Quality gate` and `RCS` footer lines appear only when the preset enables those stages.
 
+**Output verification.** A post-synthesis verifier runs before relay. Hard failures (empty answer, reasoning-only output, truncation by `max_tokens` even after a one-shot retry at the ceiling, a failed contributing sub-call, or zero citations when sources exist) prepend a `# Synthesis verification FAILED` header listing the specific failure(s) with the unverified output following for debugging. Soft conditions (partial citation coverage, parse-failed contradiction detection, surfaced contradictions) append a `*Verification notes: ...*` line. Hard-failed outputs are not cached.
+
 **Use when:** you have sources from your own fetcher and want a citation-aware synthesis with optional CRAG-style quality gating, RCS preprocessing, and PaperQA2-style contradiction surfacing.
 
 ### reason
@@ -241,6 +243,8 @@ Each `sources[i]` dict (sources-aware mode):
 - [1] [{title}]({url})
 - [2] [{title}]({url})
 ```
+
+In sources-aware mode, `reason` runs the same post-synthesis verifier as `synthesize` (see above) — a degraded output is prepended with a `# Synthesis verification FAILED` header listing what went wrong.
 
 **Use when:** the user explicitly asks "why" or "explain the reasoning"; the answer's logic matters as much as the conclusion. Pass `sources` when you have pre-gathered evidence; omit it when the model should reason from its own knowledge plus optional `context`.
 

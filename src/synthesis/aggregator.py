@@ -21,7 +21,8 @@ from enum import Enum
 from typing import Optional
 
 from ..config import settings
-from ..llm_utils import get_llm_content
+from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction, derive_effective_budget
+from .source_formatting import derive_input_budget, format_sources_for_synthesis
 
 
 class SynthesisStyle(str, Enum):
@@ -53,6 +54,7 @@ class AggregatedSynthesis:
     confidence: float
     style_used: SynthesisStyle
     word_count: int
+    llm_output: Optional[LLMOutput] = None  # provenance/truncation signal from the synthesis call
 
 
 # Synthesis prompts optimized for aggregation (not search)
@@ -123,6 +125,29 @@ Instructions:
 
 Academic synthesis:"""
 
+REASONING_SYNTHESIS_PROMPT = """You are synthesizing research findings with explicit reasoning.
+
+Query: {query}
+
+Sources:
+{sources}
+
+First, think through your approach:
+1. What are the key aspects of this query?
+2. Which sources are most relevant to each aspect?
+3. Are there any contradictions between sources?
+4. What can be confidently stated vs what is uncertain?
+
+<reasoning>
+[Your step-by-step reasoning here]
+</reasoning>
+
+Now provide your synthesis based on this reasoning:
+
+<synthesis>
+[Your synthesized response with citations [1], [2], etc.]
+</synthesis>"""
+
 
 class SynthesisAggregator:
     """
@@ -163,6 +188,8 @@ class SynthesisAggregator:
         sources: list[PreGatheredSource],
         style: SynthesisStyle = SynthesisStyle.COMPREHENSIVE,
         max_tokens: int = 3000,
+        guidance: Optional[list[str]] = None,
+        contradiction_notes: Optional[str] = None,
     ) -> AggregatedSynthesis:
         """
         Synthesize pre-gathered sources into coherent output.
@@ -171,7 +198,12 @@ class SynthesisAggregator:
             query: The original research query
             sources: Pre-gathered sources from Ref/Exa/Jina
             style: Synthesis style to use
-            max_tokens: Maximum tokens for response
+            max_tokens: Answer-budget base for the synthesis call
+            guidance: Optional per-source advisory summaries (aligned with
+                `sources`), rendered as a section distinct from the evidence.
+            contradiction_notes: Optional cross-source contradiction analysis,
+                rendered as its own advisory section - never merged into a
+                source's content.
 
         Returns:
             AggregatedSynthesis with content and metadata
@@ -186,39 +218,75 @@ class SynthesisAggregator:
                 word_count=0,
             )
 
-        # Format sources for prompt
-        formatted_sources = self._format_sources(sources)
-
         # Select prompt based on style
         prompt_template = self.STYLE_PROMPTS.get(
             style, COMPREHENSIVE_SYNTHESIS_PROMPT
         )
+
+        # Budget source content against the model's context window: render the
+        # prompt with empty sources to measure the fixed overhead per call.
+        fixed_overhead = prompt_template.format(query=query, sources="")
+        effective_output_budget = derive_effective_budget(max_tokens, self.model)
+        input_budget = derive_input_budget(
+            self.model, effective_output_budget, fixed_overhead
+        )
+
+        # Format sources for prompt (budget-aware; no source dropped)
+        formatted_sources = self._format_sources(
+            sources,
+            input_budget,
+            guidance=guidance,
+            contradiction_notes=contradiction_notes,
+        )
+
         prompt = prompt_template.format(
             query=query,
             sources=formatted_sources,
         )
 
-        # Generate synthesis
-        response = await self._call_llm(prompt, max_tokens)
+        # Generate synthesis at the model-aware effective budget (a reasoning
+        # model needs headroom to reason AND answer; the bare answer-budget
+        # base would be consumed by chain-of-thought).
+        output = await self._call_llm(prompt, effective_output_budget, mode=ExtractionMode.FINAL_ANSWER)
+        content = output.text
+
+        # FINAL_ANSWER fail-fast: an empty result (truly empty, or a
+        # reasoning-only trace that FINAL_ANSWER mode refuses) is not a
+        # synthesis. Return it honestly degraded rather than running
+        # citation/confidence logic over "".
+        if not content:
+            return AggregatedSynthesis(
+                content="",
+                citations=[],
+                source_attribution={},
+                confidence=0.0,
+                style_used=style,
+                word_count=0,
+                llm_output=output,
+            )
 
         # Extract citations and compute attribution
-        citations = self._extract_citations(response, sources)
+        citations = self._extract_citations(content, sources)
         attribution = self._compute_attribution(citations, sources)
         confidence = self._estimate_confidence(sources, citations)
 
         return AggregatedSynthesis(
-            content=response,
+            content=content,
             citations=citations,
             source_attribution=attribution,
             confidence=confidence,
             style_used=style,
-            word_count=len(response.split()),
+            word_count=len(content.split()),
+            llm_output=output,
         )
 
     async def synthesize_with_reasoning(
         self,
         query: str,
         sources: list[PreGatheredSource],
+        max_tokens: int = 4000,
+        guidance: Optional[list[str]] = None,
+        contradiction_notes: Optional[str] = None,
     ) -> AggregatedSynthesis:
         """
         Synthesize with explicit reasoning.
@@ -227,42 +295,64 @@ class SynthesisAggregator:
         answer. Unlike `synthesize`, this method does not accept a style —
         the chain-of-thought prompt is fixed because the reasoning shape is
         what matters here, not the prose register. If you need style
-        variants, call `synthesize` directly.
+        variants, call `synthesize` directly. `max_tokens` is the
+        answer-budget base; the model-aware effective budget is derived from it.
         """
-        formatted_sources = self._format_sources(sources)
+        # Budget source content against the model's context window.
+        fixed_overhead = REASONING_SYNTHESIS_PROMPT.format(query=query, sources="")
+        effective_output_budget = derive_effective_budget(max_tokens, self.model)
+        input_budget = derive_input_budget(
+            self.model, effective_output_budget, fixed_overhead
+        )
+        formatted_sources = self._format_sources(
+            sources,
+            input_budget,
+            guidance=guidance,
+            contradiction_notes=contradiction_notes,
+        )
 
-        prompt = f"""You are synthesizing research findings with explicit reasoning.
+        prompt = REASONING_SYNTHESIS_PROMPT.format(
+            query=query,
+            sources=formatted_sources,
+        )
 
-Query: {query}
+        output = await self._call_llm(prompt, max_tokens=effective_output_budget, mode=ExtractionMode.LENIENT)
+        response = output.text
 
-Sources:
-{formatted_sources}
-
-First, think through your approach:
-1. What are the key aspects of this query?
-2. Which sources are most relevant to each aspect?
-3. Are there any contradictions between sources?
-4. What can be confidently stated vs what is uncertain?
-
-<reasoning>
-[Your step-by-step reasoning here]
-</reasoning>
-
-Now provide your synthesis based on this reasoning:
-
-<synthesis>
-[Your synthesized response with citations [1], [2], etc.]
-</synthesis>"""
-
-        response = await self._call_llm(prompt, max_tokens=4000)
-
-        # Extract just the synthesis portion
+        # Extract just the synthesis portion. A missing <synthesis> tag means
+        # the model did not produce the requested structure - that is a
+        # failure, not raw chain-of-thought to dump as if it were the answer.
         synthesis_match = re.search(
             r'<synthesis>(.*?)</synthesis>',
             response,
             re.DOTALL
         )
-        content = synthesis_match.group(1).strip() if synthesis_match else response
+        if not synthesis_match:
+            return AggregatedSynthesis(
+                content="",
+                citations=[],
+                source_attribution={},
+                confidence=0.0,
+                style_used=SynthesisStyle.COMPREHENSIVE,
+                word_count=0,
+                llm_output=output,
+            )
+        content = synthesis_match.group(1).strip()
+
+        # The result is the extracted <synthesis> block - a real answer,
+        # regardless of which response field carried it. The call was made in
+        # LENIENT mode (the chain-of-thought IS expected here), so `output`
+        # may carry reasoning_only=True; that flag describes the raw call, not
+        # this extracted result. Carry a post-extraction signal so a verifier
+        # does not false-positive on reasoning_only. `truncated` is preserved -
+        # a truncated call can still mean an incomplete synthesis block.
+        result_output = LLMOutput(
+            text=content,
+            source_field="content",
+            finish_reason=output.finish_reason,
+            truncated=output.truncated,
+            reasoning_only=False,
+        )
 
         citations = self._extract_citations(content, sources)
         attribution = self._compute_attribution(citations, sources)
@@ -277,30 +367,23 @@ Now provide your synthesis based on this reasoning:
             # thought default.
             style_used=SynthesisStyle.COMPREHENSIVE,
             word_count=len(content.split()),
+            llm_output=result_output,
         )
 
     def _format_sources(
         self,
         sources: list[PreGatheredSource],
-        max_content_per_source: int = 2000,
+        input_budget_tokens: int,
+        guidance: Optional[list[str]] = None,
+        contradiction_notes: Optional[str] = None,
     ) -> str:
-        """Format sources for inclusion in prompt."""
-        parts = []
-
-        for i, source in enumerate(sources, 1):
-            content = source.content[:max_content_per_source]
-            if len(source.content) > max_content_per_source:
-                content += "..."
-
-            part = f"""[{i}] {source.title}
-Origin: {source.origin} | Type: {source.source_type}
-URL: {source.url}
-Content:
-{content}
----"""
-            parts.append(part)
-
-        return "\n\n".join(parts)
+        """Format sources for the prompt, budget-aware (see source_formatting)."""
+        return format_sources_for_synthesis(
+            sources,
+            input_budget_tokens,
+            guidance=guidance,
+            contradiction_notes=contradiction_notes,
+        )
 
     def _extract_citations(
         self,
@@ -381,12 +464,19 @@ Content:
 
         return source_confidence + citation_confidence + diversity_confidence + quality_confidence
 
-    async def _call_llm(self, prompt: str, max_tokens: int = 3000) -> str:
-        """Call LLM with prompt."""
-        response = await self.llm_client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=max_tokens,
+    async def _call_llm(
+        self,
+        prompt: str,
+        max_tokens: int = 3000,
+        *,
+        mode: ExtractionMode,
+    ) -> LLMOutput:
+        """Call LLM with prompt and extract output according to `mode`."""
+        return await call_with_extraction(
+            self.llm_client,
+            self.model,
+            [{"role": "user", "content": prompt}],
+            max_tokens,
+            mode,
             temperature=0.7,
         )
-        return get_llm_content(response.choices[0].message)
