@@ -624,7 +624,7 @@ async def synthesize(
             detail=f"Synthesis error: {e}"
         )
 
-    # Post-synthesis verification (Defect 4).
+    # Post-synthesis verification.
     verdict = verify_synthesis_output(
         content=result.content,
         llm_output=result.llm_output,
@@ -741,7 +741,7 @@ async def reason(
     # for future prompt configurations that explicitly emit a separable trace.
     reasoning = None
 
-    # Post-synthesis verification (Defect 4): a degraded/empty reasoning result
+    # Post-synthesis verification: a degraded/empty reasoning result
     # must not be relayed as a clean answer or cached. On a hard-gate failure,
     # annotate the content in-band so a client that ignores the structured
     # `verification` field still cannot mistake it for a clean synthesis.
@@ -941,7 +941,7 @@ async def synthesize_enhanced(
                 confidence=verified.confidence,
             ))
 
-    # Post-synthesis verification (Defect 4).
+    # Post-synthesis verification.
     verdict = verify_synthesis_output(
         content=result.content,
         llm_output=result.llm_output,
@@ -1288,7 +1288,7 @@ async def synthesize_p1(
                 confidence=verified.confidence,
             ))
 
-    # Post-synthesis verification (Defect 4).
+    # Post-synthesis verification.
     verdict = verify_synthesis_output(
         content=content,
         llm_output=synthesis_llm_output,

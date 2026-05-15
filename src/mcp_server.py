@@ -378,8 +378,8 @@ async def synthesize(
         if metadata.get("rcs_applied"):
             lines.append(f"*RCS: {metadata.get('rcs_kept', 0)} sources processed*")
 
-        # Post-synthesis verification (Defect 4: a failed synthesis must not be
-        # reported as a success or cached).
+        # Post-synthesis verification: a failed synthesis must not be
+        # reported as a success or cached.
         verdict = verify_synthesis_output(
             content=result.content,
             llm_output=result.llm_output,
@@ -405,7 +405,7 @@ async def synthesize(
         for c in result.citations:
             lines.append(f"- [{c.get('number', '?')}] [{c.get('title', 'Unknown')}]({c.get('url', '')})")
 
-    # Post-synthesis verification (Defect 4).
+    # Post-synthesis verification.
     verdict = verify_synthesis_output(
         content=result.content,
         llm_output=result.llm_output,
@@ -478,11 +478,10 @@ async def reason(
             lines.append("\n## Citations\n")
             for c in result.citations:
                 lines.append(f"- [{c.get('number', '?')}] [{c.get('title', 'Unknown')}]({c.get('url', '')})")
-        # Post-synthesis verification (Defect 4): the sources-aware reason path
-        # is a synthesize surface, so a degraded/empty result must not be
-        # relayed as a clean answer. Port-time adaptation: this MCP `reason`
-        # sources mode is gigaxity-deep-research-specific (tool-openrouter has
-        # no equivalent), so it is covered here by the same reviewed verifier.
+        # Post-synthesis verification: the sources-aware reason path is a
+        # synthesize surface, so a degraded/empty result must not be
+        # relayed as a clean answer. Apply the same verifier used by the
+        # MCP `synthesize` and REST `/synthesize*` paths.
         verdict = verify_synthesis_output(
             content=result.content,
             llm_output=result.llm_output,
