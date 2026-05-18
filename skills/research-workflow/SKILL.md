@@ -15,6 +15,164 @@ This skill orchestrates research queries using the optimal workflow based on que
 - **brightdata_fallback**: blocked-URL recovery (CAPTCHA / paywall / Cloudflare)
 - **gptr-mcp**: social-first research over Reddit, X/Twitter, YouTube — wraps [GPT Researcher](https://github.com/assafelovic/gpt-researcher)
 
+---
+
+## Tool Schema Loading (MANDATORY)
+
+MCP tool schemas are deferred. Bare `mcp__X__Y(...)` calls fail with `InputValidationError` because the schema isn't loaded. Load schemas first via `ToolSearch`:
+
+```
+ToolSearch(query='select:mcp__Ref__ref_search_documentation')                # one tool
+ToolSearch(query='select:mcp__exa__web_search_exa,mcp__jina__read_url')      # multiple
+ToolSearch(query='+exa-answer')                                              # keyword (rank by relevance)
+```
+
+After `ToolSearch` returns the `<function>...` block for a tool, that tool is callable for the rest of the session — no need to re-load.
+
+**Why this matters:** if you skip `ToolSearch` and the bare call fails, the path of least resistance is to fall through to `WebFetch` / `WebSearch` — neither is in the Triple Stack. Using them is the strongest signal that schema loading was skipped.
+
+```
+❌ mcp__Ref__ref_search_documentation(query="...")              # fails — schema not loaded
+✅ ToolSearch(query='select:mcp__Ref__ref_search_documentation')
+   → then mcp__Ref__ref_search_documentation(query="...")       # works
+
+❌ Tool fails silently → fall back to WebFetch
+✅ Tool fails → check whether schema was loaded → ToolSearch + retry
+```
+
+Subagents inherit the same deferred-loading discipline — when spawning a research subagent via the Task tool, the subagent prompt MUST include `ToolSearch(query='select:...')` ahead of every `mcp__X__Y` reference, otherwise the subagent will fall through to WebFetch the same way.
+
+---
+
+## Tool Output Persistence (MANDATORY)
+
+When tool output exceeds the Claude Code harness threshold (~16 KB), the full result is written to disk and replaced with a preview-and-path wrapper:
+
+```
+<persisted-output>
+Output too large (XXX KB). Full output saved to: /home/<user>/.claude/projects/<encoded>/<session>/tool-results/<random>.txt
+
+Preview (first 2KB):
+<truncated content>
+...
+</persisted-output>
+```
+
+**Rule:** Any time you see `<persisted-output>` wrapping a tool result, the 2KB preview is **NOT** evidence. You **MUST** call `Read(path)` on the persisted path before:
+
+- citing the source
+- making any factual claim derived from the result
+- passing the result into `mcp__gigaxity-deep-research__synthesize` sources
+
+The auto-reload mechanism does not exist. The result is on disk until you read it.
+
+```
+❌ See <persisted-output> → synthesize from the 2KB preview
+✅ See <persisted-output> → Read(path) → synthesize from the full content
+
+❌ Multiple persisted-output tools chained → synthesize from previews only
+✅ For each persisted-output, Read(path) before the next dependent call
+```
+
+**Typical triggers (observed):** `mcp__exa__web_search_advanced_exa` with `numResults>=10`, `mcp__jina__parallel_read_url` on long pages, `mcp__exa__crawling_exa` with `subpages`.
+
+---
+
+## Tool Health Detection (MANDATORY)
+
+MCP wrappers convert HTTP errors into 200-OK text envelopes — a quota-exhausted Jina call looks structurally like a normal "no results" response. Silent failures slip through. After every research-tool call, scan the response for error signatures BEFORE treating the result as evidence.
+
+### Error signatures
+
+| Tool | Quota / billing | Auth | Rate limit | Degraded empty |
+|---|---|---|---|---|
+| Jina (any `mcp__jina__*`) | `402` / `Insufficient balance` / `out of credits` / `payment required` / `quota` | `401` / `Invalid API key` / `Unauthorized` | `429` / `rate limit` / `too many requests` | `results: []` + no error field (could be legit — verify against query specificity) |
+| Exa (any `mcp__exa__*`) | `402` / `credits` / `Insufficient` | `401` / `authentication` | `429` / `rate limit` | empty `results` array |
+| Exa-answer | same as Exa | same as Exa | same as Exa | empty `answer` field |
+| gptr-mcp `quick_search` | upstream OpenAI `429` / `quota` | OpenAI `401` | OpenAI `429` | `search_results: []` or `result_count: 0` — distinguish "anti-scraped href-only" (Anti-Pattern #6) from "genuine empty" |
+| gigaxity-deep-research `synthesize` / `reason` | upstream LLM `402` | upstream LLM `401` | upstream LLM `429` | already covered: `# Synthesis verification FAILED` header (per Verifier Verdict Handling) |
+| brightdata_fallback | `402` | `401` | `429` | empty markdown body |
+
+### Optional pre-flight Jina probe (0 tokens)
+
+At the start of a long-running session where Jina is load-bearing, call `mcp__jina__show_api_key()` once. It returns the bearer the server sees. Use cases:
+
+- **Auth verification**: confirms the key the MCP loaded matches expectation. If it errors, all subsequent Jina calls will fail too — bail and notify the user before burning the rest of the workflow.
+- **NOT a quota probe** — does not return remaining balance. Quota exhaustion only surfaces on the first failing call.
+
+Jina is uniquely vulnerable to silent quota exhaustion: 10M trial tier + primary high-frequency tool in the SYNTHESIS workflow = first to deplete. Notify the user immediately on the first 402.
+
+### Detection → escalation schema (MANDATORY for subagents)
+
+When a tool error is detected during a research subagent run, the subagent MUST emit a structured health header at the TOP of its final response — BEFORE the synthesis content. Schema:
+
+```
+## ⚠️ Tool Health Issues
+
+- **mcp__jina__search_web** (5 calls): 2 quota errors (HTTP 402 / "Insufficient balance" at calls 3 and 4). Fell back to mcp__exa__web_search_exa for remaining queries.
+- **mcp__exa__web_search_advanced_exa** (3 calls): 1 rate limit (429) on call 2. Single retry succeeded.
+- **mcp__gptr-mcp__quick_search** (2 calls): both returned empty results on Reddit slugs (anti-scrape, expected); not flagged per Anti-Pattern #6.
+
+**Impact:** synthesis below uses Exa-heavy mix (2/5 Jina queries succeeded). Coverage may be skewed toward Exa-indexed content. JINA QUOTA EXHAUSTED — pause further Jina-dependent research until user addresses.
+
+---
+
+[Normal synthesis content below]
+```
+
+If no issues encountered, omit the header entirely — its absence signals a clean run.
+
+### Trigger rules (when to emit)
+
+Emit the health header if ANY of the following occurred during the run, even if the workflow completed overall:
+
+- Any error envelope per the signature table
+- Any fallback chain invocation (the `ON FAIL →` chain was triggered because the primary tool failed)
+- Empty result on a non-trivial query that was expected to return content (skip for known degraded-empty patterns like gptr-mcp Reddit slugs per Anti-Pattern #6)
+- Visible timeout signal (Jina parallel calls past the configured `timeout`)
+- Persisted-output handling skipped (per Tool Output Persistence — agent didn't `Read(path)` on a `<persisted-output>` wrapper)
+
+### Severity language for the Impact line
+
+Use these exact phrases in the Impact line so the main agent's scanner catches them:
+
+- `<TOOL> QUOTA EXHAUSTED` — 402 / billing / credits / quota errors. User-facing escalation required; further calls to that tool will fail. (e.g. `JINA QUOTA EXHAUSTED`)
+- `<TOOL> AUTH FAILURE` — 401 errors. Tool is effectively dead for this session; user must address before any further use. Highest priority.
+- `<TOOL> RATE LIMITED` — 429 errors, transient. Single retry permitted; if persists, fall back.
+- `<TOOL> DEGRADED` — empty results when content expected; backend may be partial or query may be poorly-formed.
+
+### Recovery decision tree
+
+```
+Tool error detected
+  ↓
+Single transient (429 / timeout)?
+  YES → retry once after short backoff (5s for 429)
+       → if succeeds: optional health flag (note recovered transient)
+       → if fails: escalate per category below
+  NO ↓
+
+Quota / billing (402)?
+  YES → switch to fallback chain (do NOT retry — quota persists across calls)
+       → flag QUOTA EXHAUSTED in health header
+       → skip this tool for the rest of the run
+  NO ↓
+
+Auth (401)?
+  YES → BAIL the entire tool category (all calls to this MCP will fail)
+       → flag AUTH FAILURE in health header
+       → ⚠️ The whole run may be unrecoverable — surface IMMEDIATELY to user
+  NO ↓
+
+Empty result on non-trivial query?
+  YES → is this a known degraded-empty pattern? (e.g. gptr-mcp Reddit slugs per Anti-Pattern #6)
+        YES → not an error; continue
+        NO → retry once with reformulated query
+             → if still empty, flag DEGRADED in health header
+```
+
+---
+
 ## Query Classification
 
 ### QUICK FACTUAL Queries (15-20% of queries)
@@ -358,7 +516,37 @@ reasoning = mcp__gigaxity-deep-research__reason(
 - `mcp__jina__deduplicate_strings(strings)` — filter near-duplicate snippets before feeding to synthesize (reduces synthesis token burn)
 - `mcp__jina__guess_datetime_url(url)` — verify source freshness/credibility per-URL before trusting it
 
-**CRITICAL:** Never stop after Triple Stack and wait for user. Always proceed immediately to synthesis.
+**MANDATORY:** SYNTHESIS workflow MUST end with `mcp__gigaxity-deep-research__synthesize` (or `reason` for chain-of-thought). Do NOT freehand the synthesis in the main thread. Do NOT stop after Triple Stack and wait for user input. The only valid escape hatch is the post-synthesis verifier verdict (see next).
+
+### Verifier Verdict Handling
+
+`synthesize` runs a post-synthesis verifier and prepends a structural header on hard-gate failure (empty content, reasoning-only trace, truncated by token limit, sub-call failure, or zero citations on non-empty sources):
+
+```
+# Synthesis verification FAILED
+
+This output is not a reliable synthesis:
+- <reason 1>
+- <reason 2>
+
+---
+(unverified output below, for debugging)
+
+<original output>
+```
+
+**When you see this header:**
+
+1. Do NOT relay the failed output to the user as-is — the verifier explicitly says it is not a reliable synthesis.
+2. Diagnose the failure reasons. Common patterns:
+   - `truncated by token limit` → raise `RESEARCH_LLM_MAX_TOKENS` (env var on the MCP), or switch preset to `fast` (less preprocessing budget burn).
+   - `reasoning trace instead of answer` → model spending budget on chain-of-thought; raise `RESEARCH_LLM_REASONING_HEADROOM` or pick a non-reasoning model.
+   - `zero citations on N sources` → source content may not have reached the model; check disk-spill on the source-gathering tools (per "Tool Output Persistence" above) — agents commonly synthesize from 2KB previews and end up with sources whose content never made it to the model.
+3. ONE retry is permitted: re-call synthesize with a different `preset` (e.g., `contracrow` → `fast`) or fewer sources.
+4. If the retry also FAILS, fall back to main-thread synthesis from the raw sources, AND prepend the user-facing answer with: `> Note: gigaxity-deep-research synthesize failed verification on retry; this is a main-thread synthesis from raw sources without the verifier guarantees.`
+5. Hard-failed outputs are NOT cached, so the next call will re-run — do not cache-bust manually.
+
+Soft warnings append `*Verification notes: <warning>*` at the end of the output and are advisory; the synthesis is usable, but flag the gap in your final answer.
 
 **Token cost:** ~5000-10000 tokens
 **Time:** 3-5 min
@@ -746,6 +934,29 @@ mcp__gigaxity-deep-research__reason(
 ✅ Triple Stack → gigaxity-deep-research synthesize  # synthesize uses provided sources
 ```
 
+### 6. Don't Cite from Empty-Body URLs (gptr-mcp Reddit/X Quirk)
+
+`mcp__gptr-mcp__quick_search` routes Reddit / X / YouTube queries through OpenAI's web-search retriever (per the `SOCIAL_OPENAI_DOMAINS` config). For anti-scraped domains, the response shape is href-only:
+
+```json
+{"href": "https://reddit.com/r/.../comments/.../slug-here/", "body": "", "title": ""}
+```
+
+The URL is a CANDIDATE, not evidence. Never infer thread content from the URL slug.
+
+```
+❌ quick_search returns {href: ".../granite-docling-hallucinating/", body:"", title:""}
+   → cite as "Reddit users report Granite-Docling hallucinations" based on slug
+✅ quick_search returns href with empty body
+   → ToolSearch(query='select:mcp__jina__read_url')
+   → mcp__jina__read_url(url=href)  # fetch the actual content
+   → cite from the fetched content only
+   → if blocked: mcp__brightdata_fallback__scrape_as_markdown(url=href)
+   → if also blocked: drop the claim
+```
+
+Other tools with similar shapes: any search retriever that returns "href-only" snippets on access-controlled domains (LinkedIn, paywalled news, members-only forums). When in doubt, check both `body` and `title` — if both are empty strings, it is a candidate, not evidence.
+
 ---
 
 ## Workflow Selection Heuristics
@@ -939,6 +1150,14 @@ Tool completely fails (timeout, connection error)?
 - Always use `timeout=60000` (default 30000 insufficient)
 - Limit to 3-5 URLs per parallel call
 - Use `return_url=True` for images/screenshots
+
+**gigaxity-deep-research connector fan-out (load-bearing):**
+- `mcp__gigaxity-deep-research__search` / `discover` / `research` fan out to up to 3 backends in parallel via RRF fusion: **SearXNG** (always available — no key), **Tavily** (gated on `RESEARCH_TAVILY_API_KEY`), **LinkUp** (gated on `RESEARCH_LINKUP_API_KEY`).
+- Connectors with missing keys are **silently dropped at init** (`SearchAggregator.__init__` filters on `is_configured()`). No error, no warning.
+- Health check: `mcp__gigaxity-deep-research__search` returns a trailer line `*N results from ['searxng', 'tavily', 'linkup'] (configured: ['searxng', 'tavily', 'linkup'])*`. If `configured:` shows only `['searxng']`, the other two are unconfigured. If `from` and `configured` diverge, configured connectors errored or returned empty for this query — see [troubleshooting.md](../../docs/troubleshooting.md#search--connector-errors).
+- `research` and `discover` also surface trailers in the same shape (research mirrors `search`; discover shows only the `configured:` line because the Explorer wraps the aggregator).
+- Healthy steady state (3-way fusion) requires both `RESEARCH_TAVILY_API_KEY` and `RESEARCH_LINKUP_API_KEY` in the MCP `env` block. MCP subprocess must be restarted after env changes.
+- Searxng-only state is functional but lower-coverage — `discover` landscapes and `synthesize` outputs derived from gigaxity's own search will be less diverse.
 
 **Exa MCP transport (HTTP vs stdio — load-bearing):**
 - The active config uses the **HTTP transport** at `https://mcp.exa.ai/mcp?tools=...` because the stdio binary silently ignores `ENABLED_TOOLS` and caps at 3 default tools (`web_search_exa`, `get_code_context_exa`, `crawling_exa`). HTTP transport honors the `tools=` URL query param and exposes all 4 active tools including `web_search_advanced_exa`.

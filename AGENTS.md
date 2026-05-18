@@ -267,22 +267,27 @@ Task tool:
 
     ## Research Workflow Instructions
 
+    **MCP schema loading (MANDATORY, applies to ALL workflows below).** MCP tool schemas are deferred. Bare `mcp__X__Y(...)` calls fail with `InputValidationError`. Before calling any `mcp__X__Y`, first call `ToolSearch(query='select:<tool_name>')` (or `select:<tool1>,<tool2>` to load multiple in one call). If a tool call appears to silently fail and you find yourself reaching for native `WebFetch` / `WebSearch`, STOP — those are NOT in the Triple Stack; the failure means a schema wasn't loaded. Re-run with ToolSearch first.
+
     Classify query and execute appropriate workflow:
 
     **QUICK FACTUAL** (mid-task lookup, speed-critical, single answer):
-    → mcp__exa-answer__exa_answer(query) — 1-2s, 94% accuracy
-    → Fallback: mcp__exa__web_search_advanced_exa with highlights
+    → ToolSearch(query='select:mcp__exa-answer__exa_answer') → mcp__exa-answer__exa_answer(query) — 1-2s, 94% accuracy
+    → Fallback: ToolSearch(query='select:mcp__exa__web_search_advanced_exa') → mcp__exa__web_search_advanced_exa with highlights
 
     **DIRECT** (specific library/API, single source sufficient):
+    → ToolSearch(query='select:mcp__Ref__ref_search_documentation,mcp__exa__get_code_context_exa')
     → mcp__Ref__ref_search_documentation OR mcp__exa__get_code_context_exa
 
     **EXPLORATORY** (general concept, cold-start, learning):
+    → ToolSearch(query='select:mcp__gigaxity-deep-research__discover,mcp__jina__parallel_read_url,mcp__gigaxity-deep-research__synthesize')
     → mcp__gigaxity-deep-research__discover(query, focus_mode, identify_gaps=True)
     → Score URLs from result, select top 3-5
     → mcp__jina__parallel_read_url(urls, timeout=60000)
     → mcp__gigaxity-deep-research__synthesize(query, sources, preset)
 
     **SYNTHESIS** (comparison, best practices, consensus, cross-validation):
+    → ToolSearch(query='select:mcp__Ref__ref_search_documentation,mcp__exa__get_code_context_exa,mcp__jina__parallel_search_web,mcp__jina__sort_by_relevance,mcp__jina__deduplicate_strings,mcp__gigaxity-deep-research__synthesize')
     → Execute in parallel:
       - mcp__Ref__ref_search_documentation(query)
       - mcp__exa__get_code_context_exa(query)                             # code-specific
@@ -290,18 +295,43 @@ Task tool:
     → Optional free middleware before synthesis:
       - mcp__jina__sort_by_relevance(query, documents) — 0 tokens
       - mcp__jina__deduplicate_strings(strings) — 0 tokens
-    → mcp__gigaxity-deep-research__synthesize(query, sources, preset)
+    → mcp__gigaxity-deep-research__synthesize(query, sources, preset)  # MANDATORY — do NOT freehand-synthesize in subagent
 
     **SOCIAL-FIRST** (community sentiment, real user experiences, Reddit/X/YouTube):
+    → ToolSearch(query='select:mcp__gptr-mcp__quick_search,mcp__gptr-mcp__deep_research,mcp__jina__search_web,mcp__jina__read_url')
     → mcp__gptr-mcp__quick_search(query) — single-call social-first lookup
     → mcp__gptr-mcp__deep_research(query) — multi-hop social-first research with cross-platform sentiment
     → For LinkedIn-specific queries: mcp__jina__search_web "site:linkedin.com"
     → Combine with SYNTHESIS when comparing community sentiment to documentation/spec
+    → On href-only returns (empty body/title from Reddit/X/YouTube), follow up with mcp__jina__read_url on the href — never cite from URL slug alone.
+
+    **CRITICAL:**
+    - NEVER use native WebSearch or WebFetch — use Triple Stack (Ref + Exa + Jina). If you reach for those, you skipped ToolSearch.
+    - NEVER stop after gathering sources — ALWAYS call mcp__gigaxity-deep-research__synthesize. Do NOT freehand the synthesis in the subagent — the verifier is load-bearing.
+    - ALWAYS return the COMPLETE synthesized result — do not truncate.
+    - WHEN a tool output is wrapped in `<persisted-output>...</persisted-output>`, the 2KB preview is NOT evidence. MANDATORY: Read(path) on the persisted path before using the result in synthesis or citations.
+    - WHEN `mcp__gptr-mcp__quick_search` returns href entries with empty `body` and `title` (anti-scraped domains like Reddit / X / YouTube), the URL is a CANDIDATE, not evidence. Follow up with mcp__jina__read_url to get actual content, or drop the claim. Never infer content from URL slugs.
+    - WHEN `synthesize` output starts with `# Synthesis verification FAILED`, the verifier hard-gated it. ONE retry with different preset/sources is permitted; if also FAILS, fall back to main-thread synthesis from raw sources with explicit verifier-failure note in the final answer.
+    - WHEN any research tool returns an error envelope (HTTP 402/401/429 markers, "Insufficient balance", "out of credits", "quota", "rate limit", "Unauthorized", "Invalid API key") OR an unexpected empty result OR you triggered a fallback chain, emit a `## ⚠️ Tool Health Issues` header at the TOP of your final response (before the synthesis content). Format and severity language per skills/research-workflow/SKILL.md "Tool Health Detection". Use the exact severity phrases `<TOOL> QUOTA EXHAUSTED` / `AUTH FAILURE` / `RATE LIMITED` / `DEGRADED` so the main agent can detect them. Especially critical for Jina (10M trial tier, depletes fastest) — the user must be notified to pause / address before further Jina-dependent work. NEVER silently fall through quota errors.
 
     Execute research now and return full synthesis.
 ```
 
 **Post-subagent:** Output the COMPLETE result to user. NEVER truncate or summarize.
+
+**Subagent health report inspection (MANDATORY).** After each research subagent return, scan the first ~1000 chars for `## ⚠️ Tool Health Issues`. If present:
+
+1. **Surface to user BEFORE the synthesis output** — explicit user-facing message. Do NOT bury it in the synthesis. Format:
+   > ⚠️ Research subagent reported tool health issues:
+   > - <each issue from header, one bullet per tool>
+   >
+   > <Impact line from the health header, verbatim>
+   >
+   > Continuing with the subagent's synthesis below.
+2. Then relay the full synthesis (subagent's content below the `---` separator) verbatim per the existing Post-subagent rule.
+3. **Track recurring patterns in-session.** If 3+ subagent runs in the same session all report the same `<TOOL> QUOTA EXHAUSTED` (especially Jina), STOP spawning further subagents that depend on that tool. Surface a session-level escalation to the user: `⚠️ <TOOL> has reported QUOTA EXHAUSTED across N subagent runs this session. Pausing further <TOOL>-dependent research until you address the underlying issue.` Do not document or attempt recovery procedures — the user handles that out-of-band.
+
+If the header is absent: relay the subagent's full output as normal.
 
 ---
 
