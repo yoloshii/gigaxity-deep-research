@@ -371,9 +371,17 @@ class TestMCPToolWiring:
             mock_agg.return_value = mock_agg_instance
 
             mock_engine_instance = MagicMock()
+            # Citation dict shape matches the v0.3.0 canonical contract from
+            # extract_numeric_citations (codex DESIGN session 019e39f7 Q2).
+            # number + id (= str(number)) + source_id are required for the
+            # MCP `research` footer renderer at mcp_server.py:135.
             mock_engine_instance.research = AsyncMock(return_value={
                 "content": "synthesized text",
-                "citations": [{"id": "1", "title": "t", "url": "https://example.com"}],
+                "citations": [{
+                    "number": 1, "id": "1", "source_id": "s1",
+                    "title": "t", "url": "https://example.com",
+                    "origin": None, "source_type": None,
+                }],
             })
             mock_engine.return_value = mock_engine_instance
 

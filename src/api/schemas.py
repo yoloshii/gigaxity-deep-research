@@ -73,9 +73,19 @@ class ResearchRequest(BaseModel):
 
 
 class CitationSchema(BaseModel):
-    """Citation reference."""
+    """Citation reference (canonical shape, codex DESIGN session 019e39f7, Q2).
+
+    `id` stays string-typed for backward-compatible schema (no `id: str` →
+    `id: int` break), but its value is the 1-based citation number as a
+    string (`"1"`, `"2"`, ...) in v0.3.0. The `[xx_<hex>]` style that the
+    pre-v0.3.0 `SynthesisEngine` path used is gone — clients that parse
+    `citation.id` as a connector prefix (`tv_...`) must read `source_id`
+    instead.
+    """
 
     id: str
+    number: int = 0
+    source_id: str | None = None
     title: str
     url: str
 

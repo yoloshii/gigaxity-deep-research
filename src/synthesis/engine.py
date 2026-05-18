@@ -1,12 +1,12 @@
 """Synthesis engine using Tongyi DeepResearch via OpenAI-compatible API."""
 
-import re
 from openai import AsyncOpenAI
 from ..connectors.base import Source
 from ..config import settings
 from ..llm_utils import ExtractionMode, extract_llm_output
 from ..llm_client import OpenRouterClient, get_llm_client
-from .prompts import RESEARCH_SYSTEM_PROMPT, build_research_prompt, format_citations
+from .citations import extract_numeric_citations
+from .prompts import RESEARCH_SYSTEM_PROMPT, build_research_prompt
 
 
 class SynthesisEngine:
@@ -125,23 +125,13 @@ class SynthesisEngine:
                     "error": "empty_synthesis",
                 }
 
-            # Extract cited source IDs from response
-            cited_ids = set(re.findall(r'\[([a-z]{2}_[a-f0-9]+)\]', content))
-
-            # Build citations list
-            sources_by_id = {s.id: s for s in sources}
-            citations = []
-            sources_used = []
-
-            for sid in cited_ids:
-                if sid in sources_by_id:
-                    source = sources_by_id[sid]
-                    citations.append({
-                        "id": source.id,
-                        "title": source.title,
-                        "url": source.url,
-                    })
-                    sources_used.append(source)
+            # Extract numeric [N] citations via the shared resolver (codex
+            # DESIGN session 019e39f7, Q4 — getattr fallbacks handle the
+            # field divergence between connector Source and PreGatheredSource).
+            # sources_used preserves 1-based order from the citation numbers
+            # so callers see exactly the subset the model cited.
+            citations = extract_numeric_citations(content, sources)
+            sources_used = [sources[c["number"] - 1] for c in citations]
 
             # Get actual model used (accounts for fallback)
             actual_model = getattr(self.client, 'last_model_used', None) or self.model

@@ -85,7 +85,9 @@ Combined search + synthesis. The server fetches sources internally — caller do
 {
   "query": "...",
   "content": "...synthesis with [1], [2] citations...",
-  "citations": [{"id": "1", "title": "...", "url": "..."}],
+  "citations": [
+    {"id": "1", "number": 1, "source_id": "tv_a1b2c3d4", "title": "...", "url": "..."}
+  ],
   "sources": [{"id": "...", "title": "...", "url": "...", "content": "...", "score": 0.9, "connector": "searxng"}],
   "connectors_used": ["searxng", "tavily"],
   "model": "alibaba/tongyi-deepresearch-30b-a3b",
@@ -99,6 +101,8 @@ Combined search + synthesis. The server fetches sources internally — caller do
 ```
 
 The `preset_used`, `focus_mode_used`, `quality_gate`, `contradictions`, and `rcs_summaries` fields populate only when the corresponding P1 features are enabled.
+
+**Citation shape (v0.3.0).** Every citation dict carries `id` (string-typed compatibility alias, always `str(number)`), `number` (1-based int matching the `[N]` marker in `content`), and `source_id` (connector trace like `"tv_a1b2c3d4"` when the source has one; `null` for pre-gathered aggregator sources). Callers that previously pattern-matched `citation.id.startswith("tv_")` to identify Tavily-origin citations should read `citation.source_id` instead — `id` is now always a numeric string.
 
 ---
 

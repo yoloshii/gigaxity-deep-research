@@ -371,6 +371,8 @@ async def research(
             citations=[
                 CitationSchema(
                     id=str(c.get("number", "")),
+                    number=c.get("number", 0),
+                    source_id=c.get("source_id"),
                     title=c.get("title", ""),
                     url=c.get("url", ""),
                 )
@@ -406,12 +408,38 @@ async def research(
             detail=f"Synthesis error: {result['error']}"
         )
 
+    # Post-synthesis verification (codex DESIGN session 019e39f7 Q7, wired
+    # in v0.3.0 Turn 8 fix). Mirrors the MCP `research` and `/synthesize*`
+    # paths so a regressed model emitting `[xx_<hex>]` markers gets the
+    # marker-drift soft warning AND the existing cited_count==0 hard-fail,
+    # rather than silently returning content that looks successful.
+    # llm_output is None — SynthesisEngine handles truncation-retry
+    # internally and doesn't surface the artifact on the dict result.
+    raw_content = result["content"]
+    citations_list = result["citations"]
+    verdict = verify_synthesis_output(
+        content=raw_content,
+        llm_output=None,
+        cited_count=len(citations_list),
+        source_count=len(sources),
+    )
+    annotated_content = (
+        raw_content if verdict.passed and not verdict.soft_warnings
+        else annotate_with_verdict(raw_content, verdict)
+    )
+
     return ResearchResponse(
         query=request.query,
-        content=result["content"],
+        content=annotated_content,
         citations=[
-            CitationSchema(id=c["id"], title=c["title"], url=c["url"])
-            for c in result["citations"]
+            CitationSchema(
+                id=c["id"],
+                number=c["number"],
+                source_id=c.get("source_id"),
+                title=c["title"],
+                url=c["url"],
+            )
+            for c in citations_list
         ],
         sources=[
             SourceSchema(
@@ -709,6 +737,8 @@ async def synthesize(
         citations=[
             CitationSchema(
                 id=str(c.get("number", "")),
+                number=c.get("number", 0),
+                source_id=c.get("source_id"),
                 title=c.get("title", ""),
                 url=c.get("url", ""),
             )
@@ -830,6 +860,8 @@ async def reason(
         citations=[
             CitationSchema(
                 id=str(c.get("number", "")),
+                number=c.get("number", 0),
+                source_id=c.get("source_id"),
                 title=c.get("title", ""),
                 url=c.get("url", ""),
             )
@@ -1058,6 +1090,8 @@ async def synthesize_enhanced(
         citations=[
             CitationSchema(
                 id=str(c.get("number", "")),
+                number=c.get("number", 0),
+                source_id=c.get("source_id"),
                 title=c.get("title", ""),
                 url=c.get("url", ""),
             )
@@ -1384,6 +1418,8 @@ async def synthesize_p1(
         citations = [
             CitationSchema(
                 id=str(c.get("number", "")),
+                number=c.get("number", 0),
+                source_id=c.get("source_id"),
                 title=c.get("title", ""),
                 url=c.get("url", ""),
             )
@@ -1471,7 +1507,13 @@ def _extract_citations_from_content(
     the same regex and the same source-index mapping.
     """
     return [
-        CitationSchema(id=str(c["number"]), title=c["title"], url=c["url"])
+        CitationSchema(
+            id=str(c["number"]),
+            number=c["number"],
+            source_id=c.get("source_id"),
+            title=c["title"],
+            url=c["url"],
+        )
         for c in extract_numeric_citations(content, sources)
     ]
 

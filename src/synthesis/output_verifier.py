@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from ..llm_utils import LLMOutput
+from .citations import detect_legacy_markers, detect_mixed_markers
 from .contradictions import ContradictionDetectionResult
 from .quality_gate import _entity_in_text
 
@@ -194,6 +195,35 @@ def verify_synthesis_output(
         verdict.soft_warnings.append(
             f"partial citation coverage: {cited_count} of {source_count} sources cited"
         )
+
+    # Citation marker drift (v0.3.0, codex DESIGN session 019e39f7 Q7).
+    # v0.3.0 unified every synthesis surface onto `[N]`. If the LLM still
+    # emits legacy `[xx_<hex>]` markers the prompt has regressed (or the
+    # model ignored the contract under deep-synthesis pressure). Surface
+    # the drift as a soft warning so operators see a concrete diagnostic
+    # rather than the generic "cites none" hard-fail message — especially
+    # useful during the v0.3.0 migration window when prompt + extractor
+    # changes are still bedding in. Hard-fail at cited_count==0 above still
+    # fires for legacy-only output (because numeric extraction returns 0);
+    # this warning is the diagnostic that explains WHY it fired.
+    if has_content:
+        legacy_markers = detect_legacy_markers(content)
+        if legacy_markers:
+            preview = ", ".join(legacy_markers[:3])
+            more = f" (+{len(legacy_markers) - 3} more)" if len(legacy_markers) > 3 else ""
+            if detect_mixed_markers(content):
+                verdict.soft_warnings.append(
+                    f"citation marker drift: synthesis emitted both `[N]` and "
+                    f"legacy `[xx_<hex>]` markers — {len(legacy_markers)} legacy "
+                    f"marker(s) ignored by numeric extractor: {preview}{more}"
+                )
+            else:
+                verdict.soft_warnings.append(
+                    f"citation marker drift: synthesis emitted only legacy "
+                    f"`[xx_<hex>]` markers (no `[N]`) — prompt regression or "
+                    f"model ignored the v0.3.0 contract. Markers: "
+                    f"{preview}{more}"
+                )
 
     if contradiction_result is not None:
         if contradiction_result.parse_failed:

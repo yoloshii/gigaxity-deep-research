@@ -14,20 +14,36 @@ class TestPrompts:
 
     @pytest.mark.unit
     def test_system_prompt_exists(self):
-        """System prompt is defined."""
+        """System prompt is defined and uses the v0.3.0 [N] contract."""
         assert RESEARCH_SYSTEM_PROMPT
+        # v0.3.0 unified everything on [N] (codex DESIGN session 019e39f7).
+        # The system prompt now embeds CITATION_FORMAT_GUIDE instead of the
+        # old "[source_id]" instruction. The negative example inside the
+        # guide ("never `[xx_hex]`") is allowed; "[source_id]" as a directive
+        # to the model is not.
         assert "CITATION" in RESEARCH_SYSTEM_PROMPT
-        assert "[source_id]" in RESEARCH_SYSTEM_PROMPT
+        assert "[N]" in RESEARCH_SYSTEM_PROMPT or "`[1]`" in RESEARCH_SYSTEM_PROMPT
+        # Hard regression — the format directive must NOT teach the LLM the
+        # old [source_id] contract anymore. The substring "source_id" inside
+        # CITATION_DISCIPLINE/RESPONSE_FORMAT prose is forbidden.
+        assert "[source_id]" not in RESEARCH_SYSTEM_PROMPT
 
     @pytest.mark.unit
     def test_build_research_prompt(self, sample_sources):
-        """Research prompt includes query and sources."""
+        """Research prompt renders sources as `[1]`, `[2]`, ... not `[sx_*]`."""
         query = "What is async programming?"
         prompt = build_research_prompt(query, sample_sources)
 
         assert query in prompt
-        assert "[sx_test001]" in prompt
-        assert "[tv_test002]" in prompt
+        # v0.3.0 — numeric source blocks (1-based index) replace the old
+        # [tv_*]/[sx_*]/[lu_*] connector-ID blocks.
+        assert "[1]" in prompt
+        assert "[2]" in prompt
+        # Hard regression — connector-ID blocks must not appear in the
+        # rendered prompt under any source ordering.
+        assert "[sx_test001]" not in prompt
+        assert "[tv_test002]" not in prompt
+        # Source titles and URLs still travel through.
         assert "Python Async IO Guide" in prompt
         assert "https://example.com/async-guide" in prompt
 
@@ -39,12 +55,18 @@ class TestPrompts:
 
     @pytest.mark.unit
     def test_format_citations(self, sample_sources):
-        """Citations are formatted correctly."""
+        """Citations are formatted as `[1] title - url`, not `[sx_*]`."""
         citations = format_citations(sample_sources)
 
-        assert "[sx_test001]" in citations
-        assert "[tv_test002]" in citations
-        assert "[lu_test003]" in citations
+        # v0.3.0 — numeric list.
+        assert "[1]" in citations
+        assert "[2]" in citations
+        assert "[3]" in citations
+        # Hard regression — connector IDs must not appear.
+        assert "[sx_test001]" not in citations
+        assert "[tv_test002]" not in citations
+        assert "[lu_test003]" not in citations
+        # Titles still travel through.
         assert "Python Async IO Guide" in citations
 
 
@@ -139,23 +161,49 @@ class TestSynthesisEngine:
 
 
 class TestCitationExtraction:
-    """Tests for citation extraction from LLM responses."""
+    """Tests for citation extraction from LLM responses.
+
+    v0.3.0 unified every synthesis surface onto `[N]` (codex DESIGN session
+    019e39f7). The legacy `[xx_<hex>]` pattern is no longer in production
+    code paths; it survives only as a drift-detection helper in
+    `synthesis.citations.detect_legacy_markers`. These tests lock the new
+    primary `[N]` resolver AND the drift-detection helper.
+    """
 
     @pytest.mark.unit
-    def test_citation_pattern(self):
-        """Citation pattern matches expected format."""
-        import re
-        pattern = r'\[([a-z]{2}_[a-f0-9]+)\]'
+    def test_numeric_citation_pattern(self):
+        """`[N]` is the canonical v0.3.0 citation format — extractor resolves."""
+        from src.synthesis.citations import extract_numeric_citations
+        from src.connectors.base import Source
 
-        # Should match
-        assert re.findall(pattern, "Text [sx_a1b2c3d4] more text")
-        assert re.findall(pattern, "[tv_12345678]")
-        assert re.findall(pattern, "[lu_abcdef01]")
+        sources = [
+            Source(id="sx_a1b2c3d4", title="One", url="http://1", content="x"),
+            Source(id="tv_12345678", title="Two", url="http://2", content="y"),
+        ]
+        citations = extract_numeric_citations("First [1] then [2].", sources)
+        assert len(citations) == 2
+        assert [c["number"] for c in citations] == [1, 2]
+        assert [c["id"] for c in citations] == ["1", "2"]
+        # source_id (connector trace) preserved as separate field.
+        assert citations[0]["source_id"] == "sx_a1b2c3d4"
+        assert citations[1]["source_id"] == "tv_12345678"
 
-        # Should not match
-        assert not re.findall(pattern, "[1]")
-        assert not re.findall(pattern, "[source]")
-        assert not re.findall(pattern, "[sx_]")
+    @pytest.mark.unit
+    def test_legacy_marker_detection_diagnostic(self):
+        """Legacy `[xx_<hex>]` markers are diagnostically detected (drift signal)."""
+        from src.synthesis.citations import detect_legacy_markers
+
+        # Legacy markers in synthesis content are a regression signal in v0.3.0+
+        # (the prompt asks for [N]; legacy emission means the model regressed).
+        # detect_legacy_markers returns the unique markers in first-seen order.
+        assert detect_legacy_markers("Text [sx_a1b2c3d4] more [tv_12345678] text") == [
+            "sx_a1b2c3d4",
+            "tv_12345678",
+        ]
+        assert detect_legacy_markers("Numeric [1] only") == []
+        # Malformed legacy-shape brackets are not false positives.
+        assert detect_legacy_markers("[sx_]") == []
+        assert detect_legacy_markers("[source]") == []
 
 
 class TestSourceFormatting:
