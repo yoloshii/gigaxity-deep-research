@@ -1,5 +1,37 @@
 # Release notes
 
+## v0.3.1 (2026-05-18)
+
+Closes two BACKLOG items from the v0.3.0 ship cycle: F5 single-word lowercase tool detection in the query-entity extractor, and abbreviation-aware sentence splitting in the post-synthesis verifier. Both were tracked-not-fixed during v0.3.0 because they sat outside the citation-contract unification scope. Locked architecturally by a separate codex GPT-5.5 high DESIGN session (`019e3a66-313d-7121-b52f-541165732859`, single-turn, NONCE `codex-design-items-6-7-2026-05-18-7e3a9c4b`) per the TWO_SESSIONS rule, then reviewed for impl by the same continuous adversarial-review session that cleared v0.2.0 through v0.3.0 (`019e395a-8fe7-7e00-ad24-05e20fdb2e1a`).
+
+This is a backward-compatible patch release. Public signatures of `extract_query_entities()` and `verify_synthesis_output()` are unchanged. The change touches user-visible verifier behavior (fewer false-fails on abbreviation-heavy synthesis output, more legitimate hard-fails on lowercase-tool comparison queries that previously slipped through with zero entities), which is why the version bumps rather than rides as a silent cleanup.
+
+### What changed
+
+**`extract_query_entities` adds a curated lowercase-tool allowlist.** Shape 5 closes the F5 gap codex documented at Turn 2 of v0.2.x review: a query like `compare bun vs npm` used to return an empty entity list because none of the four existing shapes (capitalized words, internal-cap identifiers, hyphenated identifiers, dotted module paths) caught single-word lowercase tools. The verifier's entity-coverage check then had nothing to verify, and the quality gate's entity-balanced promotion had nothing to promote. The new `src/synthesis/entity_allowlist.py` module carries two frozensets: `LOWERCASE_TOOL_ALLOWLIST` for always-safe names (`bun`, `npm`, `deno`, `pnpm`, `pip`, `yarn`, `cargo`, `docker`, `kubectl`, ...) and `CONTEXTUAL_LOWERCASE_TOOL_ALLOWLIST` for names that collide with ordinary English (`uv`, `go`, `rust`, `tar`, `make`, `mix`, `gem`, `swift`, `crystal`). The contextual tier only fires when the query also carries a technical/comparison cue (`compare`, `vs`, `install`, `runtime`, ...) or when shapes 2-4 (the inherently tech-shaped shapes) found a tech entity. Without that gating, `remove rust from metal` and `how to go faster` would mis-extract. Codex Turn 10 caught a regression where Shape 1 capitalized proper nouns like `Bob` or `Taylor Swift` were enabling the contextual tier, and the fix narrows the enabler to shapes 2-4 only.
+
+**Detection is case-sensitive and respects hyphen/dot dedupe.** Shape 5 pattern `(?<![A-Za-z0-9_.\-])[a-z]+(?![A-Za-z0-9_.\-])` matches only the exact lowercase form, so `PIP` (the proper noun) stays as a Shape 1 entity rather than lowercase-folding to the Python installer. The negative lookbehind and lookahead exclude any letter, digit, dot, hyphen, or underscore on either side of the candidate, so `pip` inside `pip-tools` does not re-emit. Shape 3 already covers the hyphenated form. The standalone `pip` in `pip-tools is a wrapper around pip` still emits because the second occurrence is its own token.
+
+**Post-synthesis sentence splitter no longer breaks at abbreviation periods.** `src/synthesis/sentence_utils.py` adds `protect_abbreviations()` / `restore_abbreviations()` / `split_sentences()` helpers. The protection step replaces the `.` characters inside known English abbreviations (`U.S.`, `U.K.`, `e.g.`, `i.e.`, `etc.`, `vs.`, `cf.`, `Mr.`, `Mrs.`, `Dr.`, `Prof.`, `Inc.`, `Ltd.`, `Ph.D.`, `M.D.`, `No.`, `a.m.`, `p.m.`, `et al.`, ...) with a private sentinel `\x00`, splits on the remaining terminators, then restores the sentinels back to `.`. Casing is preserved. The verifier's `_output_acknowledges_gap` helper now uses `split_sentences()` instead of the local `_SENTENCE_SPLIT` regex, so a sentence like `no source for U.S. market coverage of LinkUp` stays intact rather than splitting at `U.S.` into two fragments where the gap-framing phrase ends up in one half and the entity in the other.
+
+**`verification.py:extract_claims_with_citations` gets the same abbreviation protection.** The claim-extraction regex `([^.!?]+[.!?])\s*\[(\d+)\]` had the same truncation bug: a synthesis line `The U.S. has X.[1]` extracted only ` has X.` as the claim because the regex broke at the first period. Wrapping the regex match in `protect_abbreviations()` / `restore_abbreviations()` (in-function import to avoid module-load coupling) preserves the full claim text.
+
+**Verifier policy stays fail-closed.** Codex's Turn 3 verdict ("fail-closed is correct for the verifier" — false-fail preferred over false-pass) holds. The fix is not a policy relaxation; it makes sentence segmentation precise enough that hard-failures point at real defects rather than splitter artifacts.
+
+### Tests
+
+58 new regression tests in `tests/test_codex_items_6_7_cleanup.py`. Item 7 coverage: shape 1-4 regressions; always-safe lowercase detection for `bun`/`npm`/`deno`/`pnpm`/`pip`; contextual tier suppressed without cues; contextual tier enabled by `compare`/`vs`/`install`/`runtime` cues; contextual tier enabled by a shape 2-4 tech entity; case sensitivity (`PIP` not lowercase-folded); dedupe against existing entities; no bare emission inside hyphenated/dotted matches; verifier hard-fail integration for `compare bun vs npm` with uncovered `npm`; and Q18 + Turn 10 negative regression coverage for `what did Bob make for dinner?` / `how does Alice go faster?` / `did Taylor Swift make an announcement?` / `remove rust from metal`. Item 6 coverage: `protect_abbreviations` / `restore_abbreviations` roundtrip + case preservation + case-insensitive matching; `split_sentences` empty input + non-abbreviation parity + `U.S.` / `e.g.` / honorifics not breaking; verifier integration false-fail elimination per Q6 (3 abbreviation classes) with sources_text explicitly NOT containing the entity so the gap-framing branch runs; verifier integration false-pass guards per Q18 (3 paired abbreviation/entity sentences); claim extractor preserving `U.S.` / `e.g.` / `Mr.` abbreviations.
+
+The prior `test_extract_entities_known_limitations_documented` in `tests/test_codex_t1_fixes.py` inverted: it used to assert `bun`/`npm`/`deno` were NOT extracted as proof of the F5 limitation; the renamed `test_extract_entities_lowercase_tools_now_detected_post_items_6_7` now asserts they ARE extracted.
+
+Full sweep: 364 pass / 52 skip / 0 fail on both branches (delta from v0.3.0 + post-cleanup baseline: +58 new tests, no regressions).
+
+### What did not change
+
+The verifier's hard-fail semantics, the entity-coverage check's escape hatch, the citation-contract `[N]` shape from v0.3.0, the `RESEARCH_*` environment variables, the MCP tool surface, the REST endpoint surface, and the public function signatures of `extract_query_entities()` and `verify_synthesis_output()`. This is a behavior refinement at two narrow seams, not an API change.
+
+---
+
 ## v0.3.0 (2026-05-18)
 
 Unifies the two citation contracts that the synthesis stack carried in parallel since the engine and aggregator paths landed in different releases. Locked architecturally by a separate codex GPT-5.5 high DESIGN session (`019e39f7-33ab-7691-ac6d-30c0804b6cdc`, single-turn), then reviewed for impl by the same continuous adversarial-review session that cleared v0.2.0 through v0.2.2 (`019e395a-8fe7-7e00-ad24-05e20fdb2e1a`).

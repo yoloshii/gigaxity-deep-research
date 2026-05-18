@@ -11,7 +11,6 @@ This module defines the verdict type and the shared post-synthesis verifier
 used by both the MCP synthesize tool and the REST synthesis routes.
 """
 
-import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -19,6 +18,7 @@ from ..llm_utils import LLMOutput
 from .citations import detect_legacy_markers, detect_mixed_markers
 from .contradictions import ContradictionDetectionResult
 from .quality_gate import _entity_in_text
+from .sentence_utils import split_sentences
 
 
 # Explicit gap-framing phrases that indicate the synthesis acknowledged a
@@ -36,7 +36,6 @@ _GAP_FRAMING_PHRASES = (
     "no documentation", "missing from", "absent from",
     "gap in", "coverage gap", "not present in",
 )
-_SENTENCE_SPLIT = re.compile(r"[.!?]\s+|\n+")
 
 
 @dataclass
@@ -73,7 +72,7 @@ def _output_acknowledges_gap(content_lower: str, uncovered_entities: list[str]) 
     incorrectly framed Serper. Splitting at sentence delimiters scopes the
     framing to the entity it actually qualifies.
     """
-    sentences = _SENTENCE_SPLIT.split(content_lower)
+    sentences = split_sentences(content_lower)
     for entity in uncovered_entities:
         entity_lower = entity.lower()
         framed = False
