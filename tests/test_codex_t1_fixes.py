@@ -437,13 +437,16 @@ def test_extract_entities_dotted():
     assert "llama.cpp" in result
 
 
-def test_extract_entities_known_limitations_documented():
-    """Single-word lowercase (bun, npm) are NOT detected — by design."""
+def test_extract_entities_lowercase_tools_now_detected_post_items_6_7():
+    """Single-word lowercase tools (bun, npm, deno) ARE detected as of
+    BACKLOG Item 7 (post-v0.3.0 cleanup, codex DESIGN 019e3a66). The
+    extractor's Shape 5 matches against `LOWERCASE_TOOL_ALLOWLIST`
+    case-sensitively. This inverts the prior `..._known_limitations_
+    documented` test (which asserted F5 was NOT covered)."""
     result = extract_query_entities("Compare bun and npm and deno")
-    # None of these should appear — they look like ordinary words
-    assert "bun" not in result
-    assert "npm" not in result
-    assert "deno" not in result
+    assert "bun" in result
+    assert "npm" in result
+    assert "deno" in result
 
 
 # ---------- Turn 2 F2/F6: MCP synthesize behavior tests ----------

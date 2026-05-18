@@ -256,14 +256,23 @@ def extract_claims_with_citations(
 
     Returns:
         List of (claim, evidence, source_number) tuples
+
+    The claim-boundary regex treats `.` / `!` / `?` as sentence
+    terminators. Abbreviations (U.S., e.g., Mr., etc.) are protected
+    via the shared sentence_utils helpers before matching so the
+    claim is not truncated at the abbreviation period — the same
+    fix applied to the verifier's gap-framing splitter.
     """
+    from .sentence_utils import protect_abbreviations, restore_abbreviations
+
     claims = []
 
     # Pattern: sentence ending with citation [N]
     pattern = r'([^.!?]+[.!?])\s*\[(\d+)\]'
 
-    for match in re.finditer(pattern, text):
-        claim = match.group(1).strip()
+    protected = protect_abbreviations(text)
+    for match in re.finditer(pattern, protected):
+        claim = restore_abbreviations(match.group(1).strip())
         source_num = int(match.group(2))
 
         # Get evidence from source

@@ -17,6 +17,11 @@ from typing import Optional
 
 from ..config import settings
 from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction
+from .entity_allowlist import (
+    CONTEXT_CUES,
+    CONTEXTUAL_LOWERCASE_TOOL_ALLOWLIST,
+    LOWERCASE_TOOL_ALLOWLIST,
+)
 
 
 # Common query-shape words that look like proper nouns to the capitalized-token
@@ -87,7 +92,7 @@ def _split_phrase_at_stopwords(phrase: str) -> list[str]:
 def extract_query_entities(query: str) -> list[str]:
     """Extract candidate named entities from a query.
 
-    Heuristic: regex matches across four shapes that cover the dominant
+    Heuristic: regex matches across five shapes that cover the dominant
     technology-name patterns:
 
     1. Capitalized words (3+ chars): ``Tavily`` / ``LinkUp`` / ``FastAPI`` /
@@ -102,20 +107,26 @@ def extract_query_entities(query: str) -> list[str]:
        a leading letter.
     4. Dotted module paths: ``llama.cpp`` / ``asyncio.gather`` /
        ``numpy.array``. Requires a dot between identifier-shaped tokens.
+    5. Curated lowercase tools (``bun`` / ``npm`` / ``deno`` / ``pnpm`` /
+       ``pip``): matched against ``LOWERCASE_TOOL_ALLOWLIST`` exactly,
+       case-sensitive. Ambiguous tokens (``go`` / ``rust`` / ``uv``) in
+       ``CONTEXTUAL_LOWERCASE_TOOL_ALLOWLIST`` only fire when the query
+       carries technical/comparison context cues OR shapes 1-4 already
+       extracted at least one tech entity. Lowercase candidates inside
+       hyphenated/dotted matches (``pip`` inside ``pip-tools``) are NOT
+       re-emitted — the hyphenated form is the canonical entity.
 
     Returns deduplicated, order-preserving list. Stopword filter applied
-    to shape (1). Shapes (2)–(4) are inherently entity-shaped so the
-    stopword filter is skipped for them.
+    to shape (1). Shapes (2)–(5) are inherently entity-shaped (or curated)
+    so the stopword filter is skipped for them.
 
-    KNOWN LIMITATIONS (acceptable per codex T2 F5 — "first-pass safety net,
-    not a calibrated coverage model"):
-    - Single-word lowercase technologies (``bun``, ``npm``, ``pnpm``,
-      ``deno``) are NOT detected — they look like ordinary English words.
-      Callers needing precision should extend the entity list out-of-band.
+    KNOWN LIMITATIONS:
     - Non-English entity names (CJK, Cyrillic, etc.) are NOT detected.
     - Numeric-only identifiers (``2026``, ``v3``) are NOT detected.
     - Acronyms shorter than 3 chars (``AI``, ``ML``, ``UI``) are NOT
       detected — by design, to avoid noise.
+    - Lowercase tools outside the curated allowlist are NOT detected;
+      maintainers extend ``entity_allowlist.py`` to add coverage.
     """
     if not query:
         return []
@@ -134,6 +145,14 @@ def extract_query_entities(query: str) -> list[str]:
 
     seen: set[str] = set()
     result: list[str] = []
+    # Tracks ONLY shapes 2-4 entities — used to enable the Shape 5
+    # contextual tier without misreading Shape 1 proper nouns (Bob,
+    # Alice, Taylor Swift) as tech entities. Codex T10 HIGH (NONCE
+    # codex-design-items-6-7-2026-05-18-7e3a9c4b): `bool(result)`
+    # let "What did Bob make for dinner?" extract `make` because Bob
+    # enabled the contextual tier. Shapes 2-4 are inherently tech-
+    # shaped, so they are the correct signal.
+    tech_shaped_entities: list[str] = []
 
     # Shape 1 — split at stopword boundaries
     for c in re.findall(cap_pattern, query):
@@ -151,6 +170,37 @@ def extract_query_entities(query: str) -> list[str]:
             if c not in seen:
                 seen.add(c)
                 result.append(c)
+                tech_shaped_entities.append(c)
+
+    # Shape 5 — curated lowercase tool allowlist (Item 7, post-v0.3.0).
+    # Contextual tier is enabled only when (a) a CONTEXT_CUES word appears
+    # in the query OR (b) shapes 2-4 (NOT shape 1) already found a
+    # tech-shaped entity — codex design Q9 + T10 HIGH refinement. Prevents
+    # "remove rust from metal" / "how to go faster" / "What did Bob make
+    # for dinner?" from being treated as Rust / Go / Make queries.
+    query_lower_words = set(re.findall(r"\b[a-z]+\b", query.lower()))
+    contextual_enabled = (
+        bool(query_lower_words & CONTEXT_CUES)
+        or bool(tech_shaped_entities)
+    )
+    allowlist = LOWERCASE_TOOL_ALLOWLIST
+    if contextual_enabled:
+        allowlist = allowlist | CONTEXTUAL_LOWERCASE_TOOL_ALLOWLIST
+    # Token boundary excludes letters, digits, dots, hyphens, underscores
+    # on both sides — so `pip` inside `pip-tools` / `numpy.pip` / `pip_tools`
+    # does NOT re-emit (codex design Q11; shape 3/4 already cover those).
+    # Pattern is case-sensitive (no re.IGNORECASE), so `PIP` in the query
+    # does not lowercase-fold to `pip` (codex design Q10).
+    existing_lower = {e.lower() for e in result}
+    for match in re.finditer(r"(?<![A-Za-z0-9_.\-])[a-z]+(?![A-Za-z0-9_.\-])", query):
+        token = match.group(0)
+        if token not in allowlist:
+            continue
+        if token in seen or token in existing_lower:
+            continue
+        seen.add(token)
+        existing_lower.add(token)
+        result.append(token)
 
     return result
 
