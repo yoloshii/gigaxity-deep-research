@@ -226,9 +226,19 @@ def llm_configured():
 
 @pytest.fixture
 def llm_client():
-    """Create LLM client for tests."""
+    """Create LLM client for tests.
+
+    Gates on `RESEARCH_LLM_API_KEY` (not just `llm_api_base`) so live-LLM
+    tests skip cleanly when no real key is set. Without this check the
+    base URL's working default would let tests reach an unauthenticated
+    endpoint and fail with `openai.AuthenticationError: 401` instead of
+    skipping. Mirrors `llm_configured` above.
+    """
     from openai import AsyncOpenAI
     from src.config import settings
+
+    if not os.getenv("RESEARCH_LLM_API_KEY", ""):
+        pytest.skip("LLM not configured (RESEARCH_LLM_API_KEY unset)")
 
     if not settings.llm_api_base:
         pytest.skip("LLM not configured")
