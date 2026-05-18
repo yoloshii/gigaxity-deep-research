@@ -48,6 +48,9 @@ P1_ENHANCEMENTS.md
 # Codex review artifacts (never pushed)
 .codex-review/
 
+# Backlog (lives in tool-openrouter private mirror only)
+BACKLOG.md
+
 # OS clutter
 .DS_Store
 Thumbs.db

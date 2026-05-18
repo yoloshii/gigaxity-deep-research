@@ -458,9 +458,16 @@ async def synthesize(
         lines.append(f"*Preset: {preset_config.name}*\n")
         lines.append(result.content)
 
-        if contradictions:
+        # Defense in depth: even if a malformed contradiction slipped past the
+        # detector's filter (see contradictions._parse_contradictions), don't
+        # render an empty stanza. Belt-and-braces with the source-side guard.
+        renderable_contradictions = [
+            c for c in contradictions
+            if c.topic and c.position_a and c.position_b
+        ]
+        if renderable_contradictions:
             lines.append("\n## Contradictions Detected\n")
-            for c in contradictions:
+            for c in renderable_contradictions:
                 lines.append(f"- **{c.topic}** ({c.severity.value}): {c.position_a} vs {c.position_b}")
                 if c.resolution_hint:
                     lines.append(f"  - Resolution: {c.resolution_hint}")

@@ -22,7 +22,7 @@ from typing import Optional
 
 from ..config import settings
 from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction, derive_effective_budget
-from .citations import extract_numeric_citations
+from .citations import CITATION_FORMAT_GUIDE, extract_numeric_citations
 from .source_formatting import derive_input_budget, format_sources_for_synthesis
 
 
@@ -59,9 +59,9 @@ class AggregatedSynthesis:
 
 
 # Synthesis prompts optimized for aggregation (not search)
-COMPREHENSIVE_SYNTHESIS_PROMPT = """You are synthesizing research findings from multiple pre-gathered sources.
+COMPREHENSIVE_SYNTHESIS_PROMPT = f"""You are synthesizing research findings from multiple pre-gathered sources.
 
-Query: {query}
+Query: {{query}}
 
 Sources have been gathered from:
 - Documentation (Ref): Official docs, API references
@@ -69,69 +69,75 @@ Sources have been gathered from:
 - Web Content (Jina): Articles, discussions, tutorials
 
 Pre-gathered content:
-{sources}
+{{sources}}
 
 Instructions:
 1. Synthesize these sources into a comprehensive response
-2. Use inline citations [1], [2], etc. corresponding to source numbers
-3. Every factual claim MUST have a citation
-4. Highlight where sources agree and where they differ
-5. Note any gaps in the available information
-6. Structure with clear sections if content warrants it
+2. Every factual claim MUST have a citation
+3. Highlight where sources agree and where they differ
+4. Note any gaps in the available information
+5. Structure with clear sections if content warrants it
+
+{CITATION_FORMAT_GUIDE}
 
 Provide a thorough synthesis:"""
 
-CONCISE_SYNTHESIS_PROMPT = """Synthesize these pre-gathered sources into a focused, concise answer.
+CONCISE_SYNTHESIS_PROMPT = f"""Synthesize these pre-gathered sources into a focused, concise answer.
 
-Query: {query}
+Query: {{query}}
 
 Sources:
-{sources}
+{{sources}}
 
 Instructions:
 1. Provide a direct, concise answer (2-4 paragraphs max)
-2. Use inline citations [1], [2], etc.
-3. Focus on the most important points
-4. Skip tangential information
+2. Focus on the most important points
+3. Skip tangential information
+
+{CITATION_FORMAT_GUIDE}
 
 Concise synthesis:"""
 
-COMPARATIVE_SYNTHESIS_PROMPT = """Create a comparative analysis from these pre-gathered sources.
+COMPARATIVE_SYNTHESIS_PROMPT = f"""Create a comparative analysis from these pre-gathered sources.
 
-Query: {query}
+Query: {{query}}
 
 Sources:
-{sources}
+{{sources}}
 
 Instructions:
 1. Identify the items/approaches being compared
 2. Create a structured comparison (can use tables if helpful)
-3. Cite sources for each comparison point [1], [2], etc.
+3. Cite sources for each comparison point
 4. Conclude with situational recommendations
+
+{CITATION_FORMAT_GUIDE}
 
 Comparative analysis:"""
 
-ACADEMIC_SYNTHESIS_PROMPT = """Synthesize these sources in an academic/scholarly style.
+ACADEMIC_SYNTHESIS_PROMPT = f"""Synthesize these sources in an academic/scholarly style.
 
-Query: {query}
+Query: {{query}}
 
 Sources:
-{sources}
+{{sources}}
 
 Instructions:
 1. Use formal, scholarly tone
-2. Cite sources rigorously [1], [2], etc.
+2. Cite sources rigorously
 3. Acknowledge limitations and uncertainties
 4. Structure as: Background → Analysis → Discussion → Conclusions
 
+{CITATION_FORMAT_GUIDE}
+
 Academic synthesis:"""
 
-REASONING_SYNTHESIS_PROMPT = """You are synthesizing research findings with explicit reasoning.
+REASONING_SYNTHESIS_PROMPT = f"""You are synthesizing research findings with explicit reasoning.
 
-Query: {query}
+Query: {{query}}
 
 Sources:
-{sources}
+{{sources}}
 
 First, think through your approach:
 1. What are the key aspects of this query?
@@ -143,10 +149,10 @@ First, think through your approach:
 [Your step-by-step reasoning here]
 </reasoning>
 
-Now provide your synthesis based on this reasoning:
+Now provide your synthesis based on this reasoning. {CITATION_FORMAT_GUIDE}
 
 <synthesis>
-[Your synthesized response with citations [1], [2], etc.]
+[Your synthesized response]
 </synthesis>"""
 
 

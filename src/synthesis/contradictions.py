@@ -221,11 +221,21 @@ If no contradictions found, respond with: NO_CONTRADICTIONS"""
                 source_a = self._parse_source_num(fields.get("SOURCE_A", "1"))
                 source_b = self._parse_source_num(fields.get("SOURCE_B", "2"))
 
+                topic = fields.get("TOPIC", "").strip()
+                position_a = fields.get("POSITION_A", "").strip()
+                position_b = fields.get("POSITION_B", "").strip()
+
+                # Reject blocks missing any of topic / position_a / position_b.
+                # Render path would emit "- **Unknown** (moderate):  vs " — no
+                # signal for the reader (codex Turn 7 v0.2.2).
+                if not topic or not position_a or not position_b:
+                    continue
+
                 contradictions.append(Contradiction(
-                    topic=fields.get("TOPIC", "Unknown"),
-                    position_a=fields.get("POSITION_A", ""),
+                    topic=topic,
+                    position_a=position_a,
                     source_a=source_a,
-                    position_b=fields.get("POSITION_B", ""),
+                    position_b=position_b,
                     source_b=source_b,
                     severity=severity,
                     resolution_hint=fields.get("RESOLUTION", ""),
