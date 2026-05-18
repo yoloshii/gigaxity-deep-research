@@ -167,7 +167,7 @@ Citation-aware synthesis over caller-provided sources. **Does not search.** Pass
 |---|---|---|---|
 | `query` | str | required | Synthesis focus / question |
 | `sources` | list[dict] | required | Pre-gathered sources (see shape below) |
-| `style` | str | `"comprehensive"` | One of `comprehensive`, `concise`, `comparative`, `academic`, `tutorial` |
+| `style` | str \| null | `null` | One of `comprehensive`, `concise`, `comparative`, `academic`, `tutorial`. When `null` and `preset` is set, falls through to the preset's own style; when `null` and no preset, defaults to `comprehensive`. Explicit value always overrides the preset. |
 | `preset` | str \| null | null | Pipeline preset: `comprehensive`, `fast`, `contracrow`, `academic`, `tutorial` |
 | `api_key` | str \| null | null | Per-request LLM key override |
 
@@ -209,7 +209,11 @@ Each `sources[i]` dict:
 
 The `Contradictions Detected` section appears only when a preset that runs contradiction detection is selected (e.g. `comprehensive`, `contracrow`). The `Quality gate` and `RCS` footer lines appear only when the preset enables those stages.
 
-**Output verification.** A post-synthesis verifier runs before relay. Hard failures (empty answer, reasoning-only output, truncation by `max_tokens` even after a one-shot retry at the ceiling, a failed contributing sub-call, or zero citations when sources exist) prepend a `# Synthesis verification FAILED` header listing the specific failure(s) with the unverified output following for debugging. Soft conditions (partial citation coverage, parse-failed contradiction detection, surfaced contradictions) append a `*Verification notes: ...*` line. Hard-failed outputs are not cached.
+**Output verification.** A post-synthesis verifier runs before relay. Hard failures (empty answer, reasoning-only output, truncation by `max_tokens` even after a one-shot retry at the ceiling, a failed contributing sub-call, zero citations when sources exist, or **any discussed entity absent from every retained source unless the synthesis explicitly frames the gap**) prepend a `# Synthesis verification FAILED` header listing the specific failure(s) with the unverified output following for debugging. Soft conditions (partial citation coverage, parse-failed contradiction detection, surfaced contradictions, gap-framed uncited entities) append a `*Verification notes: ...*` line. Hard-failed outputs are not cached.
+
+**Entity-coverage check.** When the gate filters out the only source(s) covering an entity the synthesis later discusses, the verifier flags it as likely uncited hallucination. The escape hatch is explicit gap-framing in the same sentence as the entity mention — phrases like `no source available for X`, `not in the gathered sources`, `could not find`, `not documented`, etc. A synthesis that says "Tavily and LinkUp are compared above; we have no source available for Serper" passes verification with a soft warning. A synthesis that confidently asserts Serper pricing without a citation hard-fails.
+
+**Quality-gate early-return (REJECT and PARTIAL-with-zero-good).** When the pre-synthesis relevance gate rejects the input source set — either via the REJECT decision (avg relevance below `reject_threshold`) or the PARTIAL-with-zero-good edge case (avg above the floor but no individual source clears `pass_threshold`) — `synthesize` returns a `## Source quality insufficient` block without invoking the synthesizer. The response includes the gate's `suggestion` field and is NOT cached. This mirrors the REST `/synthesize/enhanced` and `/synthesize/p1` behavior at `routes.py`.
 
 **Use when:** you have sources from your own fetcher and want a citation-aware synthesis with optional CRAG-style quality gating, RCS preprocessing, and PaperQA2-style contradiction surfacing.
 

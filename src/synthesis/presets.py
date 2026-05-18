@@ -39,6 +39,17 @@ class SynthesisPreset:
     run_quality_gate: bool
     temperature: float = 0.7
     min_sources: int = 1
+    # Per-preset quality-gate thresholds. None falls back to SourceQualityGate
+    # class defaults (REJECT 0.3 / PASS 0.5). Comparison-friendly presets
+    # (comprehensive, contracrow) relax these because per-vendor sources score
+    # low against a multi-entity query under the scalar scorer.
+    quality_gate_reject_threshold: Optional[float] = None
+    quality_gate_pass_threshold: Optional[float] = None
+    # Entity-balanced safety net: after the scalar gate runs, promote the
+    # highest-scoring rejected source for each capitalized query entity that is
+    # not represented in good_sources. Prevents whole-vendor blackouts on
+    # comparison queries while still filtering genuinely irrelevant sources.
+    quality_gate_entity_balanced: bool = False
 
 
 # Pre-defined presets
@@ -54,6 +65,9 @@ SYNTHESIS_PRESETS: dict[PresetName, SynthesisPreset] = {
         use_rcs=True,
         run_quality_gate=True,
         min_sources=2,
+        quality_gate_reject_threshold=0.2,
+        quality_gate_pass_threshold=0.4,
+        quality_gate_entity_balanced=True,
     ),
 
     PresetName.FAST: SynthesisPreset(
@@ -81,6 +95,9 @@ SYNTHESIS_PRESETS: dict[PresetName, SynthesisPreset] = {
         use_rcs=True,
         run_quality_gate=True,
         min_sources=2,
+        quality_gate_reject_threshold=0.2,
+        quality_gate_pass_threshold=0.4,
+        quality_gate_entity_balanced=True,
     ),
 
     PresetName.ACADEMIC: SynthesisPreset(
@@ -185,4 +202,10 @@ def apply_overrides(preset: SynthesisPreset, overrides: PresetOverrides) -> Synt
         run_quality_gate=overrides.run_quality_gate if overrides.run_quality_gate is not None else preset.run_quality_gate,
         temperature=overrides.temperature if overrides.temperature is not None else preset.temperature,
         min_sources=preset.min_sources,
+        # Quality-gate per-preset config — preserve through overrides. Without
+        # this, applying any override silently drops the relaxed comparison
+        # thresholds + entity-balanced filter on COMPREHENSIVE / CONTRACROW.
+        quality_gate_reject_threshold=preset.quality_gate_reject_threshold,
+        quality_gate_pass_threshold=preset.quality_gate_pass_threshold,
+        quality_gate_entity_balanced=preset.quality_gate_entity_balanced,
     )

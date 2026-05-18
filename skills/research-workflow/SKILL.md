@@ -509,7 +509,7 @@ reasoning = mcp__gigaxity-deep-research__reason(
 )
 ```
 
-**Key Insight:** gigaxity-deep-research does NOT re-search. Triple Stack already gathered content - just synthesize it. Re-searching at the synthesis step doubles your token spend and adds latency for no quality gain.
+**Key Insight:** gigaxity-deep-research does NOT re-search. Triple Stack already gathered content - just synthesize it. This is the critical difference from deprecated Perplexity which would re-search.
 
 **Free middleware (use liberally — 0 token cost on Jina):**
 - `mcp__jina__sort_by_relevance(query, documents)` — rerank Triple Stack URL union before deciding which to deep-read
@@ -520,7 +520,7 @@ reasoning = mcp__gigaxity-deep-research__reason(
 
 ### Verifier Verdict Handling
 
-`synthesize` runs a post-synthesis verifier and prepends a structural header on hard-gate failure (empty content, reasoning-only trace, truncated by token limit, sub-call failure, or zero citations on non-empty sources):
+`synthesize` runs a post-synthesis verifier and prepends a structural header on hard-gate failure (empty content, reasoning-only trace, truncated by token limit, sub-call failure, zero citations on non-empty sources, or **any query entity discussed in the synthesis that is absent from every retained source unless the synthesis explicitly frames the gap**):
 
 ```
 # Synthesis verification FAILED
@@ -542,11 +542,39 @@ This output is not a reliable synthesis:
    - `truncated by token limit` → raise `RESEARCH_LLM_MAX_TOKENS` (env var on the MCP), or switch preset to `fast` (less preprocessing budget burn).
    - `reasoning trace instead of answer` → model spending budget on chain-of-thought; raise `RESEARCH_LLM_REASONING_HEADROOM` or pick a non-reasoning model.
    - `zero citations on N sources` → source content may not have reached the model; check disk-spill on the source-gathering tools (per "Tool Output Persistence" above) — agents commonly synthesize from 2KB previews and end up with sources whose content never made it to the model.
+   - `synthesis discusses entities [...] but those entities are absent from every retained source` → **entity-coverage hard-fail**. The relevance gate filtered out the only sources covering one of the named entities, but the LLM wrote about it anyway from prior knowledge. Either (a) gather more sources covering the missing entity and re-call, or (b) re-frame the synthesis to explicitly acknowledge the gap ("we have no source available for X") — the verifier downgrades to a soft warning when uncovered entities appear in the same sentence as a gap-framing phrase ("no source", "not in the gathered", "not documented", "could not find", etc.).
 3. ONE retry is permitted: re-call synthesize with a different `preset` (e.g., `contracrow` → `fast`) or fewer sources.
 4. If the retry also FAILS, fall back to main-thread synthesis from the raw sources, AND prepend the user-facing answer with: `> Note: gigaxity-deep-research synthesize failed verification on retry; this is a main-thread synthesis from raw sources without the verifier guarantees.`
 5. Hard-failed outputs are NOT cached, so the next call will re-run — do not cache-bust manually.
 
 Soft warnings append `*Verification notes: <warning>*` at the end of the output and are advisory; the synthesis is usable, but flag the gap in your final answer.
+
+### Gate Early-Return (distinct from verifier hard-fail)
+
+`synthesize` can also return WITHOUT invoking the synthesizer at all — when the **pre-synthesis relevance gate** decides the input source set isn't synthesizable. Two cases:
+
+1. **`## Source quality insufficient`** (REJECT decision) — average source relevance below the gate's `reject_threshold` (defaults 0.2 for `comprehensive`/`contracrow`, 0.3 for class default). Returned as a markdown response with a header like:
+
+   ```
+   # Synthesis: {query}
+   *Preset: Comprehensive*
+   ## Source quality insufficient
+
+   The pre-synthesis relevance gate rejected the input source set (avg relevance 0.15 below threshold 0.2). Synthesis skipped to prevent hallucination over irrelevant sources.
+
+   **Suggested follow-up searches:** ...
+
+   ---
+   *Pre-synthesis source-relevance gate: 0 passed, N filtered (avg source relevance: 0.15). Synthesis NOT cached — gather better sources and re-call.*
+   ```
+
+2. **`## Source quality insufficient (partial, zero passed)`** (PARTIAL-with-zero-good edge case) — average relevance above the reject floor but no individual source clears the `pass_threshold`. Same shape, different header.
+
+**When you see either of these:**
+- The synthesizer was **never invoked**; there is no synthesis to retry.
+- The output is **NOT cached** — re-calling with the same sources will re-evaluate.
+- Action: gather more relevant sources (Triple Stack again, broader queries, different focus mode) and re-call. Do NOT retry with the same source set; the gate's verdict is data-driven, not flaky.
+- Distinct from the verifier hard-fail above — those mean the synthesizer ran but produced unreliable output; these mean the synthesizer was deliberately skipped.
 
 **Token cost:** ~5000-10000 tokens
 **Time:** 3-5 min
@@ -709,15 +737,15 @@ mcp__gigaxity-deep-research__reason(
 
 ---
 
-## Migration mapping (for users coming from a deprecated upstream MCP)
+## Perplexity Replacement Mapping
 
-| Old tool name | gigaxity-deep-research tool | Workflow |
-|---------------|-------------------|----------|
-| `*_search` | `discover` | EXPLORATORY entry |
-| `*_ask` | `ask` | DIRECT quick answer |
-| `*_research` | `synthesize` | SYNTHESIS (post-Triple Stack) |
-| `*_reason` | `reason` | SYNTHESIS (chain-of-thought) |
-| `*_deep_research` | `discover` → Jina → `synthesize` | EXPLORATORY full flow |
+| Deprecated Perplexity Tool | gigaxity-deep-research Replacement | Workflow |
+|----------------------------|--------------------------|----------|
+| `perplexity_search` | `discover` | EXPLORATORY entry |
+| `perplexity_ask` | `ask` | DIRECT quick answer |
+| `perplexity_research` | `synthesize` | SYNTHESIS (post-Triple Stack) |
+| `perplexity_reason` | `reason` | SYNTHESIS (chain-of-thought) |
+| `perplexity_deep_research` | `discover` → Jina → `synthesize` | EXPLORATORY full flow |
 
 ---
 
@@ -921,9 +949,9 @@ mcp__gigaxity-deep-research__reason(
 ### 4. Don't Re-Search in Synthesis
 
 ```
-❌ Triple Stack → synthesize → (synthesize searches again)  # doubles token spend, no quality gain
+❌ Triple Stack → synthesize → (synthesize searches again)  # Perplexity did this
 
-✅ Triple Stack → synthesize (uses ONLY provided sources)
+✅ Triple Stack → synthesize (uses ONLY provided sources)  # gigaxity-deep-research
 ```
 
 ### 5. Don't Use research Tool for Triple Stack Workflows
@@ -1154,9 +1182,9 @@ Tool completely fails (timeout, connection error)?
 **gigaxity-deep-research connector fan-out (load-bearing):**
 - `mcp__gigaxity-deep-research__search` / `discover` / `research` fan out to up to 3 backends in parallel via RRF fusion: **SearXNG** (always available — no key), **Tavily** (gated on `RESEARCH_TAVILY_API_KEY`), **LinkUp** (gated on `RESEARCH_LINKUP_API_KEY`).
 - Connectors with missing keys are **silently dropped at init** (`SearchAggregator.__init__` filters on `is_configured()`). No error, no warning.
-- Health check: `mcp__gigaxity-deep-research__search` returns a trailer line `*N results from ['searxng', 'tavily', 'linkup'] (configured: ['searxng', 'tavily', 'linkup'])*`. If `configured:` shows only `['searxng']`, the other two are unconfigured. If `from` and `configured` diverge, configured connectors errored or returned empty for this query — see [troubleshooting.md](../../docs/troubleshooting.md#search--connector-errors).
-- `research` and `discover` also surface trailers in the same shape (research mirrors `search`; discover shows only the `configured:` line because the Explorer wraps the aggregator).
-- Healthy steady state (3-way fusion) requires both `RESEARCH_TAVILY_API_KEY` and `RESEARCH_LINKUP_API_KEY` in the MCP `env` block. MCP subprocess must be restarted after env changes.
+- Health check: `mcp__gigaxity-deep-research__search` returns a trailer line `*N results from ['searxng', 'tavily', 'linkup'] (configured: ['searxng', 'tavily', 'linkup'])*`. If `configured:` shows only `['searxng']`, the other two are unconfigured at init. If `from` is shorter than `configured`, the configured connectors errored or returned empty for this query.
+- `research` mirrors the same `from [...] (configured: [...])` shape; `discover` surfaces only the `configured:` line (the Explorer wraps the aggregator and does not expose per-connector raw results).
+- Healthy steady state (3-way fusion) requires both `RESEARCH_TAVILY_API_KEY` and `RESEARCH_LINKUP_API_KEY` in the MCP `env` block (`~/.claude.json` under `gigaxity-deep-research.env`). MCP subprocess must be restarted after env changes — restart the full Claude Code session.
 - Searxng-only state is functional but lower-coverage — `discover` landscapes and `synthesize` outputs derived from gigaxity's own search will be less diverse.
 
 **Exa MCP transport (HTTP vs stdio — load-bearing):**
@@ -1486,17 +1514,19 @@ mcp__gigaxity-deep-research__synthesize(
 
 This skill integrates with existing global MCP configuration:
 
-**Global MCPs (Direct Access — full deep research stack, 7 MCPs):**
-- Ref, Exa, Jina (the **Triple Stack** — search/docs/code trio)
-- exa-answer (speed-critical factual lookups)
+**Global MCPs (Direct Access):**
+- Ref, Exa, Jina (Triple Stack)
 - gigaxity-deep-research (synthesis engine)
-- brightdata_fallback (blocked-URL recovery)
-- gptr-mcp (social-first research via [GPT Researcher](https://github.com/assafelovic/gpt-researcher))
 
-**Tool Naming (6 stdio MCP tools — 2 primitives + 4 deep-research):**
-- `mcp__gigaxity-deep-research__search` — raw multi-source aggregation, no LLM call
-- `mcp__gigaxity-deep-research__research` — combined search + synthesis in a single call
-- `mcp__gigaxity-deep-research__ask` — fast conversational answer (direct LLM, no search)
-- `mcp__gigaxity-deep-research__discover` — exploratory expansion + gap detection
-- `mcp__gigaxity-deep-research__synthesize` — citation-aware synthesis over pre-gathered content
-- `mcp__gigaxity-deep-research__reason` — chain-of-thought reasoning (with optional pre-gathered sources)
+**Tool Naming:**
+- `mcp__gigaxity-deep-research__discover`
+- `mcp__gigaxity-deep-research__synthesize`
+- `mcp__gigaxity-deep-research__reason`
+- `mcp__gigaxity-deep-research__ask`
+- `mcp__gigaxity-deep-research__search`
+
+**Replaces deprecated:**
+- `mcp__perplexity__perplexity_search`
+- `mcp__perplexity__perplexity_ask`
+- `mcp__perplexity__perplexity_research`
+- `mcp__perplexity__perplexity_reason`

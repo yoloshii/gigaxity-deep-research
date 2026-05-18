@@ -1,6 +1,6 @@
 [project]
 name = "gigaxity-deep-research"
-version = "0.1.0"
+version = "0.2.0"
 description = "Deep research MCP server bringing Tongyi DeepResearch 30B to Claude Code via OpenRouter — discover, synthesize, and reason over the web."
 readme = "README.md"
 requires-python = ">=3.11"

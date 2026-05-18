@@ -35,6 +35,7 @@ from .synthesis import (
     get_preset,
     verify_synthesis_output,
     annotate_with_verdict,
+    extract_query_entities,
 )
 from .discovery import (
     Explorer,
@@ -249,7 +250,7 @@ async def discover(
 async def synthesize(
     query: str,
     sources: list[dict],
-    style: Literal["comprehensive", "concise", "comparative", "academic", "tutorial"] = "comprehensive",
+    style: Literal["comprehensive", "concise", "comparative", "academic", "tutorial"] | None = None,
     preset: Literal["comprehensive", "fast", "contracrow", "academic", "tutorial"] | None = None,
     api_key: str | None = None,
 ) -> str:
@@ -260,14 +261,20 @@ async def synthesize(
     Args:
         query: Synthesis focus/question
         sources: Pre-gathered source documents with title, content, url, origin, source_type
-        style: Output format/length
+        style: Output format/length. When None and a preset is provided, the
+            preset's own style is used (preset wins by default; explicit style
+            always overrides). When None and no preset, defaults to comprehensive.
         preset: Processing pipeline preset (comprehensive, fast, contracrow, academic, tutorial)
         api_key: Per-request LLM key override; defaults to RESEARCH_LLM_API_KEY.
     """
+    # Resolve preset_config up-front so per-preset config can drive style
+    # selection, quality-gate thresholds, and entity-balanced filtering.
+    preset_config = get_preset(preset) if preset else None
+
     # Source-aware cache key: fingerprint source content in input order plus
     # model + effective budget + pipeline mode + version, so a reorder or a
     # content/model/budget change never returns a stale or mis-bound result.
-    base_max_tokens = get_preset(preset).max_tokens if preset else settings.llm_max_tokens
+    base_max_tokens = preset_config.max_tokens if preset_config else settings.llm_max_tokens
     effective_max_tokens = derive_effective_budget(base_max_tokens, settings.llm_model)
     cache_extra = build_synthesis_cache_extra(
         sources,
@@ -301,19 +308,103 @@ async def synthesize(
         "academic": SynthesisStyle.ACADEMIC,
         "tutorial": SynthesisStyle.TUTORIAL,
     }
-    synth_style = style_map.get(style, SynthesisStyle.COMPREHENSIVE)
+    # Style resolution precedence: explicit caller arg wins; otherwise the
+    # preset's style; otherwise COMPREHENSIVE. Previously the `style` parameter
+    # defaulted to "comprehensive" (string), so preset.style was silently
+    # dropped whenever a caller omitted style — the documented `synthesize(query,
+    # sources, preset)` usage was always taking the wrong style. Sentinel
+    # style=None now disambiguates "caller didn't pass" from "caller passed
+    # an explicit value".
+    if style is not None:
+        synth_style = style_map.get(style, SynthesisStyle.COMPREHENSIVE)
+    elif preset_config is not None:
+        synth_style = preset_config.style
+    else:
+        synth_style = SynthesisStyle.COMPREHENSIVE
 
-    if preset:
-        preset_config = get_preset(preset)
+    # Pre-compute entity + source corpus for the post-synthesis verifier's
+    # entity-coverage check. The verifier hard-fails when the synthesis
+    # discusses entities that are absent from every retained source — catches
+    # the hallucination class where the gate filters out all sources for an
+    # entity but the LLM writes about it anyway from prior knowledge.
+    query_entities = extract_query_entities(query)
+
+    if preset_config:
         metadata = {"preset": preset_config.name}
         processed_sources = pre_sources
 
-        # Quality gate
+        # Quality gate — per-preset thresholds + entity-balanced safety net.
         if preset_config.run_quality_gate:
-            quality_gate = SourceQualityGate(client, model=settings.llm_model)
+            quality_gate = SourceQualityGate(
+                client,
+                model=settings.llm_model,
+                reject_threshold=preset_config.quality_gate_reject_threshold,
+                pass_threshold=preset_config.quality_gate_pass_threshold,
+                entity_balanced=preset_config.quality_gate_entity_balanced,
+            )
             gate_result = await quality_gate.evaluate(query=query, sources=pre_sources)
+
+            # REJECT early-return mirrors REST behavior at routes.py:848.
+            # Previously the MCP path initialized processed_sources = pre_sources
+            # and only PARTIAL/PROCEED updated it — REJECT silently fell
+            # through and synthesis ran over ALL original sources, defeating
+            # the gate. Output is NOT cached: REJECT must re-evaluate against
+            # whatever sources the next call brings.
+            if gate_result.decision == QualityDecision.REJECT:
+                lines = [
+                    f"# Synthesis: {query}\n",
+                    f"*Preset: {preset_config.name}*\n",
+                    "## Source quality insufficient\n",
+                    (
+                        f"The pre-synthesis relevance gate rejected the input source set "
+                        f"(avg relevance {gate_result.avg_quality:.2f} below threshold "
+                        f"{quality_gate.reject_threshold}). Synthesis skipped to prevent "
+                        f"hallucination over irrelevant sources.\n"
+                    ),
+                ]
+                if gate_result.suggestion:
+                    lines.append(f"**Suggested follow-up searches:** {gate_result.suggestion}\n")
+                lines.append(
+                    f"\n---\n*Pre-synthesis source-relevance gate: 0 passed, "
+                    f"{len(gate_result.rejected_sources)} filtered "
+                    f"(avg source relevance: {gate_result.avg_quality:.2f}). "
+                    f"Synthesis NOT cached — gather better sources and re-call.*"
+                )
+                return "\n".join(lines)
+
+            # PARTIAL-with-zero-good (Turn 2 codex F6): when avg relevance is
+            # above the reject floor but no source clears the pass threshold,
+            # the gate returns PARTIAL with empty good_sources. Falling back
+            # to pre_sources reintroduces the same gate-bypass class as H2
+            # (REJECT didn't reject) — synthesis runs over the bypassed
+            # source set. Treat as effectively REJECT and early-return.
+            if gate_result.decision == QualityDecision.PARTIAL and not gate_result.good_sources:
+                lines = [
+                    f"# Synthesis: {query}\n",
+                    f"*Preset: {preset_config.name}*\n",
+                    "## Source quality insufficient (partial, zero passed)\n",
+                    (
+                        f"The pre-synthesis relevance gate flagged the input source set "
+                        f"as PARTIAL (avg relevance {gate_result.avg_quality:.2f} above "
+                        f"the REJECT floor {quality_gate.reject_threshold} but no source "
+                        f"cleared the PASS threshold {quality_gate.pass_threshold}). "
+                        f"Synthesis skipped to prevent hallucination over weak sources.\n"
+                    ),
+                ]
+                if gate_result.suggestion:
+                    lines.append(f"**Suggested follow-up searches:** {gate_result.suggestion}\n")
+                lines.append(
+                    f"\n---\n*Pre-synthesis source-relevance gate: 0 passed, "
+                    f"{len(gate_result.rejected_sources)} filtered "
+                    f"(avg source relevance: {gate_result.avg_quality:.2f}). "
+                    f"Synthesis NOT cached — gather better sources and re-call.*"
+                )
+                return "\n".join(lines)
+
             if gate_result.decision in (QualityDecision.PARTIAL, QualityDecision.PROCEED):
-                processed_sources = gate_result.good_sources if gate_result.good_sources else pre_sources
+                # good_sources is non-empty here (PARTIAL-with-zero-good
+                # handled above).
+                processed_sources = gate_result.good_sources
             metadata["quality_gate"] = {
                 "passed": len(gate_result.good_sources),
                 "filtered": len(gate_result.rejected_sources),
@@ -381,13 +472,21 @@ async def synthesize(
             lines.append(f"*RCS: {metadata.get('rcs_kept', 0)} sources processed*")
 
         # Post-synthesis verification: a failed synthesis must not be
-        # reported as a success or cached.
+        # reported as a success or cached. Entity-coverage check (H3) uses
+        # the POST-gate source set (processed_sources) — checking against
+        # pre-gate would mask the case where the gate filtered out an
+        # entity's only source and the LLM then hallucinated it.
+        sources_text_lower = " ".join(
+            (s.content + " " + s.title).lower() for s in processed_sources
+        )
         verdict = verify_synthesis_output(
             content=result.content,
             llm_output=result.llm_output,
             cited_count=len(result.citations) if getattr(result, "citations", None) else 0,
             source_count=len(processed_sources),
             contradiction_result=detection,
+            query_entities=query_entities,
+            sources_text=sources_text_lower,
         )
         output = annotate_with_verdict("\n".join(lines), verdict)
         if verdict.passed:
@@ -407,13 +506,19 @@ async def synthesize(
         for c in result.citations:
             lines.append(f"- [{c.get('number', '?')}] [{c.get('title', 'Unknown')}]({c.get('url', '')})")
 
-    # Post-synthesis verification.
+    # Post-synthesis verification. No-preset path uses pre_sources directly
+    # (no gate filtering).
+    sources_text_lower = " ".join(
+        (s.content + " " + s.title).lower() for s in pre_sources
+    )
     verdict = verify_synthesis_output(
         content=result.content,
         llm_output=result.llm_output,
         cited_count=len(result.citations) if result.citations else 0,
         source_count=len(pre_sources),
         contradiction_result=None,
+        query_entities=query_entities,
+        sources_text=sources_text_lower,
     )
     output = annotate_with_verdict("\n".join(lines), verdict)
     if verdict.passed:
@@ -483,13 +588,19 @@ async def reason(
         # Post-synthesis verification: the sources-aware reason path is a
         # synthesize surface, so a degraded/empty result must not be
         # relayed as a clean answer. Apply the same verifier used by the
-        # MCP `synthesize` and REST `/synthesize*` paths.
+        # MCP `synthesize` and REST `/synthesize*` paths, including the
+        # entity-coverage check.
+        sources_text_lower = " ".join(
+            (s.content + " " + s.title).lower() for s in pre_sources
+        )
         verdict = verify_synthesis_output(
             content=result.content,
             llm_output=result.llm_output,
             cited_count=len(result.citations) if result.citations else 0,
             source_count=len(pre_sources),
             contradiction_result=None,
+            query_entities=extract_query_entities(query),
+            sources_text=sources_text_lower,
         )
         return annotate_with_verdict("\n".join(lines), verdict)
 
