@@ -37,6 +37,8 @@ Symptom-fix lookup table for common boot and runtime errors. Find your symptom i
 | Tavily 401 | Bad API key | Regenerate at https://app.tavily.com |
 | LinkUp 403 | Free tier quota exhausted | Upgrade or remove `RESEARCH_LINKUP_API_KEY` to disable |
 | Some queries return only one engine's results | SearXNG engines disabled | Edit SearXNG `settings.yml` engines section, ensure `disabled: false` for the ones you want |
+| `search` / `research` / `discover` trailer shows `configured: ['searxng']` only (Tavily + LinkUp missing) | `RESEARCH_TAVILY_API_KEY` and/or `RESEARCH_LINKUP_API_KEY` not set in MCP env | Set both env vars in the MCP `env` block (`~/.claude.json` for Claude Code; equivalent for other harnesses) or in the `.env` file. **Restart the MCP server** for new env vars to take effect — env is read at process startup. Searxng-only mode is functional but lower-coverage. |
+| `search` trailer shows `from ['searxng']` but `configured: ['searxng', 'tavily', 'linkup']` (all 3 configured, only 1 returned) | Tavily / LinkUp connector hit quota, rate limit, or upstream error (logged to stderr) | Check the MCP's stderr log for `Tavily search error` / `LinkUp search error`. Verify quota/balance on the connector's dashboard. Connectors that error are silently absorbed by the aggregator — only the successful contributors appear in the trailer's first list. |
 
 ## MCP integration errors
 

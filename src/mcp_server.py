@@ -84,7 +84,7 @@ async def search(
         lines.append(f"**Source:** {s.connector} (score: {s.score:.3f})")
         lines.append(f"\n{s.content[:500]}{'...' if len(s.content) > 500 else ''}\n")
 
-    lines.append(f"\n---\n*{len(sources)} results from {list(raw_results.keys())}*")
+    lines.append(f"\n---\n*{len(sources)} results from {list(raw_results.keys())} (configured: {aggregator.get_active_connectors()})*")
     return "\n".join(lines)
 
 
@@ -106,10 +106,10 @@ async def research(
         openrouter_api_key: Per-request key override; defaults to RESEARCH_LLM_API_KEY.
     """
     aggregator = SearchAggregator()
-    sources, _ = await aggregator.search(query=query, top_k=top_k)
+    sources, raw_results = await aggregator.search(query=query, top_k=top_k)
 
     if not sources:
-        return "No sources found for query."
+        return f"No sources found for query.\n\n---\n*0 results from [] (configured: {aggregator.get_active_connectors()})*"
 
     client = _get_llm_client(openrouter_api_key)
     engine = SynthesisEngine(client=client, model=settings.llm_model)
@@ -128,6 +128,7 @@ async def research(
         for c in citations:
             lines.append(f"- [{c['id']}] [{c['title']}]({c['url']})")
 
+    lines.append(f"\n---\n*{len(sources)} sources from {list(raw_results.keys())} (configured: {aggregator.get_active_connectors()})*")
     return "\n".join(lines)
 
 
@@ -238,6 +239,7 @@ async def discover(
     lines.append(f"\n---\n*Search expansion: {'enabled' if expand_searches else 'disabled'}*")
     if focus_config.gap_categories:
         lines.append(f"*Gap focus: {', '.join(focus_config.gap_categories)}*")
+    lines.append(f"*Search backends configured: {aggregator.get_active_connectors()}*")
 
     return "\n".join(lines)
 

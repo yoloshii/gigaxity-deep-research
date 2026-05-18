@@ -42,8 +42,13 @@ Raw multi-source aggregation across SearXNG, Tavily, and LinkUp with RRF fusion.
 ## [2] ...
 
 ---
-*{N} results from ['searxng', 'tavily', 'linkup']*
+*{N} results from ['searxng', 'tavily', 'linkup'] (configured: ['searxng', 'tavily', 'linkup'])*
 ```
+
+The trailer's first list shows connectors that **returned results** for this query; the parenthetical `configured:` list shows connectors that the aggregator initialized (i.e. their env keys were set at MCP boot). When the two lists diverge:
+
+- `configured: ['searxng']` only → Tavily / LinkUp env keys are unset; the aggregator silently dropped them at init. See [troubleshooting.md](../troubleshooting.md#search--connector-errors) to enable 3-way fan-out.
+- `from ['searxng']` with `configured: ['searxng', 'tavily', 'linkup']` → the other connectors errored or returned empty for this query. Check the MCP's stderr log for `Tavily search error` / `LinkUp search error`.
 
 **Use when:** you want raw search hits without paying for synthesis tokens, or when you'll feed the results into your own pipeline.
 
@@ -71,7 +76,12 @@ Combined pipeline: multi-source search **plus** LLM synthesis with citations, in
 
 - [1] [{title}]({url})
 - [2] [{title}]({url})
+
+---
+*{N} sources from ['searxng', 'tavily', 'linkup'] (configured: ['searxng', 'tavily', 'linkup'])*
 ```
+
+The trailer follows the same shape as `search` — see the `search` notes above on interpreting `from` vs `configured` divergence.
 
 **Use when:** you want the simple search-then-synthesize pipeline without managing the discover→read→synthesize chain manually.
 
@@ -140,7 +150,10 @@ Exploratory expansion plus knowledge-gap detection. Returns the knowledge landsc
 ---
 *Search expansion: enabled*
 *Gap focus: {comma-separated categories}*
+*Search backends configured: ['searxng', 'tavily', 'linkup']*
 ```
+
+The final `configured:` line surfaces which connectors initialized at MCP boot. If only `['searxng']` is shown, Tavily / LinkUp env keys were unset — see `search` above and [troubleshooting.md](../troubleshooting.md#search--connector-errors) to enable 3-way fan-out. (Unlike `search` / `research`, `discover` does not surface which connectors actually returned content for this query — the Explorer wraps the aggregator and doesn't expose per-connector raw results.)
 
 **Use when:** cold-start research, mapping a topic before drilling, or driving a follow-up `synthesize`/`reason` step from the recommended deep-dive URLs.
 
