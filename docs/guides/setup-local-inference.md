@@ -66,7 +66,7 @@ Quality degrades non-linearly as you go below Q4_K_M. The practical threshold fo
 | **Q4_K_M (recommended)** | **~18.5 GB** | **Negligible drop vs FP16. Citation accuracy + multi-hop reasoning intact.** |
 | Q4_K_S | ~17.6 GB | Still fine. Useful when Q4_K_M won't fit alongside KV cache. |
 | IQ4_XS / IQ4_NL | ~16–17 GB | Imatrix quants — comparable to Q4_K_S in practice, slightly tighter. |
-| Q3_K_M | ~14.6 GB | **Borderline.** Citation IDs and inline `[sx_xxx]` markers occasionally drift; multi-hop chains shorten. Acceptable for `ask` and quick `research` calls; noticeable on `synthesize` with 5+ sources. |
+| Q3_K_M | ~14.6 GB | **Borderline.** Inline `[N]` citation markers occasionally drift — the model emits the pre-v0.3.0 `[xx_<hex>]` shape (e.g. `[tv_a1b2c3d4]`) instead of `[1]`, which the verifier flags as `citation marker drift` and the numeric extractor ignores. Multi-hop chains shorten. Acceptable for `ask` and quick `research` calls; noticeable on `synthesize` with 5+ sources. |
 | Q3_K_S / IQ3_M | ~13–14 GB | **Stop here.** Citation accuracy slips, contradiction detection misses cross-source disagreements, the `<thinking>` block becomes shorter and shallower. |
 | Q2_K and below | < 12 GB | Not viable for research synthesis. Reasoning collapses on cross-source comparisons. |
 

@@ -103,10 +103,17 @@ def test_extract_numeric_citations_zero_index_skipped():
 
 
 def test_extract_numeric_citations_returns_full_dict_shape():
+    """Canonical citation dict shape (v0.3.0, codex DESIGN Q2).
+
+    v0.2.1 emitted 5 keys (number, title, url, origin, source_type). v0.3.0
+    added `id` (`= str(number)`, public compatibility alias from the merged
+    SynthesisEngine path) and `source_id` (connector trace provenance), so
+    the contract is stable across aggregator AND engine paths.
+    """
     sources = [_src(1)]
     citations = extract_numeric_citations("[1]", sources)
     assert set(citations[0].keys()) == {
-        "number", "title", "url", "origin", "source_type"
+        "number", "id", "source_id", "title", "url", "origin", "source_type"
     }
 
 

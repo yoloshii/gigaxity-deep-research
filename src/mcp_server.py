@@ -129,10 +129,28 @@ async def research(
     if citations:
         lines.append("\n## Citations\n")
         for c in citations:
-            lines.append(f"- [{c['id']}] [{c['title']}]({c['url']})")
+            # Render `[N]` marker (matches the in-body markers; v0.3.0 unified
+            # contract per codex DESIGN session 019e39f7 Q5). source_id is a
+            # structured field for REST callers; not rendered here.
+            lines.append(f"- [{c['number']}] [{c['title']}]({c['url']})")
 
     lines.append(f"\n---\n*{len(sources)} sources from {list(raw_results.keys())} (configured: {aggregator.get_active_connectors()})*")
-    return "\n".join(lines)
+
+    # Post-synthesis verification (codex DESIGN session 019e39f7 Q7, wired
+    # in v0.3.0 Turn 8 fix). Mirrors the synthesize() path so legacy-only
+    # `[xx_<hex>]` output hard-fails AND surfaces the marker-drift soft
+    # warning, and mixed `[N]` + `[xx_<hex>]` output gets the diagnostic
+    # warning. Without this call the migrated `research` surface would
+    # silently ship "content with no citations" on prompt regression.
+    # llm_output is None because SynthesisEngine does not expose it on the
+    # dict result; engine.py:100-113 handles truncation-retry internally.
+    verdict = verify_synthesis_output(
+        content=result.get("content", ""),
+        llm_output=None,
+        cited_count=len(citations),
+        source_count=len(sources),
+    )
+    return annotate_with_verdict("\n".join(lines), verdict)
 
 
 @mcp.tool()

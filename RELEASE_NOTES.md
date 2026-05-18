@@ -1,5 +1,39 @@
 # Release notes
 
+## v0.3.0 (2026-05-18)
+
+Unifies the two citation contracts that the synthesis stack carried in parallel since the engine and aggregator paths landed in different releases. Locked architecturally by a separate codex GPT-5.5 high DESIGN session (`019e39f7-33ab-7691-ac6d-30c0804b6cdc`, single-turn), then reviewed for impl by the same continuous adversarial-review session that cleared v0.2.0 through v0.2.2 (`019e395a-8fe7-7e00-ad24-05e20fdb2e1a`).
+
+This is the v0.3.0 minor bump because the citation field shape on `mcp__research` and REST `/research` no-preset changes in a way that breaks any caller relying on the old `[xx_<hex>]` contract.
+
+### What changed
+
+**`SynthesisEngine` now speaks the same `[N]` citation contract as everything else.** The aggregator and outline-guided paths have used `[N]` numeric markers since they landed; the engine path (which powers `mcp__research` and REST `/research` no-preset) was the lone holdout, prompting the model for `[source_id]` markers (literal connector hashes like `[tv_a1b2c3d4]`) and parsing them with an inline regex at `src/synthesis/engine.py:128`. After v0.3.0, a caller hitting both surfaces sees the same shape in both outputs.
+
+The migration touches four layers in lockstep. `RESEARCH_SYSTEM_PROMPT` in `src/synthesis/prompts.py` now embeds the shared `CITATION_FORMAT_GUIDE` (the same guide v0.2.2 wired into the aggregator and outline templates), and `build_research_prompt()` renders source blocks as `[1]`, `[2]`, ... so the IDs the model sees match the IDs it is asked to cite back. The engine drops its inline regex in favor of `extract_numeric_citations()` from `src/synthesis/citations.py`, which gained a `CitationSource` protocol and `getattr` fallbacks so it works against both `connectors.base.Source` (engine path, has `.id`, no `.origin`/`.source_type`) and `synthesis.aggregator.PreGatheredSource` (aggregator path, has `.origin`/`.source_type`, no `.id`).
+
+**Citation dicts have a canonical shape across every surface.** Each citation dict now carries seven keys: `number: int`, `id: str` (always `str(number)`, kept string-typed for back-compat), `source_id: str | None` (connector trace like `"tv_a1b2c3d4"` when available), `title`, `url`, `origin`, `source_type`. The two type-divergent fields fall back to `None` when the underlying source does not carry them. `CitationSchema` in `src/api/schemas.py` mirrors the dict: `number` and `source_id` are new fields, `id` retains its string type but its value migrates from connector hash to numeric string.
+
+**`src/synthesis/enhanced.py` is deleted.** A grep at design lock time found no importer in `src`, in tests, in docs, or in `__init__.py`. The file was 677 lines of `[source_id]`-based passage machinery (`EnhancedSynthesizer`, source-id-keyed EVIDENCE blocks, source-id-tagged passages) sitting in-tree but never reachable. The `/synthesize/enhanced` REST route still works as before — it has been built on `SynthesisAggregator` since P0 landed, not `EnhancedSynthesizer`.
+
+**Verifier soft warnings surface citation marker drift.** `output_verifier` now calls `detect_legacy_markers()` and `detect_mixed_markers()` from `src/synthesis/citations.py` and appends a soft warning when the LLM emits the old `[xx_<hex>]` markers despite being prompted for `[N]`, or when it mixes both contracts in a single response. The existing hard-fail at `cited_count == 0` still fires for legacy-only output (because numeric extraction returns zero), and the new soft warning is the diagnostic that explains why.
+
+### Tests
+
+Twenty-eight new regression tests in `tests/test_codex_t8_v030_citation_unification.py` cover the `CitationSource` duck-typing across both source types, the canonical dict shape, drift detection helpers, the engine end-to-end with mocked LLM output, the extended `CitationSchema`, verifier soft warnings on legacy-only and mixed marker output, and a regression asserting `enhanced.py` stays deleted. `tests/test_synthesis.py` reworked to assert the v0.3.0 contract (the prior asserts on `[source_id]` and `[xx_<hex>]` regex were locking the contract this release deletes). `tests/test_codex_t5_citation_extraction.py` updated to match the new seven-key canonical dict shape. `tests/test_cache.py::test_research_tool_signature` mock updated to return the canonical dict shape. Full sweep on the v0.3.0 source tree: 308 passing, 38 skipped, 7 pre-existing LLM-auth failures unchanged from the v0.2.2 baseline (integration tests that need a configured LLM endpoint).
+
+### Migration notes
+
+This is a breaking change for two surfaces. Plan the upgrade if you hit either.
+
+**`mcp__research` and REST `/research` no-preset:** the rendered citation markers change from connector hashes to numeric markers. Any text-level parser that grepped for `\[([a-z]{2}_[a-f0-9]+)\]` against MCP or REST output will see zero matches against v0.3.0 output. The structured citation field on REST also changes: `citation.id` was `"tv_a1b2c3d4"` and is now `"1"`. The connector hash moves to a new `citation.source_id` field. Callers that pattern-matched on `citation.id.startswith("tv_")` to identify Tavily-origin citations should read `citation.source_id` instead.
+
+The shape change on the JSON envelope is additive at the schema level (`number` and `source_id` are new optional fields with sensible defaults), but the value of the existing `id` field is the breaking part. There is no opt-out flag; the design intentionally avoided a permanent dual-emit surface.
+
+REST `/synthesize`, `/synthesize/enhanced`, and `/synthesize/p1`, and MCP `synthesize` already used the `[N]` contract end to end; this release surfaces the `number` and `source_id` fields on those responses too. Existing callers see the same `id` values they always did (numeric string), plus the new fields.
+
+If a downstream consumer breaks unexpectedly, the rollback path is a coordinated revert across `engine.py`, `prompts.py`, `citations.py`, `schemas.py`, `routes.py`, `mcp_server.py`, and the test files. Reverting one file is unsafe because prompt labels and extractors must agree on the same contract.
+
 ## v0.2.2 (2026-05-18)
 
 Slice 1 of the post-v0.2.1 BACKLOG cleanup, scoped to three surgical fixes that fit the codex review loop without architectural reshape. Closes another turn of the same codex GPT-5.5 high session `019e395a-8fe7-7e00-ad24-05e20fdb2e1a` (Turn 7) with verbatim "zero remaining findings".
