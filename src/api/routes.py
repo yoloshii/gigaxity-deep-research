@@ -74,6 +74,7 @@ from ..synthesis import (
     verify_synthesis_output,
     annotate_with_verdict,
 )
+from ..synthesis.citations import extract_numeric_citations
 from ..search import SearchAggregator
 from ..discovery import (
     Explorer,
@@ -1408,24 +1409,16 @@ def _extract_citations_from_content(
     content: str,
     sources: list[PreGatheredSource],
 ) -> list[CitationSchema]:
-    """Extract citation references from content."""
-    citations = []
-    seen = set()
+    """Extract citation references from content.
 
-    # Find all [N] patterns
-    pattern = r"\[(\d+)\]"
-    for match in re.finditer(pattern, content):
-        num = int(match.group(1))
-        if num not in seen and 1 <= num <= len(sources):
-            seen.add(num)
-            source = sources[num - 1]
-            citations.append(CitationSchema(
-                id=str(num),
-                title=source.title,
-                url=source.url,
-            ))
-
-    return citations
+    Delegates to the shared `[N]` resolver in `synthesis.citations` so REST
+    `/synthesize/p1`, the aggregator, and MCP outline results all parse from
+    the same regex and the same source-index mapping.
+    """
+    return [
+        CitationSchema(id=str(c["number"]), title=c["title"], url=c["url"])
+        for c in extract_numeric_citations(content, sources)
+    ]
 
 
 def _compute_attribution(
