@@ -37,6 +37,7 @@ from .synthesis import (
     annotate_with_verdict,
     extract_query_entities,
 )
+from .synthesis.citations import extract_numeric_citations
 from .discovery import (
     Explorer,
     FocusModeType,
@@ -442,6 +443,17 @@ async def synthesize(
             aggregator = SynthesisAggregator(client, model=settings.llm_model)
             result = await aggregator.synthesize(query=query, sources=processed_sources, style=synth_style, max_tokens=preset_config.max_tokens, guidance=rcs_guidance)
 
+        # Normalize citations across the two synthesis paths. Aggregator
+        # results carry their own `citations` list (extracted internally);
+        # `OutlinedSynthesis` has no `citations` field so its content goes
+        # unparsed unless we extract here. Without this, every outline-preset
+        # call hard-fails the verifier with "cites none of N sources" even
+        # when the model emitted valid `[N]` markers — REST `/synthesize/p1`
+        # had parity (routes.py:1313) but MCP did not (codex Turn 5).
+        result_citations = getattr(result, "citations", None)
+        if not result_citations:
+            result_citations = extract_numeric_citations(result.content, processed_sources)
+
         lines = [f"# Synthesis: {query}\n"]
         lines.append(f"*Preset: {preset_config.name}*\n")
         lines.append(result.content)
@@ -453,9 +465,9 @@ async def synthesize(
                 if c.resolution_hint:
                     lines.append(f"  - Resolution: {c.resolution_hint}")
 
-        if hasattr(result, 'citations') and result.citations:
+        if result_citations:
             lines.append("\n## Citations\n")
-            for c in result.citations:
+            for c in result_citations:
                 if hasattr(c, 'title'):
                     lines.append(f"- [{c.id}] [{c.title}]({c.url})")
                 else:
@@ -482,7 +494,7 @@ async def synthesize(
         verdict = verify_synthesis_output(
             content=result.content,
             llm_output=result.llm_output,
-            cited_count=len(result.citations) if getattr(result, "citations", None) else 0,
+            cited_count=len(result_citations),
             source_count=len(processed_sources),
             contradiction_result=detection,
             query_entities=query_entities,

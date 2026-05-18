@@ -22,6 +22,7 @@ from typing import Optional
 
 from ..config import settings
 from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction, derive_effective_budget
+from .citations import extract_numeric_citations
 from .source_formatting import derive_input_budget, format_sources_for_synthesis
 
 
@@ -390,29 +391,13 @@ class SynthesisAggregator:
         text: str,
         sources: list[PreGatheredSource],
     ) -> list[dict]:
-        """Extract citations from synthesized text."""
-        citations = []
-        seen = set()
+        """Extract citations from synthesized text.
 
-        # Find all [N] patterns
-        pattern = re.compile(r'\[(\d+)\]')
-        for match in pattern.finditer(text):
-            try:
-                idx = int(match.group(1)) - 1  # Convert to 0-indexed
-                if 0 <= idx < len(sources) and idx not in seen:
-                    source = sources[idx]
-                    citations.append({
-                        "number": idx + 1,
-                        "title": source.title,
-                        "url": source.url,
-                        "origin": source.origin,
-                        "source_type": source.source_type,
-                    })
-                    seen.add(idx)
-            except (ValueError, IndexError):
-                continue
-
-        return citations
+        Delegates to the shared `[N]` resolver in `citations.py` so MCP outline
+        results, REST `/synthesize/p1`, and the aggregator all parse citations
+        from the same regex and the same source-index mapping.
+        """
+        return extract_numeric_citations(text, sources)
 
     def _compute_attribution(
         self,
