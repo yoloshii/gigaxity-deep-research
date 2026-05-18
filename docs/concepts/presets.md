@@ -86,13 +86,25 @@ Presets control *output structure*. Focus modes (see [focus-modes.md](focus-mode
 
 ## Adding a new preset
 
-Edit `src/synthesis/presets.py`. A preset is a dataclass with fields:
+Edit `src/synthesis/presets.py`. A preset is a `SynthesisPreset` dataclass with fields:
 
-- `name`
-- `llm_call_count` (1, 2, or 3)
-- `enable_quality_gate` (bool)
-- `enable_contradiction_detection` (bool)
-- `outline_strategy` (`none` / `simple` / `academic` / `tutorial`)
-- `system_prompt_template` (path to template file under `src/synthesis/prompts/`)
+- `name` / `description`
+- `style` (`SynthesisStyle` enum)
+- `max_tokens` (int)
+- `verify_citations` / `detect_contradictions` / `use_outline` / `use_rcs` (bool)
+- `run_quality_gate` (bool) — gates `quality_gate_*` fields below
+- `temperature` / `min_sources`
+- `quality_gate_reject_threshold` (float \| None) — per-preset REJECT threshold (avg relevance below this rejects the whole set). `None` falls back to `SourceQualityGate.REJECT_THRESHOLD = 0.3`. Comparison-friendly presets (comprehensive, contracrow) use **0.2**.
+- `quality_gate_pass_threshold` (float \| None) — per-preset PASS threshold (individual source must score >= this to be retained). `None` falls back to `SourceQualityGate.PASS_THRESHOLD = 0.5`. Comparison-friendly presets use **0.4**.
+- `quality_gate_entity_balanced` (bool) — when True, after the scalar gate runs, the gate promotes the highest-centrality (title > body density) rejected source per uncovered query entity. Prevents whole-vendor blackouts on multi-vendor comparison queries. Default `False`; comprehensive + contracrow set it to `True`.
+
+### Style precedence
+
+`synthesize(query, sources, preset, style)` honors `style` precedence as follows:
+1. Explicit `style` arg wins.
+2. Otherwise, the preset's own `style` field is used.
+3. Otherwise (no preset, no style), defaults to `comprehensive`.
+
+The MCP `style` parameter default is `None` (sentinel) — `"comprehensive"` was the old default and caused preset.style to be silently dropped on the documented `synthesize(query, sources, preset)` call shape.
 
 After adding the preset, expose it in `/api/v1/presets` (auto via list reflection) and document it here.

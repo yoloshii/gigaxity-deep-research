@@ -23,6 +23,7 @@ from .quality_gate import (
     SourceQualityGate,
     QualityGateResult,
     QualityDecision,
+    extract_query_entities,
 )
 from .contradictions import (
     ContradictionDetector,
@@ -82,6 +83,7 @@ __all__ = [
     "SourceQualityGate",
     "QualityGateResult",
     "QualityDecision",
+    "extract_query_entities",
     # Contradiction Detection
     "ContradictionDetector",
     "Contradiction",

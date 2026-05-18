@@ -19,6 +19,142 @@ from ..config import settings
 from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction
 
 
+# Common query-shape words that look like proper nouns to the capitalized-token
+# heuristic but aren't entities. Anything in here is dropped from the candidate
+# entity list before entity-balanced promotion.
+_QUERY_ENTITY_STOPWORDS = {
+    "Compare", "Comparing", "Compares", "Comparison",
+    "The", "A", "An",
+    "What", "How", "When", "Where", "Why", "Which", "Who", "Whose",
+    "And", "Or", "But", "For", "With", "Without", "About", "From", "Into",
+    "API", "APIs", "SDK", "SDKs", "URL", "URLs",
+    "AI", "ML", "LLM", "LLMs",
+    "May", "June", "July", "August", "September", "October", "November",
+    "December", "January", "February", "March", "April",
+}
+
+
+def _entity_match_count(text_lower: str, entity_lower: str) -> int:
+    """Count token-boundary occurrences of ``entity_lower`` in ``text_lower``.
+
+    Uses ``\\b`` regex boundaries so ``Exa`` does not match ``example`` and
+    ``Rust`` does not match ``trustworthy``. Both arguments are expected to
+    be pre-lowercased — re.IGNORECASE is NOT applied because callers
+    already lowercase for cache-locality reasons.
+
+    Shared by ``SourceQualityGate._entity_centrality()`` (which previously
+    used substring ``in`` + ``str.count``, the failure mode codex T3F1
+    flagged) and by the post-synthesis verifier's entity-coverage check.
+    """
+    if not entity_lower or not text_lower:
+        return 0
+    # re.escape so entity-name punctuation (gpt-4o, llama.cpp) is matched
+    # literally. The trailing \b after the escaped entity ensures "exa" does
+    # not match "exa-mple" via the leading boundary alone.
+    pattern = r"\b" + re.escape(entity_lower) + r"\b"
+    return len(re.findall(pattern, text_lower))
+
+
+def _entity_in_text(text_lower: str, entity_lower: str) -> bool:
+    """Token-boundary presence check — True iff ``entity_lower`` appears as
+    a standalone token (per ``_entity_match_count``) in ``text_lower``."""
+    return _entity_match_count(text_lower, entity_lower) > 0
+
+
+def _split_phrase_at_stopwords(phrase: str) -> list[str]:
+    """Split a multi-word capitalized phrase at stopword boundaries.
+
+    The regex grabs consecutive capitalized words greedily ("Compare Tavily",
+    "Serper APIs"), but the actual entity is the non-stopword core. Splitting
+    at stopword boundaries recovers ["Tavily"] from "Compare Tavily" and
+    ["Serper"] from "Serper APIs".
+    """
+    parts = phrase.split()
+    result: list[str] = []
+    current: list[str] = []
+    for p in parts:
+        if p in _QUERY_ENTITY_STOPWORDS:
+            if current:
+                result.append(" ".join(current))
+                current = []
+        else:
+            current.append(p)
+    if current:
+        result.append(" ".join(current))
+    return result
+
+
+def extract_query_entities(query: str) -> list[str]:
+    """Extract candidate named entities from a query.
+
+    Heuristic: regex matches across four shapes that cover the dominant
+    technology-name patterns:
+
+    1. Capitalized words (3+ chars): ``Tavily`` / ``LinkUp`` / ``FastAPI`` /
+       ``Postgres``. Greedy matches that include leading/trailing stopwords
+       ("Compare Tavily", "Serper APIs") get split at the stopword boundary
+       so the entity core survives.
+    2. Internal-cap identifiers: ``vLLM`` / ``iOS`` / ``eBay`` / ``wxWidgets``
+       — lowercase start with at least one internal uppercase. Common in
+       ML/dev tool naming.
+    3. Hyphenated identifiers with caps or digits: ``gpt-4o`` / ``claude-3-5``
+       / ``Llama-3`` / ``TypeScript-2``. Requires at least one hyphen and
+       a leading letter.
+    4. Dotted module paths: ``llama.cpp`` / ``asyncio.gather`` /
+       ``numpy.array``. Requires a dot between identifier-shaped tokens.
+
+    Returns deduplicated, order-preserving list. Stopword filter applied
+    to shape (1). Shapes (2)–(4) are inherently entity-shaped so the
+    stopword filter is skipped for them.
+
+    KNOWN LIMITATIONS (acceptable per codex T2 F5 — "first-pass safety net,
+    not a calibrated coverage model"):
+    - Single-word lowercase technologies (``bun``, ``npm``, ``pnpm``,
+      ``deno``) are NOT detected — they look like ordinary English words.
+      Callers needing precision should extend the entity list out-of-band.
+    - Non-English entity names (CJK, Cyrillic, etc.) are NOT detected.
+    - Numeric-only identifiers (``2026``, ``v3``) are NOT detected.
+    - Acronyms shorter than 3 chars (``AI``, ``ML``, ``UI``) are NOT
+      detected — by design, to avoid noise.
+    """
+    if not query:
+        return []
+    # Shape 1: Capitalized words (existing behavior — kept first for
+    # priority + stopword stripping). Length >= 3 to avoid catching
+    # interrogatives + acronyms.
+    cap_pattern = r"\b[A-Z][a-zA-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z][a-zA-Z]+)*\b"
+    # Shape 2: lowercase-start with internal uppercase (vLLM, iOS, eBay).
+    internal_cap_pattern = r"\b[a-z][a-z]*[A-Z][a-zA-Z]+\b"
+    # Shape 3: hyphenated identifiers — letter start, at least one hyphen,
+    # alphanumeric segments thereafter.
+    hyphenated_pattern = r"\b[A-Za-z][a-zA-Z0-9]*(?:-[a-zA-Z0-9]+){1,3}\b"
+    # Shape 4: dotted module paths — letter start, at least one dot between
+    # identifier-shaped tokens.
+    dotted_pattern = r"\b[a-zA-Z][a-zA-Z0-9]*(?:\.[a-zA-Z][a-zA-Z0-9]+)+\b"
+
+    seen: set[str] = set()
+    result: list[str] = []
+
+    # Shape 1 — split at stopword boundaries
+    for c in re.findall(cap_pattern, query):
+        for sub in _split_phrase_at_stopwords(c):
+            if not sub or sub in seen:
+                continue
+            seen.add(sub)
+            result.append(sub)
+
+    # Shapes 2-4 — no stopword filter (these patterns are inherently entity-
+    # shaped; "vLLM" / "gpt-4o" / "llama.cpp" never collide with English
+    # stopwords).
+    for pattern in (internal_cap_pattern, hyphenated_pattern, dotted_pattern):
+        for c in re.findall(pattern, query):
+            if c not in seen:
+                seen.add(c)
+                result.append(c)
+
+    return result
+
+
 class QualityDecision(str, Enum):
     """Decision outcome from quality gate."""
     PROCEED = "proceed"  # Sources adequate, continue synthesis
@@ -94,6 +230,7 @@ Format: One query per line."""
         model: str = None,
         reject_threshold: float = None,
         pass_threshold: float = None,
+        entity_balanced: bool = False,
     ):
         """
         Initialize quality gate.
@@ -103,11 +240,19 @@ Format: One query per line."""
             model: Model name for LLM calls
             reject_threshold: Avg score below which to reject (default 0.3)
             pass_threshold: Individual source threshold (default 0.5)
+            entity_balanced: When True, after the scalar gate runs, promote the
+                highest-scoring rejected source for each capitalized query
+                entity that is not represented in good_sources. Prevents
+                whole-vendor blackouts on multi-entity comparison queries
+                while still filtering genuinely irrelevant sources. Only
+                activates when the query has 2+ entities and the gate
+                decision is PARTIAL.
         """
         self.llm_client = llm_client
         self.model = model or settings.llm_model
         self.reject_threshold = reject_threshold or self.REJECT_THRESHOLD
         self.pass_threshold = pass_threshold or self.PASS_THRESHOLD
+        self.entity_balanced = entity_balanced
 
     async def evaluate(
         self,
@@ -145,14 +290,17 @@ Format: One query per line."""
 
         # Categorize sources
         good_sources = []
-        rejected_sources = []
+        rejected_with_scores: list[tuple[object, float]] = []
         for source, score in zip(sources, scores):
             if score >= self.pass_threshold:
                 good_sources.append(source)
             else:
-                rejected_sources.append(source)
+                rejected_with_scores.append((source, score))
 
-        # Decide
+        # Decide first whether the whole source set is too weak to rescue.
+        # REJECT is governed by avg_quality across ALL sources, so
+        # entity-balanced promotion cannot override it — if the average is
+        # below the floor, the set is genuinely irrelevant.
         if avg_quality < self.reject_threshold:
             suggestion = await self._suggest_searches(query, sources) if self.llm_client else \
                 f"Try more specific searches related to: {query}"
@@ -165,7 +313,67 @@ Format: One query per line."""
                 suggestion=suggestion,
                 reason=f"Average relevance {avg_quality:.2f} below threshold {self.reject_threshold}",
             )
-        elif len(good_sources) < len(sources):
+
+        # Entity-balanced safety net: when enabled and the query names 2+
+        # capitalized entities, ensure each entity is represented by at least
+        # one source. Multi-vendor comparison queries score per-vendor sources
+        # at ~0.4–0.5 under the scalar scorer, which can blackout an entire
+        # vendor if its sources all land below pass_threshold.
+        #
+        # Promotion uses entity-CENTRALITY scoring, not just substring
+        # presence (Turn 2 codex F4): a LinkUp-focused source that says
+        # "unlike Tavily" once should NOT be promoted as Tavily coverage.
+        # Tiered signals: title match (3.0) > dense body mentions (1.0+
+        # density bonus capped at 2.0) > single body mention (1.0) > 0.
+        # Ties break by scalar relevance score.
+        if self.entity_balanced and rejected_with_scores:
+            entities = extract_query_entities(query)
+            if len(entities) >= 2:
+                promoted_set: set[int] = set()
+                for entity in entities:
+                    entity_lower = entity.lower()
+                    # "Already covered" check uses centrality (Turn 2 codex F4):
+                    # an incidental one-off body mention does NOT count as
+                    # coverage. Require some good source to have centrality
+                    # >= 2.0 for the entity (title match OR 3+ body mentions).
+                    if any(
+                        self._entity_centrality(s, entity_lower) >= 2.0
+                        for s in good_sources
+                    ):
+                        continue
+                    # Score every still-rejected source by entity-centrality.
+                    # Turn 3 codex recommendation #2: tightened promotion
+                    # threshold from `> 0` to `>= 2.0`. A source with a
+                    # single off-hand mention of the entity ("unlike Tavily,
+                    # LinkUp...") is NOT meaningful coverage of that entity
+                    # — promoting it pollutes the synthesis input. Cleaner
+                    # failure: entity stays uncovered → verifier hard-fails
+                    # if the synthesis discusses it → operator gathers
+                    # better sources.
+                    candidates: list[tuple[int, object, float, float]] = []
+                    for idx, (src, score) in enumerate(rejected_with_scores):
+                        if idx in promoted_set:
+                            continue
+                        centrality = self._entity_centrality(src, entity_lower)
+                        if centrality >= 2.0:
+                            candidates.append((idx, src, centrality, score))
+                    if not candidates:
+                        continue
+                    # Highest centrality wins; scalar score breaks ties.
+                    candidates.sort(key=lambda c: (c[2], c[3]), reverse=True)
+                    chosen_idx, chosen_src, _, _ = candidates[0]
+                    good_sources.append(chosen_src)
+                    promoted_set.add(chosen_idx)
+                # Rebuild rejected list excluding promoted indices.
+                rejected_with_scores = [
+                    pair
+                    for idx, pair in enumerate(rejected_with_scores)
+                    if idx not in promoted_set
+                ]
+
+        rejected_sources = [s for s, _ in rejected_with_scores]
+
+        if len(good_sources) < len(sources):
             return QualityGateResult(
                 decision=QualityDecision.PARTIAL,
                 avg_quality=avg_quality,
@@ -284,14 +492,46 @@ Format: One query per line."""
         except Exception:
             return f"Try more specific searches related to: {query}"
 
+    # Content window for LLM scoring. 300 chars (the original CRAG-paper-inspired
+    # default) is too tight for sources where the relevant evidence appears later
+    # — multi-vendor comparison queries especially suffer, since each source covers
+    # only one entity and the entity name may not appear in the first 300 chars.
+    # 1500 chars covers a typical lead paragraph plus subhead context.
+    _SCORING_CONTENT_WINDOW = 1500
+
     def _format_sources(self, sources: list) -> str:
         """Format sources for scoring prompt."""
         parts = []
         for i, s in enumerate(sources, 1):
             title = self._get_title(s)
-            content = self._get_content(s)[:300]
+            content = self._get_content(s)[: self._SCORING_CONTENT_WINDOW]
             parts.append(f"[{i}] {title}\n{content}...")
         return "\n\n".join(parts)
+
+    def _entity_centrality(self, source, entity_lower: str) -> float:
+        """Score how central an entity is to a source. Higher = better
+        promotion candidate.
+
+        Tiered (Turn 2 codex F4 + Turn 3 codex T3F1 boundary fix):
+        - Title token match → 3.0 (clearest signal of source-entity binding).
+        - Body token mentions → 1.0 base + 0.5 per additional mention,
+          capped at 3.0 (dense coverage beats incidental one-off mention).
+        - No title token match AND zero body token mentions → 0.0 (skip
+          promotion).
+
+        Uses ``\\b``-bounded matching via ``_entity_match_count`` — substring
+        matching would let ``Exa`` collide with ``example`` and inflate
+        centrality from unrelated text. T3F1 fix.
+        """
+        title_lower = self._get_title(source).lower()
+        content_lower = self._get_content(source).lower()
+        if _entity_in_text(title_lower, entity_lower):
+            return 3.0
+        mentions = _entity_match_count(content_lower, entity_lower)
+        if mentions == 0:
+            return 0.0
+        # 1 mention = 1.0; 2 = 1.5; 3 = 2.0; ≥5 → 3.0 (cap)
+        return min(1.0 + 0.5 * (mentions - 1), 3.0)
 
     def _get_title(self, source) -> str:
         """Extract title from source."""

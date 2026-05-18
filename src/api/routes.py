@@ -59,6 +59,7 @@ from ..synthesis import (
     # P0 Enhancements
     SourceQualityGate,
     QualityDecision,
+    extract_query_entities,
     ContradictionDetector,
     CitationVerifier,
     extract_claims_with_citations,
@@ -237,11 +238,15 @@ async def research(
         rcs_summaries_list = None
         sources_for_synthesis = pre_gathered
 
-        # Quality Gate
+        # Quality Gate — per-preset thresholds + entity-balanced safety net
+        # match the MCP `synthesize` path (mcp_server.py).
         if preset.run_quality_gate:
             quality_gate = SourceQualityGate(
                 llm_client=llm_client,
                 model=settings.llm_model,
+                reject_threshold=preset.quality_gate_reject_threshold,
+                pass_threshold=preset.quality_gate_pass_threshold,
+                entity_balanced=preset.quality_gate_entity_balanced,
             )
             gate_result = await quality_gate.evaluate(request.query, pre_gathered)
             quality_gate_result = QualityGateSchema(
@@ -622,13 +627,17 @@ async def synthesize(
             detail=f"Synthesis error: {e}"
         )
 
-    # Post-synthesis verification.
+    # Post-synthesis verification (includes entity-coverage check).
+    _q_entities = extract_query_entities(request.query)
+    _sources_text = " ".join((s.content + " " + s.title).lower() for s in sources)
     verdict = verify_synthesis_output(
         content=result.content,
         llm_output=result.llm_output,
         cited_count=len(result.citations),
         source_count=len(sources),
         contradiction_result=None,
+        query_entities=_q_entities,
+        sources_text=_sources_text,
     )
     # On a hard-gate failure, annotate the content in-band so a client that
     # ignores the structured `verification` field still cannot mistake it for
@@ -740,15 +749,18 @@ async def reason(
     reasoning = None
 
     # Post-synthesis verification: a degraded/empty reasoning result
-    # must not be relayed as a clean answer or cached. On a hard-gate failure,
-    # annotate the content in-band so a client that ignores the structured
-    # `verification` field still cannot mistake it for a clean synthesis.
+    # must not be relayed as a clean answer or cached. Entity-coverage check
+    # applies here too — sources-aware reason is a synthesize surface.
+    _q_entities = extract_query_entities(request.query)
+    _sources_text = " ".join((s.content + " " + s.title).lower() for s in sources)
     verdict = verify_synthesis_output(
         content=result.content,
         llm_output=result.llm_output,
         cited_count=len(result.citations),
         source_count=len(sources),
         contradiction_result=None,
+        query_entities=_q_entities,
+        sources_text=_sources_text,
     )
     safe_content = (
         result.content if verdict.passed
@@ -859,6 +871,29 @@ async def synthesize_enhanced(
                 verified_claims=[],
             )
         elif gate_result.decision == QualityDecision.PARTIAL:
+            # PARTIAL-with-zero-good (Turn 3 codex T3F2): mirror MCP F6
+            # early-return. Without this, assigning empty good_sources into
+            # sources_for_synthesis lets synthesis run over zero sources.
+            if not gate_result.good_sources:
+                return SynthesizeResponseEnhanced(
+                    query=request.query,
+                    content=(
+                        f"Source quality insufficient (PARTIAL, zero passed). "
+                        f"avg relevance {gate_result.avg_quality:.2f} above "
+                        f"the REJECT floor but no source cleared the PASS "
+                        f"threshold. "
+                        f"{gate_result.suggestion or 'Try gathering more relevant sources.'}"
+                    ),
+                    citations=[],
+                    source_attribution=[],
+                    confidence=0.0,
+                    style_used=request.style,
+                    word_count=0,
+                    model=settings.llm_model,
+                    quality_gate=quality_gate_result,
+                    contradictions=[],
+                    verified_claims=[],
+                )
             # Use only good sources
             sources_for_synthesis = gate_result.good_sources
 
@@ -939,13 +974,19 @@ async def synthesize_enhanced(
                 confidence=verified.confidence,
             ))
 
-    # Post-synthesis verification.
+    # Post-synthesis verification (entity-coverage check uses POST-gate source set).
+    _q_entities = extract_query_entities(request.query)
+    _sources_text = " ".join(
+        (s.content + " " + s.title).lower() for s in sources_for_synthesis
+    )
     verdict = verify_synthesis_output(
         content=result.content,
         llm_output=result.llm_output,
         cited_count=len(result.citations),
         source_count=len(sources_for_synthesis),
         contradiction_result=detection,
+        query_entities=_q_entities,
+        sources_text=_sources_text,
     )
     # On a hard-gate failure, annotate the content in-band so a client that
     # ignores the structured `verification` field still cannot mistake it for
@@ -1114,11 +1155,19 @@ async def synthesize_p1(
     critique_result = None
     sources_for_synthesis = sources
 
-    # Step 1: Quality Gate (CRAG-style)
+    # Step 1: Quality Gate (CRAG-style) — per-preset thresholds + entity-balanced
+    # safety net when a preset is provided. Mirrors MCP `synthesize` path.
     if run_quality_gate:
+        gate_kwargs = {}
+        if request.preset:
+            _gate_preset = get_preset(request.preset)
+            gate_kwargs["reject_threshold"] = _gate_preset.quality_gate_reject_threshold
+            gate_kwargs["pass_threshold"] = _gate_preset.quality_gate_pass_threshold
+            gate_kwargs["entity_balanced"] = _gate_preset.quality_gate_entity_balanced
         quality_gate = SourceQualityGate(
             llm_client=llm_client,
             model=settings.llm_model,
+            **gate_kwargs,
         )
         gate_result = await quality_gate.evaluate(request.query, sources)
 
@@ -1144,6 +1193,27 @@ async def synthesize_p1(
                 preset_used=preset_used,
             )
         elif gate_result.decision == QualityDecision.PARTIAL:
+            # PARTIAL-with-zero-good (Turn 3 codex T3F2): mirror MCP F6
+            # early-return.
+            if not gate_result.good_sources:
+                return SynthesizeResponseP1(
+                    query=request.query,
+                    content=(
+                        f"Source quality insufficient (PARTIAL, zero passed). "
+                        f"avg relevance {gate_result.avg_quality:.2f} above "
+                        f"the REJECT floor but no source cleared the PASS "
+                        f"threshold. "
+                        f"{gate_result.suggestion or 'Try gathering more relevant sources.'}"
+                    ),
+                    citations=[],
+                    source_attribution=[],
+                    confidence=0.0,
+                    style_used=style_str,
+                    word_count=0,
+                    model=settings.llm_model,
+                    quality_gate=quality_gate_result,
+                    preset_used=preset_used,
+                )
             sources_for_synthesis = gate_result.good_sources
 
     # Step 2: RCS Contextual Summarization (PaperQA2-style)
@@ -1286,13 +1356,19 @@ async def synthesize_p1(
                 confidence=verified.confidence,
             ))
 
-    # Post-synthesis verification.
+    # Post-synthesis verification (entity-coverage check uses POST-gate source set).
+    _q_entities = extract_query_entities(request.query)
+    _sources_text = " ".join(
+        (s.content + " " + s.title).lower() for s in sources_for_synthesis
+    )
     verdict = verify_synthesis_output(
         content=content,
         llm_output=synthesis_llm_output,
         cited_count=len(citations),
         source_count=len(sources_for_synthesis),
         contradiction_result=detection,
+        query_entities=_q_entities,
+        sources_text=_sources_text,
     )
     # On a hard-gate failure, annotate the content in-band so a client that
     # ignores the structured `verification` field still cannot mistake it for
