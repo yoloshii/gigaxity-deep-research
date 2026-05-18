@@ -29,6 +29,21 @@ if TYPE_CHECKING:
 _NUMERIC_CITATION_PATTERN = re.compile(r"\[(\d+)\]")
 
 
+# Shared prompt guidance for `[N]` citation format. Imported by every
+# synthesis prompt template that asks the model for inline citations.
+# Three worked examples cover the single-citation, multi-citation, and
+# co-citation cases. Negative examples disambiguate from the `[xx_hex]`
+# format the legacy `SynthesisEngine` path uses, so the model knows this
+# surface wants numeric markers (codex Turn 7 v0.2.2).
+CITATION_FORMAT_GUIDE = """Citation format — every claim that draws on a source needs a `[N]` marker matching the source list above (1-based). Examples:
+
+- "Anthropic released Claude Opus 4.7 on April 16 [1]."
+- "The conference was held in San Francisco [2], with follow-on events in Tokyo [3]."
+- "Two sources agree the model uses a 131K context window [1][3]."
+
+Use only `[N]` — never `[xx_hex]`, never `(Author 2024)`, never footnotes."""
+
+
 def extract_numeric_citations(
     content: str,
     sources: "list[PreGatheredSource]",

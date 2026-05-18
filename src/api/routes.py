@@ -257,7 +257,62 @@ async def research(
                 rejected_count=len(gate_result.rejected_sources),
                 suggestion=gate_result.suggestion,
             )
+
+            # REJECT and PARTIAL-with-zero-good must short-circuit before
+            # synthesis — matches the v0.2.0 fix at /synthesize/p1 and the
+            # MCP `synthesize` path. Prior to v0.2.2 this endpoint silently
+            # fell through, running synthesis over the same sources the gate
+            # had just rejected. v0.2.2 codex Turn 7 item 4.
+            if gate_result.decision == QualityDecision.REJECT:
+                return ResearchResponse(
+                    query=request.query,
+                    content=(
+                        f"Source quality insufficient. "
+                        f"{gate_result.suggestion or 'Try gathering more relevant sources.'}"
+                    ),
+                    citations=[],
+                    sources=[
+                        SourceSchema(
+                            id=s.id, title=s.title, url=s.url,
+                            content=s.content, score=s.score, connector=s.connector,
+                        )
+                        for s in sources
+                    ],
+                    connectors_used=list(raw_results.keys()),
+                    model=settings.llm_model,
+                    preset_used=preset_used,
+                    focus_mode_used=focus_mode_used,
+                    quality_gate=quality_gate_result,
+                    contradictions=[],
+                    rcs_summaries=None,
+                )
             if gate_result.decision == QualityDecision.PARTIAL:
+                if not gate_result.good_sources:
+                    return ResearchResponse(
+                        query=request.query,
+                        content=(
+                            f"Source quality insufficient (PARTIAL, zero passed). "
+                            f"avg relevance {gate_result.avg_quality:.2f} above "
+                            f"the REJECT floor but no source cleared the PASS "
+                            f"threshold. "
+                            f"{gate_result.suggestion or 'Try gathering more relevant sources.'}"
+                        ),
+                        citations=[],
+                        sources=[
+                            SourceSchema(
+                                id=s.id, title=s.title, url=s.url,
+                                content=s.content, score=s.score, connector=s.connector,
+                            )
+                            for s in sources
+                        ],
+                        connectors_used=list(raw_results.keys()),
+                        model=settings.llm_model,
+                        preset_used=preset_used,
+                        focus_mode_used=focus_mode_used,
+                        quality_gate=quality_gate_result,
+                        contradictions=[],
+                        rcs_summaries=None,
+                    )
                 sources_for_synthesis = gate_result.good_sources
 
         # RCS Preprocessing (guidance-only: summaries become advisory guidance

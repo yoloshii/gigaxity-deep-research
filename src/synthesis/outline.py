@@ -16,6 +16,7 @@ from typing import Optional
 from ..config import settings
 from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction, combine_llm_outputs, derive_effective_budget
 from .aggregator import PreGatheredSource, SynthesisStyle
+from .citations import CITATION_FORMAT_GUIDE
 from .source_formatting import derive_input_budget, format_sources_for_synthesis
 
 
@@ -69,18 +70,20 @@ Available sources cover:
 Create 3-6 section headings that would best structure a {style} response.
 Format: One heading per line, no numbers or bullets."""
 
-    SECTION_PROMPT = """Write the "{section}" section for this research synthesis.
+    SECTION_PROMPT = f"""Write the "{{section}}" section for this research synthesis.
 
-Query: {query}
+Query: {{query}}
 
 Sources:
-{sources}
+{{sources}}
 
 Instructions:
 - Write 1-3 paragraphs for this section
-- Use [N] citations for factual claims
-- Focus on information relevant to "{section}"
+- Every factual claim needs a citation
+- Focus on information relevant to "{{section}}"
 - Be specific and informative
+
+{CITATION_FORMAT_GUIDE}
 
 Section content:"""
 
@@ -103,18 +106,20 @@ Identify any issues:
 
 Format: One issue per line, or respond with "NO_ISSUES" if the draft is good."""
 
-    REFINE_PROMPT = """Refine this synthesis to address the identified issues.
+    REFINE_PROMPT = f"""Refine this synthesis to address the identified issues.
 
 Original draft:
-{draft}
+{{draft}}
 
 Issues to address:
-{issues}
+{{issues}}
 
 Sources for reference:
-{sources}
+{{sources}}
 
-Provide the improved synthesis with proper [N] citations:"""
+{CITATION_FORMAT_GUIDE}
+
+Provide the improved synthesis:"""
 
     def __init__(
         self,
