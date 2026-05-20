@@ -1,5 +1,36 @@
 # Release notes
 
+## Unreleased
+
+Hardens the pre-synthesis source-relevance gate, which rejected on-topic sources for verbose (multi-sentence) queries. Two compounding causes are fixed (A2 + Q1) with a safety cap (A1) on the degraded path. It builds on the scorer-provenance observability (`scorer_path` / `fallback_reason`) already on the branches. Locked architecturally by a separate codex GPT-5.5 high DESIGN session (`019e4569-00d8-75a1-9345-4d810e374ad8`, Turns 3-5) per the TWO_SESSIONS rule, then reviewed for impl by a fresh adversarial-review session (`019e4640-0a16-7663-ba80-a93867fbebd6`), both cleared with verbatim "zero remaining findings".
+
+This is a backward-compatible behavior change. The only new configuration is an additive, defaulted setting (`RESEARCH_LLM_SCORING_HEADROOM`); the only new response field is an additive, defaulted `gate_degraded` flag. No public signature, citation contract, or env-var rename.
+
+### The bug
+
+The relevance gate scores each source 0-1 for query relevance, then PROCEED/PARTIAL/REJECTs on the average. For verbose queries it wrongly REJECTed relevant sources because:
+
+1. **The LLM scorer silently fell back to a keyword heuristic.** The configured reasoning model (Tongyi-DeepResearch 30B) ran its chain-of-thought inside a flat 500-token scoring budget, so the per-source score block never landed in `content` (empty or truncated). The extractor returned an empty string, the parsed score count mismatched the source count, and the gate dropped to the keyword heuristic with no retry.
+2. **The keyword heuristic diluted with query length.** It scored `matched_terms / len(query_terms)`, so a 38-term brief drove every source's score toward zero while a 4-term query over the same sources passed. Long, on-topic queries were the worst case.
+
+### What changed
+
+**A2 — reasoning-aware scoring budget, a strict-JSON retry, and a count-validated parser.** The scoring `_call_llm` now uses `min(500 + RESEARCH_LLM_SCORING_HEADROOM, RESEARCH_LLM_MAX_TOKENS)` on reasoning models (headroom default 1536; non-reasoning models keep the flat 500), so chain-of-thought finishes before the scores are emitted. On an empty or count-mismatched first attempt, `_score_sources` issues one retry with a strict-JSON directive ("Output ONLY a JSON array of exactly N floats in [0,1]..."); a second failure falls back to the keyword heuristic with provenance `llm_fallback_heuristic`. At most two scoring calls. The rewritten `_parse_scores(response, expected_count)` scans every `[...]` candidate and accepts the first JSON array of exactly `expected_count` values that are *already* in [0,1] — an out-of-range value disqualifies the whole candidate, with no clamp-to-accept — and falls back to a per-line scan that strips a leading enumerator or source-label and prefers a decimal in [0,1] over a bare integer.
+
+**Q1 — a de-diluted keyword heuristic.** The fallback heuristic now scores `1 - exp(-0.25 * matched_core_terms)`, where `matched_core_terms` counts the distinct query terms (minus a dedicated lowercase scoring stopword set, separate from the entity stopword set) matched at a token boundary across title + content. The score no longer depends on query length, so a long brief and a short query over the same relevant sources land in the same band (roughly 0.22 / 0.39 / 0.53 for 1 / 2 / 3 matched terms). It ships with the current preset thresholds; threshold recalibration against a fixture corpus is tracked separately.
+
+**A1 — an evidence-gated rescue on the degraded path, plus a `gate_degraded` signal.** When the LLM scorer has failed (`scorer_path == "llm_fallback_heuristic"`) and the keyword-heuristic average would force a REJECT, the gate now retains the sources that individually clear the pass threshold — a PARTIAL over a strict subset — instead of discarding everything; when no source clears it, the REJECT stands (fail-closed). The rescue is scoped to the degraded fallback only: a confident LLM REJECT and the primary `heuristic_only` path are untouched. A new `gate_degraded: bool` (default `False`) is set on every `llm_fallback_heuristic` result and surfaced so consumers know the keyword heuristic produced the scores — as a field on the REST `QualityGateSchema` (`/research`, `/synthesize/enhanced`, `/synthesize/p1`) and as a one-line caveat in the MCP `synthesize` markdown.
+
+### Tests
+
+30 new regression tests, written bug-first: `tests/test_a2_scorer_hardening.py` (14), `tests/test_q1_heuristic_dedilution.py` (7), `tests/test_a1_evidence_gated_rescue.py` (9). They assert directly at `_score_sources` (call count, `scorer_path`, budget) so an A1 rescue cannot mask an A2 regression, plus parser edge cases, length-independence of the heuristic, and the rescue / fail-closed / `gate_degraded` matrix across all scorer paths. `tests/test_p0_enhancements.py` recalibrated one heuristic-evaluation assertion onto the comprehensive-preset path. Full sweep on `local-inference`: 402 pass / 52 skip / 0 fail. On `main` the integration tests that construct an OpenRouter client require a configured LLM endpoint, the same auth-gated tests as prior releases.
+
+### What did not change
+
+The preset thresholds (recalibration is deferred), the `gate_focus` query-narrowing idea (deferred), the post-synthesis verifier, the `[N]` citation contract, the `RESEARCH_*` environment variables apart from the additive `RESEARCH_LLM_SCORING_HEADROOM`, the MCP tool surface, and the REST endpoint surface apart from the additive `gate_degraded` field.
+
+---
+
 ## v0.3.1 (2026-05-18)
 
 Closes two BACKLOG items from the v0.3.0 ship cycle: F5 single-word lowercase tool detection in the query-entity extractor, and abbreviation-aware sentence splitting in the post-synthesis verifier. Both were tracked-not-fixed during v0.3.0 because they sat outside the citation-contract unification scope. Locked architecturally by a separate codex GPT-5.5 high DESIGN session (`019e3a66-313d-7121-b52f-541165732859`, single-turn, NONCE `codex-design-items-6-7-2026-05-18-7e3a9c4b`) per the TWO_SESSIONS rule, then reviewed for impl by the same continuous adversarial-review session that cleared v0.2.0 through v0.3.0 (`019e395a-8fe7-7e00-ad24-05e20fdb2e1a`).
