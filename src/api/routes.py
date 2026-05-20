@@ -256,6 +256,11 @@ async def research(
                 passed_count=len(gate_result.good_sources),
                 rejected_count=len(gate_result.rejected_sources),
                 suggestion=gate_result.suggestion,
+                scorer_path=gate_result.scorer_path,
+                fallback_reason=gate_result.fallback_reason,
+                source_scores=[round(s, 3) for s in (gate_result.source_scores or [])] or None,
+                reject_threshold=quality_gate.reject_threshold,
+                pass_threshold=quality_gate.pass_threshold,
             )
 
             # REJECT and PARTIAL-with-zero-good must short-circuit before
@@ -941,6 +946,11 @@ async def synthesize_enhanced(
             passed_count=len(gate_result.good_sources),
             rejected_count=len(gate_result.rejected_sources),
             suggestion=gate_result.suggestion,
+            scorer_path=gate_result.scorer_path,
+            fallback_reason=gate_result.fallback_reason,
+            source_scores=[round(s, 3) for s in (gate_result.source_scores or [])] or None,
+            reject_threshold=quality_gate.reject_threshold,
+            pass_threshold=quality_gate.pass_threshold,
         )
 
         if gate_result.decision == QualityDecision.REJECT:
@@ -1267,6 +1277,11 @@ async def synthesize_p1(
             passed_count=len(gate_result.good_sources),
             rejected_count=len(gate_result.rejected_sources),
             suggestion=gate_result.suggestion,
+            scorer_path=gate_result.scorer_path,
+            fallback_reason=gate_result.fallback_reason,
+            source_scores=[round(s, 3) for s in (gate_result.source_scores or [])] or None,
+            reject_threshold=quality_gate.reject_threshold,
+            pass_threshold=quality_gate.pass_threshold,
         )
 
         if gate_result.decision == QualityDecision.REJECT:

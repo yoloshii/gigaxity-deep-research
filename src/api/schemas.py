@@ -379,6 +379,23 @@ class QualityGateSchema(BaseModel):
     passed_count: int
     rejected_count: int
     suggestion: str | None = None
+    # Scorer provenance (Q3 observability) — diagnose REJECT/PARTIAL outcomes
+    # without re-running. scorer_path distinguishes a confident LLM-scored
+    # decision from one derived from the degraded keyword heuristic.
+    scorer_path: str | None = Field(
+        default=None,
+        description="llm, llm_fallback_heuristic, or heuristic_only",
+    )
+    fallback_reason: str | None = Field(
+        default=None,
+        description="Why the heuristic scorer fired (only set on the fallback path)",
+    )
+    source_scores: list[float] | None = Field(
+        default=None,
+        description="Per-source relevance scores (rounded), in source order",
+    )
+    reject_threshold: float | None = None
+    pass_threshold: float | None = None
 
 
 class VerifiedClaimSchema(BaseModel):
