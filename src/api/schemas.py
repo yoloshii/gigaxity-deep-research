@@ -396,6 +396,10 @@ class QualityGateSchema(BaseModel):
     )
     reject_threshold: float | None = None
     pass_threshold: float | None = None
+    gate_degraded: bool = Field(
+        default=False,
+        description="True when the LLM relevance scorer failed and the degraded keyword heuristic produced these scores (scorer_path == llm_fallback_heuristic)",
+    )
 
 
 class VerifiedClaimSchema(BaseModel):
