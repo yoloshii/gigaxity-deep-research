@@ -10,13 +10,15 @@ Key insight: Average relevance score < 0.3 = reject synthesis.
 Suggest additional searches to fill gaps.
 """
 
+import json
+import math
 import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
 from ..config import settings
-from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction
+from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction, is_reasoning_model
 from .entity_allowlist import (
     CONTEXT_CUES,
     CONTEXTUAL_LOWERCASE_TOOL_ALLOWLIST,
@@ -36,6 +38,26 @@ _QUERY_ENTITY_STOPWORDS = {
     "AI", "ML", "LLM", "LLMs",
     "May", "June", "July", "August", "September", "October", "November",
     "December", "January", "February", "March", "April",
+}
+
+
+# Lowercase function words dropped from the keyword-scoring term set (Q1a).
+# Distinct from _QUERY_ENTITY_STOPWORDS (entity extraction): scoring needs a
+# broad stop set so a verbose brief's function words ("between", "without",
+# "through") don't enter the matched-term count and dilute it. Words <=3 chars
+# are already dropped by the length filter, so this lists only len>=4 stopwords.
+_SCORING_STOPWORDS = {
+    "this", "that", "these", "those", "with", "from", "into", "onto", "over",
+    "under", "about", "above", "below", "between", "through", "throughout",
+    "during", "before", "after", "while", "because", "since", "until", "upon",
+    "within", "without", "against", "among", "across", "around", "behind",
+    "beyond", "what", "when", "where", "which", "whom", "whose", "whether",
+    "have", "having", "been", "being", "were", "will", "would", "could",
+    "should", "shall", "might", "must", "does", "done", "doing", "their",
+    "there", "them", "they", "then", "than", "your", "yours", "ours", "more",
+    "most", "much", "many", "some", "such", "only", "also", "very", "just",
+    "like", "here", "each", "both", "either", "neither", "every", "less",
+    "least", "same", "other", "another", "able",
 }
 
 
@@ -242,6 +264,11 @@ class QualityGateResult:
     # confident LLM-scored REJECT from one derived from the keyword heuristic.
     scorer_path: Optional[str] = None
     fallback_reason: Optional[str] = None
+    # A1: True whenever the LLM relevance scorer failed and the degraded keyword
+    # heuristic produced these scores (scorer_path == "llm_fallback_heuristic").
+    # Surfaced so a synthesis that proceeded over a degraded gate carries a
+    # caveat. Set on every decision branch, including the evidence-gated rescue.
+    gate_degraded: bool = False
 
 
 class SourceQualityGate:
@@ -281,6 +308,20 @@ For each source, provide a score:
 - 0.0 = Completely irrelevant
 
 Format: One score per line, just the number (e.g., 0.8)."""
+
+    # A2b retry directive: when the first scoring attempt yields no usable parse
+    # (empty text or a count that does not map 1:1 to sources), retry once with
+    # a strict machine-parseable format. Reasoning models otherwise emit prose
+    # or chain-of-thought that _parse_scores cannot map to N scores.
+    SCORING_RETRY_PROMPT = """Rate each source's relevance to the query from 0.0 to 1.0.
+
+Query: {query}
+
+Sources:
+{sources}
+
+Output ONLY a JSON array of exactly {n} floats in [0,1], one per source, in order.
+No prose, no reasoning, no markdown, no code fence. Example for 3 sources: [0.8, 0.5, 0.2]"""
 
     SUGGESTION_PROMPT = """The following sources don't adequately cover this query.
 
@@ -358,6 +399,12 @@ Format: One query per line."""
 
         avg_quality = sum(scores) / len(scores)
 
+        # A1: the synthesis-skip is only justified when the scorer is reliable.
+        # On the degraded keyword-heuristic path (the LLM scorer failed) a low
+        # average is weak evidence of irrelevance, so REJECT gets an
+        # evidence-gated rescue below and every result is flagged gate_degraded.
+        degraded = outcome.scorer_path == "llm_fallback_heuristic"
+
         # Categorize sources
         good_sources = []
         rejected_with_scores: list[tuple[object, float]] = []
@@ -372,6 +419,32 @@ Format: One query per line."""
         # entity-balanced promotion cannot override it — if the average is
         # below the floor, the set is genuinely irrelevant.
         if avg_quality < self.reject_threshold:
+            # A1 evidence-gated rescue: on the degraded keyword-heuristic path,
+            # retain any source the (de-diluted) heuristic still scores >=
+            # pass_threshold rather than hard-REJECTing on a scorer we know
+            # failed. If none clears pass, fail CLOSED. Scope: ONLY
+            # llm_fallback_heuristic — a no-client heuristic_only run is a
+            # legitimate primary scorer and a confident `llm` REJECT stands.
+            if degraded:
+                rescued = [s for s, sc in zip(sources, scores) if sc >= self.pass_threshold]
+                if rescued:
+                    rejected = [s for s, sc in zip(sources, scores) if sc < self.pass_threshold]
+                    return QualityGateResult(
+                        decision=QualityDecision.PARTIAL,
+                        avg_quality=avg_quality,
+                        good_sources=rescued,
+                        rejected_sources=rejected,
+                        source_scores=scores,
+                        reason=(
+                            f"relevance gate degraded (llm_fallback_heuristic); avg "
+                            f"{avg_quality:.2f} below reject floor but retained "
+                            f"{len(rescued)} source(s) clearing the pass threshold "
+                            f"under the keyword heuristic"
+                        ),
+                        scorer_path=outcome.scorer_path,
+                        fallback_reason=outcome.fallback_reason,
+                        gate_degraded=True,
+                    )
             suggestion = await self._suggest_searches(query, sources) if self.llm_client else \
                 f"Try more specific searches related to: {query}"
             return QualityGateResult(
@@ -384,6 +457,7 @@ Format: One query per line."""
                 reason=f"Average relevance {avg_quality:.2f} below threshold {self.reject_threshold}",
                 scorer_path=outcome.scorer_path,
                 fallback_reason=outcome.fallback_reason,
+                gate_degraded=degraded,
             )
 
         # Entity-balanced safety net: when enabled and the query names 2+
@@ -455,6 +529,7 @@ Format: One query per line."""
                 reason=f"Filtered {len(rejected_sources)} low-quality sources",
                 scorer_path=outcome.scorer_path,
                 fallback_reason=outcome.fallback_reason,
+                gate_degraded=degraded,
             )
         else:
             return QualityGateResult(
@@ -465,6 +540,7 @@ Format: One query per line."""
                 source_scores=scores,
                 scorer_path=outcome.scorer_path,
                 fallback_reason=outcome.fallback_reason,
+                gate_degraded=degraded,
             )
 
     async def _score_sources(
@@ -477,6 +553,10 @@ Format: One query per line."""
         Returns a _ScoringOutcome carrying the scores plus provenance so the
         caller can tell a confident LLM-scored decision apart from one derived
         from the degraded keyword heuristic (Q3 observability).
+
+        Hardened scorer (A2): a reasoning-aware token budget so chain-of-thought
+        does not starve the scores out of `content`, plus one strict-format
+        retry before the keyword-heuristic fallback. At most two scoring calls.
         """
         if not self.llm_client:
             return _ScoringOutcome(
@@ -484,85 +564,180 @@ Format: One query per line."""
                 "heuristic_only",
             )
 
-        prompt = self.SCORING_PROMPT.format(
-            query=query,
-            sources=self._format_sources(sources),
-        )
+        expected = len(sources)
+        formatted = self._format_sources(sources)
+        # A2a: reasoning models spend output tokens on chain-of-thought before
+        # the scores land in `content`; a flat 500 gets consumed by CoT and the
+        # answer never lands (the silent-fallback root trigger). Give reasoning
+        # models a modest scoring-specific headroom; non-reasoning models keep
+        # the flat 500-token behavior (codex design 019e4569 T4-F2).
+        headroom = settings.llm_scoring_headroom if is_reasoning_model(self.model) else 0
+        budget = min(500 + headroom, settings.llm_max_tokens)
 
         try:
-            output = await self._call_llm(prompt, mode=ExtractionMode.PARSE_REQUIRED)
+            scores, reason = await self._attempt_llm_scores(
+                self.SCORING_PROMPT.format(query=query, sources=formatted),
+                expected,
+                budget,
+            )
+            # A2b: one retry with a strict machine-parseable directive when the
+            # first attempt produced no usable parse (empty text or wrong count).
+            if scores is None:
+                scores, reason = await self._attempt_llm_scores(
+                    self.SCORING_RETRY_PROMPT.format(
+                        n=expected, query=query, sources=formatted
+                    ),
+                    expected,
+                    budget,
+                )
         except Exception as exc:
-            # Network/transport/parse error - fall back to the deterministic
-            # heuristic, but record that the LLM scorer was attempted and failed.
+            # Network/transport error - fall back to the deterministic heuristic,
+            # recording that the LLM scorer was attempted and failed.
             return _ScoringOutcome(
                 self._score_sources_heuristic(query, sources),
                 "llm_fallback_heuristic",
                 f"llm_call_failed: {type(exc).__name__}",
             )
 
-        scores = self._parse_scores(output.text)
-        # PARSE_REQUIRED: a valid parse yields exactly one score per source.
-        # A short, over-long, or otherwise wrong count means the structured
-        # response was not understood - fall back to the heuristic rather than
-        # synthesizing over 0.5-padded guesses.
-        if len(scores) != len(sources):
+        if scores is None:
+            # Both attempts failed to yield exactly `expected` parseable scores.
+            # Fall back rather than synthesize over guessed scores; `reason`
+            # carries the last attempt's failure (empty_response or
+            # score_count_mismatch) for Q3 diagnostics.
             return _ScoringOutcome(
                 self._score_sources_heuristic(query, sources),
                 "llm_fallback_heuristic",
-                f"score_count_mismatch: parsed {len(scores)} for {len(sources)} sources",
+                reason,
             )
 
         return _ScoringOutcome(scores, "llm")
+
+    async def _attempt_llm_scores(
+        self,
+        prompt: str,
+        expected_count: int,
+        budget: int,
+    ) -> tuple[Optional[list[float]], Optional[str]]:
+        """One scoring call + parse.
+
+        Returns (scores, None) when the response parsed to exactly
+        expected_count in-range scores; otherwise (None, reason) where reason is
+        "empty_response" or "score_count_mismatch: ...". Transport exceptions
+        propagate to the caller.
+        """
+        output = await self._call_llm(
+            prompt, max_tokens=budget, mode=ExtractionMode.PARSE_REQUIRED
+        )
+        if not output.text:
+            return None, "empty_response"
+        scores = self._parse_scores(output.text, expected_count)
+        if len(scores) != expected_count:
+            return None, (
+                f"score_count_mismatch: parsed {len(scores)} for "
+                f"{expected_count} sources"
+            )
+        return scores, None
 
     def _score_sources_heuristic(
         self,
         query: str,
         sources: list,
     ) -> list[float]:
-        """Score sources using keyword overlap heuristic."""
-        query_terms = set(
-            word.lower() for word in re.findall(r'\b\w+\b', query)
-            if len(word) > 3
-        )
+        """Score sources by query-term coverage (de-diluted - Q1).
+
+        Length-independent: a saturating function of the number of DISTINCT
+        content-bearing query terms a source matches at a TOKEN BOUNDARY, over
+        title + content. The old `matches / len(query_terms)` drove every score
+        toward zero as the query grew (the dilution bug), so a 38-term brief
+        rejected on-topic sources a 4-term query passed. Reused on the degraded
+        fallback path, so its scores must stay meaningful (codex 019e4569).
+
+        - Stopwords + the >3-char filter drop function words so they don't enter
+          the matched-term set (Q1a).
+        - Matching is `\\b`-bounded via _entity_in_text so "research" does not
+          match "researcher" (Q1b).
+        - Title + content are both searched (Q1c).
+        - score = 1 - exp(-0.25 * matched): length-independent, monotonic, and a
+          single match (~0.22) is well below pass (Q1d, k=0.25).
+        """
+        query_terms = {
+            word.lower()
+            for word in re.findall(r'\b\w+\b', query)
+            if len(word) > 3 and word.lower() not in _SCORING_STOPWORDS
+        }
 
         if not query_terms:
             return [0.5] * len(sources)
 
         scores = []
         for source in sources:
-            content = self._get_content(source)
-            content_lower = content.lower()
-
-            # Count term matches
-            matches = sum(1 for term in query_terms if term in content_lower)
-            overlap_ratio = matches / len(query_terms)
-
-            # Scale to 0-1
-            score = min(overlap_ratio * 1.2, 1.0)  # Slight boost
-            scores.append(score)
+            text_lower = f"{self._get_title(source)} {self._get_content(source)}".lower()
+            matched = sum(
+                1 for term in query_terms if _entity_in_text(text_lower, term)
+            )
+            scores.append(1.0 - math.exp(-0.25 * matched))
 
         return scores
 
-    def _parse_scores(self, response: str) -> list[float]:
-        """Parse scores from an LLM response, one score per non-empty line.
+    def _parse_scores(self, response: str, expected_count: int) -> list[float]:
+        """Parse relevance scores from an LLM response.
 
-        Returns exactly the scores it could parse - no padding, no truncation.
-        The caller compares the count against the source count to decide
-        whether the structured response was understood.
+        Two paths, tried in order:
+
+        1. JSON array (only when expected_count >= 2): scan every bracketed
+           candidate, accept the first that json-decodes to a list of EXACTLY
+           expected_count numeric items where every RAW value is already in
+           [0,1]. An out-of-range value disqualifies the whole candidate - a
+           prose "[1, 2]" must not be clamped into [1.0, 1.0]. If none qualify,
+           fall through. expected_count == 1 skips this path: a lone "[1]"
+           source reference would be length-1-valid and misread as a 1.0 score.
+        2. Per line: strip a leading enumerator / source label, then prefer a
+           decimal in [0,1]; else the first bare number in [0,1]; else nothing.
+           ("Source 1: 0.8" -> 0.8, never 1.0.)
+
+        Returns exactly the scores it could parse - no padding, no clamping of
+        out-of-range values. The caller compares the count against
+        expected_count to decide whether to retry or fall back.
         """
-        scores = []
-        for line in response.strip().split("\n"):
-            line = line.strip()
+        # Path 1: exact-length JSON array of natively in-range values.
+        if expected_count >= 2:
+            for candidate in re.findall(r"\[[^\[\]]*\]", response):
+                try:
+                    parsed = json.loads(candidate)
+                except (ValueError, TypeError):
+                    continue
+                if not isinstance(parsed, list) or len(parsed) != expected_count:
+                    continue
+                if any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in parsed):
+                    continue
+                if all(0.0 <= float(v) <= 1.0 for v in parsed):
+                    return [float(v) for v in parsed]
+
+        # Path 2: per line.
+        scores: list[float] = []
+        for raw_line in response.strip().split("\n"):
+            line = raw_line.strip()
             if not line:
                 continue
-            try:
-                # Extract number from line (handles "1. 0.8" or "0.8" formats)
-                numbers = re.findall(r'\d+\.?\d*', line)
-                if numbers:
-                    score = float(numbers[-1])  # Take last number
-                    scores.append(min(max(score, 0.0), 1.0))
-            except ValueError:
-                continue
+            # Strip a leading enumerator / source label ("1. ", "2) ",
+            # "Source 3: "). Require trailing whitespace so a decimal score like
+            # "0.85" is never mistaken for the enumerator "0." + "85".
+            line = re.sub(
+                r"^\s*(?:source\s*)?\d+\s*[:.)]\s+", "", line, flags=re.IGNORECASE
+            )
+            numbers = re.findall(r"\d+\.\d+|\d+", line)
+            chosen: Optional[float] = None
+            for tok in numbers:  # prefer a decimal in range
+                if "." in tok and 0.0 <= float(tok) <= 1.0:
+                    chosen = float(tok)
+                    break
+            if chosen is None:  # else the first bare number in range
+                for tok in numbers:
+                    if "." not in tok and 0.0 <= float(tok) <= 1.0:
+                        chosen = float(tok)
+                        break
+            if chosen is not None:
+                scores.append(chosen)
 
         return scores
 

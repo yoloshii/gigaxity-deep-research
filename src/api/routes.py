@@ -261,6 +261,7 @@ async def research(
                 source_scores=[round(s, 3) for s in (gate_result.source_scores or [])] or None,
                 reject_threshold=quality_gate.reject_threshold,
                 pass_threshold=quality_gate.pass_threshold,
+                gate_degraded=gate_result.gate_degraded,
             )
 
             # REJECT and PARTIAL-with-zero-good must short-circuit before
@@ -951,6 +952,7 @@ async def synthesize_enhanced(
             source_scores=[round(s, 3) for s in (gate_result.source_scores or [])] or None,
             reject_threshold=quality_gate.reject_threshold,
             pass_threshold=quality_gate.pass_threshold,
+            gate_degraded=gate_result.gate_degraded,
         )
 
         if gate_result.decision == QualityDecision.REJECT:
@@ -1282,6 +1284,7 @@ async def synthesize_p1(
             source_scores=[round(s, 3) for s in (gate_result.source_scores or [])] or None,
             reject_threshold=quality_gate.reject_threshold,
             pass_threshold=quality_gate.pass_threshold,
+            gate_degraded=gate_result.gate_degraded,
         )
 
         if gate_result.decision == QualityDecision.REJECT:

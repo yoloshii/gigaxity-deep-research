@@ -432,6 +432,7 @@ async def synthesize(
                 "passed": len(gate_result.good_sources),
                 "filtered": len(gate_result.rejected_sources),
                 "avg_quality": gate_result.avg_quality,
+                "gate_degraded": gate_result.gate_degraded,
             }
 
         # RCS preprocessing (guidance-only: the contextual summaries become
@@ -509,6 +510,14 @@ async def synthesize(
                 f"{qg['filtered']} filtered (avg source relevance: {qg['avg_quality']:.2f}). "
                 f"Scores input source relevance, not output quality.*"
             )
+            # A1: synthesis proceeded over a degraded gate (the LLM relevance
+            # scorer failed and the keyword heuristic screened the sources).
+            if qg.get("gate_degraded"):
+                lines.append(
+                    "*Note: the LLM relevance scorer failed; sources were screened by the "
+                    "degraded keyword heuristic (scorer=llm_fallback_heuristic). Relevance "
+                    "filtering is less reliable for this result.*"
+                )
         if metadata.get("rcs_applied"):
             lines.append(f"*RCS: {metadata.get('rcs_kept', 0)} sources processed*")
 
