@@ -269,6 +269,11 @@ class QualityGateResult:
     # Surfaced so a synthesis that proceeded over a degraded gate carries a
     # caveat. Set on every decision branch, including the evidence-gated rescue.
     gate_degraded: bool = False
+    # Q2: the normalized caller-supplied focus the gate scored relevance against
+    # instead of the full query; None when no focus was applied. Echoed for
+    # observability so a caller knows sources were judged against a narrowed
+    # focus, not the full query. Set on every decision branch.
+    gate_focus: Optional[str] = None
 
 
 class SourceQualityGate:
@@ -369,6 +374,7 @@ Format: One query per line."""
         self,
         query: str,
         sources: list,
+        gate_focus: Optional[str] = None,
     ) -> QualityGateResult:
         """
         Evaluate source quality for query.
@@ -376,10 +382,23 @@ Format: One query per line."""
         Args:
             query: The research query
             sources: Pre-gathered sources to evaluate
+            gate_focus: Optional caller-supplied focus string (Q2). When set
+                (non-empty after strip), source RELEVANCE is scored against the
+                focus instead of the full query — a precision lever for verbose
+                queries. Everything else (entity extraction, suggestions, the
+                post-synthesis verifier) still uses the full query; entity-
+                balanced promotion is skipped under an active focus. Omitted /
+                None / whitespace → behaves exactly as before.
 
         Returns:
             QualityGateResult with decision and filtered sources
         """
+        # Q2: relevance is scored against the focus when supplied; the full query
+        # still drives entity extraction, suggestions, and output verification.
+        focus_applied = bool(gate_focus and gate_focus.strip())
+        scoring_target = gate_focus.strip() if focus_applied else query
+        focus_echo = scoring_target if focus_applied else None
+
         if not sources:
             return QualityGateResult(
                 decision=QualityDecision.REJECT,
@@ -391,10 +410,12 @@ Format: One query per line."""
                 reason="No sources to evaluate",
                 scorer_path=None,
                 fallback_reason="no_sources",
+                gate_focus=focus_echo,
             )
 
-        # Score each source for query relevance, recording scorer provenance.
-        outcome = await self._score_sources(query, sources)
+        # Score each source for relevance (against the focus when one was
+        # supplied, else the full query), recording scorer provenance.
+        outcome = await self._score_sources(scoring_target, sources)
         scores = outcome.scores
 
         avg_quality = sum(scores) / len(scores)
@@ -444,6 +465,7 @@ Format: One query per line."""
                         scorer_path=outcome.scorer_path,
                         fallback_reason=outcome.fallback_reason,
                         gate_degraded=True,
+                        gate_focus=focus_echo,
                     )
             suggestion = await self._suggest_searches(query, sources) if self.llm_client else \
                 f"Try more specific searches related to: {query}"
@@ -458,6 +480,7 @@ Format: One query per line."""
                 scorer_path=outcome.scorer_path,
                 fallback_reason=outcome.fallback_reason,
                 gate_degraded=degraded,
+                gate_focus=focus_echo,
             )
 
         # Entity-balanced safety net: when enabled and the query names 2+
@@ -472,7 +495,14 @@ Format: One query per line."""
         # Tiered signals: title match (3.0) > dense body mentions (1.0+
         # density bonus capped at 2.0) > single body mention (1.0) > 0.
         # Ties break by scalar relevance score.
-        if self.entity_balanced and rejected_with_scores:
+        #
+        # Q2: skipped entirely under an active gate_focus. Promotion ranks by
+        # FULL-QUERY entity centrality with no focus-relevance floor, so under a
+        # focus it could resurrect a vendor-central but focus-irrelevant source
+        # and defeat the caller's narrowing. The blackout it guards against is a
+        # FULL-multi-entity-query dilution artifact that does not apply when the
+        # scorer judges against a narrow focus (codex design 019e4683 T2).
+        if self.entity_balanced and rejected_with_scores and not focus_applied:
             entities = extract_query_entities(query)
             if len(entities) >= 2:
                 promoted_set: set[int] = set()
@@ -530,6 +560,7 @@ Format: One query per line."""
                 scorer_path=outcome.scorer_path,
                 fallback_reason=outcome.fallback_reason,
                 gate_degraded=degraded,
+                gate_focus=focus_echo,
             )
         else:
             return QualityGateResult(
@@ -541,6 +572,7 @@ Format: One query per line."""
                 scorer_path=outcome.scorer_path,
                 fallback_reason=outcome.fallback_reason,
                 gate_degraded=degraded,
+                gate_focus=focus_echo,
             )
 
     async def _score_sources(
@@ -841,12 +873,19 @@ Format: One query per line."""
         self,
         query: str,
         sources: list,
+        gate_focus: Optional[str] = None,
     ) -> QualityGateResult:
         """
         Synchronous evaluation using heuristics only.
 
-        Useful for quick evaluation without async overhead.
+        Useful for quick evaluation without async overhead. `gate_focus` mirrors
+        evaluate() (Q2): when supplied, relevance is scored against the focus
+        instead of the full query; omitted/None/whitespace → full query.
         """
+        focus_applied = bool(gate_focus and gate_focus.strip())
+        scoring_target = gate_focus.strip() if focus_applied else query
+        focus_echo = scoring_target if focus_applied else None
+
         if not sources:
             return QualityGateResult(
                 decision=QualityDecision.REJECT,
@@ -858,9 +897,10 @@ Format: One query per line."""
                 reason="No sources to evaluate",
                 scorer_path=None,
                 fallback_reason="no_sources",
+                gate_focus=focus_echo,
             )
 
-        scores = self._score_sources_heuristic(query, sources)
+        scores = self._score_sources_heuristic(scoring_target, sources)
         avg_quality = sum(scores) / len(scores)
 
         good_sources = []
@@ -881,6 +921,7 @@ Format: One query per line."""
                 suggestion=f"Try more specific searches related to: {query}",
                 reason=f"Average relevance {avg_quality:.2f} below threshold",
                 scorer_path="heuristic_only",
+                gate_focus=focus_echo,
             )
         elif len(good_sources) < len(sources):
             return QualityGateResult(
@@ -890,6 +931,7 @@ Format: One query per line."""
                 rejected_sources=rejected_sources,
                 source_scores=scores,
                 scorer_path="heuristic_only",
+                gate_focus=focus_echo,
             )
         else:
             return QualityGateResult(
@@ -899,4 +941,5 @@ Format: One query per line."""
                 rejected_sources=[],
                 source_scores=scores,
                 scorer_path="heuristic_only",
+                gate_focus=focus_echo,
             )

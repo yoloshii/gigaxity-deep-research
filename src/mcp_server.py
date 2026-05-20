@@ -270,6 +270,7 @@ async def synthesize(
     sources: list[dict],
     style: Literal["comprehensive", "concise", "comparative", "academic", "tutorial"] | None = None,
     preset: Literal["comprehensive", "fast", "contracrow", "academic", "tutorial"] | None = None,
+    gate_focus: str | None = None,
     openrouter_api_key: str | None = None,
 ) -> str:
     """Synthesize pre-gathered content into coherent analysis.
@@ -283,22 +284,37 @@ async def synthesize(
             preset's own style is used (preset wins by default; explicit style
             always overrides). When None and no preset, defaults to comprehensive.
         preset: Processing pipeline preset (comprehensive, fast, contracrow, academic, tutorial)
+        gate_focus: Optional focus string the pre-synthesis relevance gate scores
+            sources against instead of the full query (Q2 precision lever for
+            verbose queries). Omitted/None/whitespace uses the full query.
         openrouter_api_key: Per-request key override; defaults to RESEARCH_LLM_API_KEY.
     """
     # Resolve preset_config up-front so per-preset config can drive style
     # selection, quality-gate thresholds, and entity-balanced filtering.
     preset_config = get_preset(preset) if preset else None
 
+    # Q2: normalize the gate focus once (whitespace / None / absent collapse to
+    # None so they share the existing cache key) — used both as the gate
+    # argument and as the cache discriminator.
+    normalized_focus = gate_focus.strip() if (gate_focus and gate_focus.strip()) else None
+
     # Source-aware cache key: fingerprint source content in input order plus
     # model + effective budget + pipeline mode + version, so a reorder or a
     # content/model/budget change never returns a stale or mis-bound result.
+    # gate_focus changes which sources pass the gate (different synthesis input
+    # → different output), so an active focus must vary the key; an unfocused
+    # call keeps the exact prior mode string so existing cache entries still hit
+    # (codex design 019e4683 T2).
     base_max_tokens = preset_config.max_tokens if preset_config else settings.llm_max_tokens
     effective_max_tokens = derive_effective_budget(base_max_tokens, settings.llm_model)
+    cache_mode = f"preset={preset}:style={style}"
+    if normalized_focus is not None:
+        cache_mode += f":gate_focus={normalized_focus}"
     cache_extra = build_synthesis_cache_extra(
         sources,
         model=settings.llm_model,
         max_tokens=effective_max_tokens,
-        mode=f"preset={preset}:style={style}",
+        mode=cache_mode,
     )
 
     cached_result = cache.get(query, tier="synthesis", extra=cache_extra)
@@ -355,7 +371,7 @@ async def synthesize(
                 pass_threshold=preset_config.quality_gate_pass_threshold,
                 entity_balanced=preset_config.quality_gate_entity_balanced,
             )
-            gate_result = await quality_gate.evaluate(query=query, sources=pre_sources)
+            gate_result = await quality_gate.evaluate(query=query, sources=pre_sources, gate_focus=gate_focus)
 
             # REJECT early-return mirrors REST behavior at routes.py:848.
             # Previously REJECT silently fell through and synthesis ran over
@@ -389,6 +405,11 @@ async def synthesize(
                     f"thresholds reject={quality_gate.reject_threshold}/"
                     f"pass={quality_gate.pass_threshold}.*"
                 )
+                if gate_result.gate_focus:
+                    lines.append(
+                        f"*Relevance gate scored against focus: '{gate_result.gate_focus}' "
+                        f"rather than the full query.*"
+                    )
                 return "\n".join(lines)
 
             # PARTIAL-with-zero-good (Turn 2 codex F6): same gate-bypass class
@@ -423,6 +444,11 @@ async def synthesize(
                     f"thresholds reject={quality_gate.reject_threshold}/"
                     f"pass={quality_gate.pass_threshold}.*"
                 )
+                if gate_result.gate_focus:
+                    lines.append(
+                        f"*Relevance gate scored against focus: '{gate_result.gate_focus}' "
+                        f"rather than the full query.*"
+                    )
                 return "\n".join(lines)
 
             if gate_result.decision in (QualityDecision.PARTIAL, QualityDecision.PROCEED):
@@ -433,6 +459,7 @@ async def synthesize(
                 "filtered": len(gate_result.rejected_sources),
                 "avg_quality": gate_result.avg_quality,
                 "gate_degraded": gate_result.gate_degraded,
+                "gate_focus": gate_result.gate_focus,
             }
 
         # RCS preprocessing (guidance-only: the contextual summaries become
@@ -517,6 +544,12 @@ async def synthesize(
                     "*Note: the LLM relevance scorer failed; sources were screened by the "
                     "degraded keyword heuristic (scorer=llm_fallback_heuristic). Relevance "
                     "filtering is less reliable for this result.*"
+                )
+            # Q2: gate scored against a caller-supplied focus, not the full query.
+            if qg.get("gate_focus"):
+                lines.append(
+                    f"*Relevance gate scored against focus: '{qg['gate_focus']}' "
+                    f"rather than the full query.*"
                 )
         if metadata.get("rcs_applied"):
             lines.append(f"*RCS: {metadata.get('rcs_kept', 0)} sources processed*")

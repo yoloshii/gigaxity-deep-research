@@ -66,6 +66,10 @@ class ResearchRequest(BaseModel):
         default=None,
         description="Discovery focus mode for query optimization"
     )
+    gate_focus: str | None = Field(
+        default=None,
+        description="Optional focus the pre-synthesis relevance gate scores sources against instead of the full query (Q2 precision lever). Distinct from focus_mode (discovery). Omitted/None/whitespace uses the full query."
+    )
     api_key: str | None = Field(
         default=None,
         description="OpenRouter API key for this request. Uses server default if not provided."
@@ -400,6 +404,10 @@ class QualityGateSchema(BaseModel):
         default=False,
         description="True when the LLM relevance scorer failed and the degraded keyword heuristic produced these scores (scorer_path == llm_fallback_heuristic)",
     )
+    gate_focus: str | None = Field(
+        default=None,
+        description="The caller-supplied focus the relevance gate scored sources against instead of the full query (Q2); null when no focus was applied",
+    )
 
 
 class VerifiedClaimSchema(BaseModel):
@@ -440,6 +448,10 @@ class SynthesizeRequestEnhanced(BaseModel):
     max_tokens: int = Field(default=3000, ge=500, le=16384)
     # P0 Enhancement options
     run_quality_gate: bool = Field(default=True, description="Evaluate source quality first")
+    gate_focus: str | None = Field(
+        default=None,
+        description="Optional focus the relevance gate scores sources against instead of the full query (Q2 precision lever). Omitted/None/whitespace uses the full query."
+    )
     detect_contradictions: bool = Field(default=True, description="Surface source contradictions")
     verify_citations: bool = Field(default=False, description="NLI verify citations (slower)")
     api_key: str | None = Field(
@@ -588,6 +600,10 @@ class SynthesizeRequestP1(BaseModel):
     )
     # P0 options (inherited)
     run_quality_gate: bool = Field(default=True, description="Evaluate source quality first")
+    gate_focus: str | None = Field(
+        default=None,
+        description="Optional focus the relevance gate scores sources against instead of the full query (Q2 precision lever). Omitted/None/whitespace uses the full query."
+    )
     detect_contradictions: bool = Field(default=True, description="Surface source contradictions")
     verify_citations: bool = Field(default=False, description="NLI verify citations (slower)")
     api_key: str | None = Field(

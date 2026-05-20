@@ -249,7 +249,7 @@ async def research(
                 pass_threshold=preset.quality_gate_pass_threshold,
                 entity_balanced=preset.quality_gate_entity_balanced,
             )
-            gate_result = await quality_gate.evaluate(request.query, pre_gathered)
+            gate_result = await quality_gate.evaluate(request.query, pre_gathered, gate_focus=request.gate_focus)
             quality_gate_result = QualityGateSchema(
                 decision=gate_result.decision.value,
                 avg_quality=gate_result.avg_quality,
@@ -262,6 +262,7 @@ async def research(
                 reject_threshold=quality_gate.reject_threshold,
                 pass_threshold=quality_gate.pass_threshold,
                 gate_degraded=gate_result.gate_degraded,
+                gate_focus=gate_result.gate_focus,
             )
 
             # REJECT and PARTIAL-with-zero-good must short-circuit before
@@ -939,7 +940,7 @@ async def synthesize_enhanced(
             llm_client=llm_client,
             model=settings.llm_model,
         )
-        gate_result = await quality_gate.evaluate(request.query, sources)
+        gate_result = await quality_gate.evaluate(request.query, sources, gate_focus=request.gate_focus)
 
         quality_gate_result = QualityGateSchema(
             decision=gate_result.decision.value,
@@ -953,6 +954,7 @@ async def synthesize_enhanced(
             reject_threshold=quality_gate.reject_threshold,
             pass_threshold=quality_gate.pass_threshold,
             gate_degraded=gate_result.gate_degraded,
+            gate_focus=gate_result.gate_focus,
         )
 
         if gate_result.decision == QualityDecision.REJECT:
@@ -1271,7 +1273,7 @@ async def synthesize_p1(
             model=settings.llm_model,
             **gate_kwargs,
         )
-        gate_result = await quality_gate.evaluate(request.query, sources)
+        gate_result = await quality_gate.evaluate(request.query, sources, gate_focus=request.gate_focus)
 
         quality_gate_result = QualityGateSchema(
             decision=gate_result.decision.value,
@@ -1285,6 +1287,7 @@ async def synthesize_p1(
             reject_threshold=quality_gate.reject_threshold,
             pass_threshold=quality_gate.pass_threshold,
             gate_degraded=gate_result.gate_degraded,
+            gate_focus=gate_result.gate_focus,
         )
 
         if gate_result.decision == QualityDecision.REJECT:
