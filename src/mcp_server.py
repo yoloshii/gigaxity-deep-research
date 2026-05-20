@@ -383,11 +383,20 @@ async def synthesize(
                 ]
                 if gate_result.suggestion:
                     lines.append(f"**Suggested follow-up searches:** {gate_result.suggestion}\n")
+                _scores = [round(s, 3) for s in (gate_result.source_scores or [])]
+                _prov = f"scorer={gate_result.scorer_path or 'unknown'}"
+                if gate_result.fallback_reason:
+                    _prov += f"; fallback={gate_result.fallback_reason}"
                 lines.append(
                     f"\n---\n*Pre-synthesis source-relevance gate: 0 passed, "
                     f"{len(gate_result.rejected_sources)} filtered "
                     f"(avg source relevance: {gate_result.avg_quality:.2f}). "
                     f"Synthesis NOT cached — gather better sources and re-call.*"
+                )
+                lines.append(
+                    f"*Scorer diagnostics: {_prov}; per-source scores: {_scores}; "
+                    f"thresholds reject={quality_gate.reject_threshold}/"
+                    f"pass={quality_gate.pass_threshold}.*"
                 )
                 return "\n".join(lines)
 
@@ -412,11 +421,20 @@ async def synthesize(
                 ]
                 if gate_result.suggestion:
                     lines.append(f"**Suggested follow-up searches:** {gate_result.suggestion}\n")
+                _scores = [round(s, 3) for s in (gate_result.source_scores or [])]
+                _prov = f"scorer={gate_result.scorer_path or 'unknown'}"
+                if gate_result.fallback_reason:
+                    _prov += f"; fallback={gate_result.fallback_reason}"
                 lines.append(
                     f"\n---\n*Pre-synthesis source-relevance gate: 0 passed, "
                     f"{len(gate_result.rejected_sources)} filtered "
                     f"(avg source relevance: {gate_result.avg_quality:.2f}). "
                     f"Synthesis NOT cached — gather better sources and re-call.*"
+                )
+                lines.append(
+                    f"*Scorer diagnostics: {_prov}; per-source scores: {_scores}; "
+                    f"thresholds reject={quality_gate.reject_threshold}/"
+                    f"pass={quality_gate.pass_threshold}.*"
                 )
                 return "\n".join(lines)
 

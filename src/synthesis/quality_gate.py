@@ -213,6 +213,21 @@ class QualityDecision(str, Enum):
 
 
 @dataclass
+class _ScoringOutcome:
+    """Internal: scores plus provenance of which scorer produced them.
+
+    scorer_path is one of:
+      - "heuristic_only"          no LLM client configured; heuristic is the primary scorer
+      - "llm"                     LLM scorer returned exactly one score per source
+      - "llm_fallback_heuristic"  LLM call/parse failed; degraded keyword heuristic used
+    fallback_reason is populated only on the fallback path.
+    """
+    scores: list[float]
+    scorer_path: str
+    fallback_reason: Optional[str] = None
+
+
+@dataclass
 class QualityGateResult:
     """Result of quality gate evaluation."""
     decision: QualityDecision
@@ -222,6 +237,11 @@ class QualityGateResult:
     source_scores: list[float] = None  # Individual scores
     suggestion: Optional[str] = None  # Suggested additional searches
     reason: Optional[str] = None
+    # Scorer provenance (Q3 observability): which scorer produced source_scores,
+    # and on the degraded fallback path, why. Lets the caller distinguish a
+    # confident LLM-scored REJECT from one derived from the keyword heuristic.
+    scorer_path: Optional[str] = None
+    fallback_reason: Optional[str] = None
 
 
 class SourceQualityGate:
@@ -328,13 +348,13 @@ Format: One query per line."""
                 source_scores=[],
                 suggestion="No sources provided. Try searching with broader terms.",
                 reason="No sources to evaluate",
+                scorer_path=None,
+                fallback_reason="no_sources",
             )
 
-        # Score each source for query relevance
-        if self.llm_client:
-            scores = await self._score_sources_llm(query, sources)
-        else:
-            scores = self._score_sources_heuristic(query, sources)
+        # Score each source for query relevance, recording scorer provenance.
+        outcome = await self._score_sources(query, sources)
+        scores = outcome.scores
 
         avg_quality = sum(scores) / len(scores)
 
@@ -362,6 +382,8 @@ Format: One query per line."""
                 source_scores=scores,
                 suggestion=suggestion,
                 reason=f"Average relevance {avg_quality:.2f} below threshold {self.reject_threshold}",
+                scorer_path=outcome.scorer_path,
+                fallback_reason=outcome.fallback_reason,
             )
 
         # Entity-balanced safety net: when enabled and the query names 2+
@@ -431,6 +453,8 @@ Format: One query per line."""
                 rejected_sources=rejected_sources,
                 source_scores=scores,
                 reason=f"Filtered {len(rejected_sources)} low-quality sources",
+                scorer_path=outcome.scorer_path,
+                fallback_reason=outcome.fallback_reason,
             )
         else:
             return QualityGateResult(
@@ -439,14 +463,27 @@ Format: One query per line."""
                 good_sources=good_sources,
                 rejected_sources=[],
                 source_scores=scores,
+                scorer_path=outcome.scorer_path,
+                fallback_reason=outcome.fallback_reason,
             )
 
-    async def _score_sources_llm(
+    async def _score_sources(
         self,
         query: str,
         sources: list,
-    ) -> list[float]:
-        """Score sources using LLM."""
+    ) -> _ScoringOutcome:
+        """Score sources, recording which scorer ran and why any fallback fired.
+
+        Returns a _ScoringOutcome carrying the scores plus provenance so the
+        caller can tell a confident LLM-scored decision apart from one derived
+        from the degraded keyword heuristic (Q3 observability).
+        """
+        if not self.llm_client:
+            return _ScoringOutcome(
+                self._score_sources_heuristic(query, sources),
+                "heuristic_only",
+            )
+
         prompt = self.SCORING_PROMPT.format(
             query=query,
             sources=self._format_sources(sources),
@@ -454,9 +491,14 @@ Format: One query per line."""
 
         try:
             output = await self._call_llm(prompt, mode=ExtractionMode.PARSE_REQUIRED)
-        except Exception:
-            # Network/transport error - fall back to the deterministic heuristic.
-            return self._score_sources_heuristic(query, sources)
+        except Exception as exc:
+            # Network/transport/parse error - fall back to the deterministic
+            # heuristic, but record that the LLM scorer was attempted and failed.
+            return _ScoringOutcome(
+                self._score_sources_heuristic(query, sources),
+                "llm_fallback_heuristic",
+                f"llm_call_failed: {type(exc).__name__}",
+            )
 
         scores = self._parse_scores(output.text)
         # PARSE_REQUIRED: a valid parse yields exactly one score per source.
@@ -464,9 +506,13 @@ Format: One query per line."""
         # response was not understood - fall back to the heuristic rather than
         # synthesizing over 0.5-padded guesses.
         if len(scores) != len(sources):
-            return self._score_sources_heuristic(query, sources)
+            return _ScoringOutcome(
+                self._score_sources_heuristic(query, sources),
+                "llm_fallback_heuristic",
+                f"score_count_mismatch: parsed {len(scores)} for {len(sources)} sources",
+            )
 
-        return scores
+        return _ScoringOutcome(scores, "llm")
 
     def _score_sources_heuristic(
         self,
@@ -635,6 +681,8 @@ Format: One query per line."""
                 source_scores=[],
                 suggestion="No sources provided.",
                 reason="No sources to evaluate",
+                scorer_path=None,
+                fallback_reason="no_sources",
             )
 
         scores = self._score_sources_heuristic(query, sources)
@@ -657,6 +705,7 @@ Format: One query per line."""
                 source_scores=scores,
                 suggestion=f"Try more specific searches related to: {query}",
                 reason=f"Average relevance {avg_quality:.2f} below threshold",
+                scorer_path="heuristic_only",
             )
         elif len(good_sources) < len(sources):
             return QualityGateResult(
@@ -665,6 +714,7 @@ Format: One query per line."""
                 good_sources=good_sources,
                 rejected_sources=rejected_sources,
                 source_scores=scores,
+                scorer_path="heuristic_only",
             )
         else:
             return QualityGateResult(
@@ -673,4 +723,5 @@ Format: One query per line."""
                 good_sources=good_sources,
                 rejected_sources=[],
                 source_scores=scores,
+                scorer_path="heuristic_only",
             )
