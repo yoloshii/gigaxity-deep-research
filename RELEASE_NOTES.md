@@ -1,5 +1,29 @@
 # Release notes
 
+## v0.3.3 (2026-05-21)
+
+Fixes contradiction detection silently no-op'ing on the configured reasoning model. The contradiction detector was the one structured LLM call left in the synthesis pipeline still using a flat output-token budget; on the 30B reasoning model its chain-of-thought consumed that budget before the structured output landed, so the detector reported a parse failure and surfaced no contradictions — even for the `contracrow` preset whose entire purpose is finding source disagreements. Locked by a codex GPT-5.5 high DESIGN session (`019e48fe`) and cleared by a fresh IMPL session (`019e4904`) per the TWO_SESSIONS rule, both with verbatim "zero remaining findings".
+
+This is a backward-compatible patch release. No public signature, configuration, citation contract, or env-var change: the fix reuses the existing `RESEARCH_LLM_REASONING_HEADROOM` budget helper that the synthesis aggregator, the outline synthesizer, and the relevance scorer already use.
+
+### The bug
+
+`ContradictionDetector.detect` called the LLM with a flat 2000-token output budget under `PARSE_REQUIRED`. On the configured reasoning model (Tongyi-DeepResearch 30B), chain-of-thought consumed that budget, so the structured `TOPIC / POSITION_A / SOURCE_A / ...` blocks arrived truncated or never left the `reasoning` field. The extractor correctly rejected the non-answer (a truncated or reasoning-only response is not a valid parse source), `detect()` returned `parse_failed=True`, and the post-synthesis verifier emitted "contradiction detection could not be parsed — contradictions may exist but were not surfaced". Every other LLM call in the synthesis pipeline already derived a reasoning-aware budget; the contradiction detector was the one that did not.
+
+### What changed
+
+`detect()` now derives the model-aware output budget with the shared `derive_effective_budget(2000, model)` helper: reasoning models get `min(2000 + RESEARCH_LLM_REASONING_HEADROOM, RESEARCH_LLM_MAX_TOKENS)` so chain-of-thought finishes before the structured blocks are emitted, while non-reasoning models keep the flat 2000. The budget is computed at the `detect()` operation boundary and passed explicitly; `_call_llm` stays a raw forwarder. No retry was added, and a parse failure still surfaces as the honest advisory warning rather than falling back to the noisy keyword heuristic — budget starvation was the root cause, and the detector's failure is already advisory (the verifier annotates it), not a silent degradation. The keyword heuristic remains scoped to the transport-error and no-LLM-client paths, unchanged.
+
+### Tests
+
+8 new bug-first tests in `tests/test_contradiction_budget.py`: the reasoning-model budget is derived and passed (`min(2000 + headroom, max_tokens)`); a non-reasoning model keeps the flat 2000; empty and malformed responses stay `parse_failed=True` without invoking the heuristic; a transport exception still degrades to the heuristic; `NO_CONTRADICTIONS` and a well-formed contradiction block behave unchanged; and the fewer-than-two-sources short-circuit makes no LLM call. Full sweep on `local-inference`: 422 pass / 52 skip / 0 fail (+8 from this fix, no regressions). On `main` the OpenRouter-client integration tests remain auth-gated, the same as prior releases.
+
+### What did not change
+
+The contradiction prompt and parser, the `detect()` public signature, the answer-budget base (2000) — and therefore the product behavior for non-reasoning models — the preset thresholds, the `[N]` citation contract, and the `RESEARCH_*` environment variables (the fix reuses the existing `RESEARCH_LLM_REASONING_HEADROOM`; no new setting).
+
+---
+
 ## v0.3.2 (2026-05-21)
 
 Hardens the pre-synthesis source-relevance gate (which rejected on-topic sources for verbose multi-sentence queries) and adds an optional `gate_focus` precision lever. The gate work fixes two compounding causes (A2 + Q1) with a safety cap (A1) on the degraded path; `gate_focus` (Q2) lets a caller score source relevance against a short focus string instead of the full query. Each piece was locked by a separate codex GPT-5.5 high DESIGN session per the TWO_SESSIONS rule and reviewed for impl by a fresh session, all cleared with verbatim "zero remaining findings": the scorer-gate hardening (DESIGN `019e4569` Turns 3-5 / IMPL `019e4640`) and `gate_focus` (DESIGN `019e4683` / IMPL `019e469b`). It builds on the scorer-provenance observability (`scorer_path` / `fallback_reason`) shipped earlier.
