@@ -17,7 +17,7 @@ from enum import Enum
 from typing import Optional
 
 from ..config import settings
-from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction
+from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction, derive_effective_budget
 
 
 class ContradictionSeverity(str, Enum):
@@ -154,7 +154,16 @@ If no contradictions found, respond with: NO_CONTRADICTIONS"""
                 query=query,
                 sources=self._format_sources(sources),
             )
-            output = await self._call_llm(prompt, mode=ExtractionMode.PARSE_REQUIRED)
+            # Reasoning models burn output tokens on chain-of-thought before the
+            # structured blocks land in `content`; a flat 2000 starves the answer
+            # → PARSE_REQUIRED rejects the truncated/reasoning-only output and
+            # detect() no-ops with parse_failed=True. Derive the model-aware
+            # budget (mirrors the scorer + synthesis paths); computed here at the
+            # operation boundary, not inside _call_llm which stays a raw forwarder.
+            budget = derive_effective_budget(2000, self.model)
+            output = await self._call_llm(
+                prompt, max_tokens=budget, mode=ExtractionMode.PARSE_REQUIRED
+            )
         except Exception as e:
             # Transport/LLM error - fall back to the heuristic detector.
             return ContradictionDetectionResult(
