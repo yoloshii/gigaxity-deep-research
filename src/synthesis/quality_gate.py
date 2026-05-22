@@ -22,6 +22,7 @@ from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction, is_reas
 from .entity_allowlist import (
     CONTEXT_CUES,
     CONTEXTUAL_LOWERCASE_TOOL_ALLOWLIST,
+    LOWERCASE_HYPHENATED_TOOL_ALLOWLIST,
     LOWERCASE_TOOL_ALLOWLIST,
 )
 
@@ -38,7 +39,57 @@ _QUERY_ENTITY_STOPWORDS = {
     "AI", "ML", "LLM", "LLMs",
     "May", "June", "July", "August", "September", "October", "November",
     "December", "January", "February", "March", "April",
+    # (Query verbs are handled separately as LEADING-only — see
+    # _LEADING_VERB_STOPWORDS below — because a verb mid-query fronts a product
+    # name and must NOT be stripped.)
+    # Language names (subjects of comparison, not vendor/product entities).
+    "English", "French", "Spanish", "Mandarin", "Chinese", "Japanese",
+    "Korean", "German", "Italian", "Portuguese", "Dutch", "Arabic",
+    "Hindi", "Russian", "Polish", "Turkish", "Vietnamese", "Thai",
+    "Indonesian", "Malay", "Hebrew", "Swedish", "Norwegian", "Danish",
+    "Finnish", "Greek",
+    # Compliance / privacy acronyms (domain concepts, not vendors). Keeps
+    # vendor acronyms like AWS / GCP / IBM extractable.
+    "BAA", "SOC", "SOC2",
+    "HIPAA", "GDPR", "CCPA",
+    "DPA", "PCI", "PII", "PHI", "ISO",
 }
+
+
+# Capitalized query verbs stripped when they OPEN the query or a later sentence.
+# Two rules (see the regexes below): a query-leading verb is always stripped
+# ("Evaluate Tavily" → "Tavily"); a verb opening a LATER sentence is stripped
+# only before a lowercase prose continuation ("...Nova-3. Need diarization") —
+# a CAPITALIZED continuation means the verb fronts a product introduced in
+# sentence 2 ("...products. Find My Device", "...AWS. Review Board") and is
+# KEPT, so it can't degrade into a generic tail bucket that defeats the
+# verifier's coverage check (codex IMPL F2/T3/T4).
+_SENTENCE_INITIAL_VERBS = {
+    "Need", "Needs", "Needed",
+    "Include", "Includes", "Including",
+    "Use", "Using",
+    "Find", "Finding",
+    "Evaluate", "Evaluating",
+    "Assess", "Assessing",
+    "Review", "Reviewing",
+    "Recommend", "Recommending", "Recommendation", "Recommendations",
+}
+
+# Built once. Verbs are plain alphabetic (no escaping); trailing `\b` prevents
+# prefix matches ("Need" must not match inside "Needle"). A sentence-initial
+# verb (string start OR after . ! ?) is stripped ONLY when a LOWERCASE prose
+# continuation follows ("Evaluate the tradeoffs", "...Nova-3. Need
+# diarization"). A CAPITALIZED continuation means the verb fronts a product
+# name ("Review Board", "Find My Device") and is KEPT at every position, so it
+# can never degrade into a generic tail bucket that defeats the verifier's
+# coverage check (codex IMPL F2/T3/T4/T5). Cost: a leading verb before a real
+# entity ("Evaluate Tavily") is not split out, but that buried phrase is
+# harmless — it is never coverage-checked or promoted.
+_SENTENCE_INITIAL_VERB_RE = re.compile(
+    r"(^|[.!?]\s+)(?:"
+    + "|".join(sorted(_SENTENCE_INITIAL_VERBS, key=len, reverse=True))
+    + r")\b(?=\s+[a-z])"
+)
 
 
 # Lowercase function words dropped from the keyword-scoring term set (Q1a).
@@ -111,6 +162,27 @@ def _split_phrase_at_stopwords(phrase: str) -> list[str]:
     return result
 
 
+def _is_hyphenated_entity(candidate: str) -> bool:
+    """True if a Shape 3 hyphenated candidate is a real identifier rather than
+    a generic English compound.
+
+    Kept when it carries an uppercase letter or a digit (``gpt-4o`` /
+    ``claude-3-5`` / ``Llama-3`` / ``TypeScript-2``) OR is a curated
+    all-lowercase package name (``scikit-learn`` / ``llama-cpp``). Drops
+    ``opt-out`` / ``real-time`` / ``pre-recorded`` / ``two-party`` /
+    ``cost-effective`` — generic compounds that are not vendor/product/library
+    names and previously tripped the verifier's entity-coverage hard-fail.
+
+    Known residual (documented, not fixed here): lowercase+digit compounds such
+    as ``tier-2`` / ``soc-2`` / ``phase-1`` still pass the cap-or-digit test.
+    Eliminating those cleanly needs typed entity metadata — deferred.
+    """
+    return (
+        any(ch.isupper() or ch.isdigit() for ch in candidate)
+        or candidate.lower() in LOWERCASE_HYPHENATED_TOOL_ALLOWLIST
+    )
+
+
 def extract_query_entities(query: str) -> list[str]:
     """Extract candidate named entities from a query.
 
@@ -120,13 +192,21 @@ def extract_query_entities(query: str) -> list[str]:
     1. Capitalized words (3+ chars): ``Tavily`` / ``LinkUp`` / ``FastAPI`` /
        ``Postgres``. Greedy matches that include leading/trailing stopwords
        ("Compare Tavily", "Serper APIs") get split at the stopword boundary
-       so the entity core survives.
+       so the entity core survives. A sentence-initial verb followed by
+       lowercase prose ("Evaluate the tradeoffs", "Need" in "...Nova-3. Need
+       diarization") is stripped via ``_SENTENCE_INITIAL_VERBS``; a verb that
+       is mid-clause or fronts a capitalized product ("Review Board",
+       "Find My Device") is KEPT.
     2. Internal-cap identifiers: ``vLLM`` / ``iOS`` / ``eBay`` / ``wxWidgets``
        — lowercase start with at least one internal uppercase. Common in
        ML/dev tool naming.
-    3. Hyphenated identifiers with caps or digits: ``gpt-4o`` / ``claude-3-5``
-       / ``Llama-3`` / ``TypeScript-2``. Requires at least one hyphen and
-       a leading letter.
+    3. Hyphenated identifiers: kept only when they carry an uppercase letter
+       or digit (``gpt-4o`` / ``claude-3-5`` / ``Llama-3`` / ``TypeScript-2``)
+       OR are curated all-lowercase package names in
+       ``LOWERCASE_HYPHENATED_TOOL_ALLOWLIST`` (``scikit-learn`` /
+       ``llama-cpp``). Generic lowercase compounds (``opt-out`` /
+       ``real-time`` / ``pre-recorded``) are dropped — they are not entities.
+       See ``_is_hyphenated_entity``.
     4. Dotted module paths: ``llama.cpp`` / ``asyncio.gather`` /
        ``numpy.array``. Requires a dot between identifier-shaped tokens.
     5. Curated lowercase tools (``bun`` / ``npm`` / ``deno`` / ``pnpm`` /
@@ -152,18 +232,42 @@ def extract_query_entities(query: str) -> list[str]:
     """
     if not query:
         return []
+    # Drop a sentence-initial verb (query start OR after . ! ?) when it is
+    # followed by lowercase prose ("Evaluate the tradeoffs", "...Nova-3. Need
+    # diarization"), so a bare query verb is never extracted as a phantom
+    # entity that hard-fails the verifier. A verb that is mid-clause, or fronts
+    # a CAPITALIZED product continuation at any position ("Review Board"), is
+    # preserved — see _SENTENCE_INITIAL_VERBS (codex IMPL F2/T3/T4/T5).
+    query = _SENTENCE_INITIAL_VERB_RE.sub(r"\1", query)
     # Shape 1: Capitalized words (existing behavior — kept first for
     # priority + stopword stripping). Length >= 3 to avoid catching
     # interrogatives + acronyms.
     cap_pattern = r"\b[A-Z][a-zA-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z][a-zA-Z]+)*\b"
     # Shape 2: lowercase-start with internal uppercase (vLLM, iOS, eBay).
     internal_cap_pattern = r"\b[a-z][a-z]*[A-Z][a-zA-Z]+\b"
-    # Shape 3: hyphenated identifiers — letter start, at least one hyphen,
-    # alphanumeric segments thereafter.
-    hyphenated_pattern = r"\b[A-Za-z][a-zA-Z0-9]*(?:-[a-zA-Z0-9]+){1,3}\b"
+    # Shape 3: hyphenated identifiers — letter start, 1-3 hyphenated segments.
+    # Negative lookaround (not \b): the leading lookbehind keeps "." so a match
+    # can't start inside a dotted path; the trailing "-" stays excluded so a
+    # 4+-hyphen chain can't partially match its leading 3-hyphen prefix; but
+    # the trailing "." is ALLOWED so a sentence-final identifier ("Nova-3.")
+    # still matches (codex 019e5031 T2). Candidates gated by
+    # _is_hyphenated_entity.
+    hyphenated_pattern = (
+        r"(?<![A-Za-z0-9_.-])"
+        r"[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+){1,3}"
+        r"(?![A-Za-z0-9_-])"
+    )
     # Shape 4: dotted module paths — letter start, at least one dot between
-    # identifier-shaped tokens.
-    dotted_pattern = r"\b[a-zA-Z][a-zA-Z0-9]*(?:\.[a-zA-Z][a-zA-Z0-9]+)+\b"
+    # identifier-shaped tokens. Negative lookaround (not \b), mirroring Shape 3:
+    # the leading lookbehind excludes "-" so Shape 4 can't start AFTER a hyphen
+    # and resurrect a suffix of a gated-out Shape 3 compound ("pre-recorded.wav"
+    # must NOT yield "recorded.wav"); the trailing guard blocks partial matches
+    # before a glued hyphen but allows a sentence-final "." (codex IMPL F1).
+    dotted_pattern = (
+        r"(?<![A-Za-z0-9_.-])"
+        r"[a-zA-Z][a-zA-Z0-9]*(?:\.[a-zA-Z][a-zA-Z0-9]+)+"
+        r"(?![A-Za-z0-9_-])"
+    )
 
     seen: set[str] = set()
     result: list[str] = []
@@ -184,15 +288,26 @@ def extract_query_entities(query: str) -> list[str]:
             seen.add(sub)
             result.append(sub)
 
-    # Shapes 2-4 — no stopword filter (these patterns are inherently entity-
-    # shaped; "vLLM" / "gpt-4o" / "llama.cpp" never collide with English
-    # stopwords).
-    for pattern in (internal_cap_pattern, hyphenated_pattern, dotted_pattern):
+    # Shapes 2 + 4 — no filter (internal-cap "vLLM" and dotted "llama.cpp"
+    # never collide with English). Shape 3 (hyphenated) is GATED by
+    # _is_hyphenated_entity: kept only if it carries a cap/digit (gpt-4o,
+    # claude-3-5) or is an allowlisted lowercase package (scikit-learn). A
+    # gated-out compound (opt-out, real-time) contributes to NEITHER `result`
+    # NOR `tech_shaped_entities`, so it also cannot enable the Shape 5
+    # contextual tier (codex 019e5031). Order preserved: 2 → 3 → 4.
+    for pattern, hyphen_gated in (
+        (internal_cap_pattern, False),
+        (hyphenated_pattern, True),
+        (dotted_pattern, False),
+    ):
         for c in re.findall(pattern, query):
-            if c not in seen:
-                seen.add(c)
-                result.append(c)
-                tech_shaped_entities.append(c)
+            if c in seen:
+                continue
+            if hyphen_gated and not _is_hyphenated_entity(c):
+                continue
+            seen.add(c)
+            result.append(c)
+            tech_shaped_entities.append(c)
 
     # Shape 5 — curated lowercase tool allowlist (Item 7, post-v0.3.0).
     # Contextual tier is enabled only when (a) a CONTEXT_CUES word appears

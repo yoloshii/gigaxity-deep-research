@@ -18,7 +18,14 @@ Two tiers:
   the surrounding query carries technical/comparison cues (``compare``,
   ``vs``, ``install``, ``runtime``, etc.) per ``CONTEXT_CUES`` below.
 
-Both sets are frozenset for O(1) membership and to prevent mutation.
+A third set, ``LOWERCASE_HYPHENATED_TOOL_ALLOWLIST``, is the Shape 3
+escape hatch. Hyphenated identifiers are kept only when they carry an
+uppercase letter or a digit (``gpt-4o`` / ``claude-3-5``) OR are listed
+here (``scikit-learn`` / ``llama-cpp``). It exists so all-lowercase
+hyphenated package names survive the cap-or-digit filter that drops
+generic English compounds (``opt-out`` / ``real-time`` / ``pre-recorded``).
+
+All sets are frozenset for O(1) membership and to prevent mutation.
 
 Maintainer-owned, code-reviewed, no env/JSON/config override on purpose:
 verifier behavior must be reproducible across deployments. If an operator
@@ -84,4 +91,27 @@ CONTEXT_CUES: frozenset[str] = frozenset({
     "tool", "tools", "toolchain",
     "cli",
     "benchmark", "benchmarks", "benchmarking",
+})
+
+
+# Shape 3 escape hatch: legitimate all-lowercase hyphenated package/library
+# names that carry no uppercase letter or digit, so the cap-or-digit filter
+# (which drops generic English compounds like opt-out / real-time) would
+# otherwise discard them. Matched case-insensitively against candidate.lower().
+LOWERCASE_HYPHENATED_TOOL_ALLOWLIST: frozenset[str] = frozenset({
+    "scikit-learn",
+    "llama-cpp",
+    "llama-cpp-python",
+    "react-dom",
+    "react-native",
+    "styled-components",
+    "create-react-app",
+    "pip-tools",
+    "npm-run-all",
+    "node-fetch",
+    "ts-node",
+    "next-auth",
+    "date-fns",
+    "huggingface-hub",
+    "sentence-transformers",
 })
