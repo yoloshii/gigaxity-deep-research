@@ -1,5 +1,32 @@
 # Release notes
 
+## v0.3.4 (2026-05-23)
+
+Fixes a false-positive class in the post-synthesis entity-coverage verifier. The verifier extracts candidate entity names from the query and hard-fails the synthesis when it discusses an entity that is absent from every retained source — the hallucination-catch for "the relevance gate filtered the only source for a vendor, but the model wrote about it anyway". The query-entity extractor over-matched: it pulled generic hyphenated compounds (`opt-out`, `real-time`, `pre-recorded`), capitalized common words and language names (`English`), compliance acronyms (`BAA`), and bare query verbs (`Need`), then hard-failed an otherwise-good synthesis whenever one of those pseudo-entities was missing from the post-gate sources. Locked by a codex GPT-5.5 high DESIGN session (`019e5031`) and cleared by a fresh IMPL session (`019e5047`) per the TWO_SESSIONS rule, both with verbatim "zero remaining findings".
+
+This is a backward-compatible patch release. No public signature, configuration, citation contract, or env-var change: `extract_query_entities()` and `verify_synthesis_output()` keep their signatures; the extractor simply returns fewer junk candidates, so the verifier and the gate's entity-balanced promotion both see a cleaner entity set.
+
+### The bug
+
+`extract_query_entities` had two over-matching classes. The hyphenated-identifier shape matched any all-lowercase English compound (`opt-out`, `real-time`, `speech-to-text`) despite its contract of "identifiers with caps or digits", and the capitalized-word shape emitted common words it should have filtered (`English`, `Need`, `BAA`). Every extracted pseudo-entity is treated as hard-fail-eligible by the verifier, so a synthesis that discussed `opt-out` while the retained sources happened not to contain that exact token was hard-failed and relayed with a "Synthesis verification FAILED" header — even though `opt-out` is not a vendor/product/library and its absence is not a hallucination signal.
+
+### What changed
+
+- **The hyphenated shape is gated by a `cap-or-digit` predicate**: a hyphenated candidate is kept only if it carries an uppercase letter or digit (`gpt-4o`, `claude-3-5`, `Nova-3`) or is a curated all-lowercase package name in the new `LOWERCASE_HYPHENATED_TOOL_ALLOWLIST` (`scikit-learn`, `llama-cpp`, `react-dom`, ...). Generic compounds (`opt-out`, `real-time`, `pre-recorded`) are dropped. The pattern uses negative lookarounds instead of `\b` so a 4+-hyphen chain cannot partial-match its prefix, while a trailing sentence period is still allowed (`Nova-3.` matches).
+- **The dotted-path shape gets the same boundary**, so it can no longer start after a hyphen and resurrect the suffix of a gated-out compound (`pre-recorded.wav` no longer yields `recorded.wav`).
+- **Stopwords gained language names and compliance acronyms** (`English`, `French`, ...; `BAA`, `SOC`, `HIPAA`, `GDPR`, `PCI`, ...), which are subjects of comparison, not vendor entities. Vendor acronyms (`AWS`, `GCP`, `IBM`) stay extractable.
+- **Sentence-initial query verbs are stripped before lowercase prose** (`Recommend the best ...` → nothing; `...Nova-3. Need diarization` → drop `Need`). A verb that fronts a capitalized product name (`Review Board`, `Find My Device`) is kept at every position, so it can never degrade into a generic tail bucket that would spuriously satisfy coverage.
+
+### Tests
+
+28 new bug-first tests in `tests/test_entity_extraction_precision.py`: the reported query yields exactly its three real entities; generic compounds / language names / acronyms are dropped; real identifiers (`gpt-4o`, `Nova-3`, `scikit-learn`, `llama-cpp`, ...) still extract; the dotted shape no longer resurrects compound suffixes; sentence-initial verbs strip before lowercase but verb-fronted products survive at every position; the verifier no longer hard-fails on a dropped generic term but still catches a genuine uncovered entity; and the gate's entity-balanced promotion buckets only real entities. Full sweep on `local-inference`: 450 pass / 52 skip / 0 fail (+28 from this fix, no regressions). On `main` the OpenRouter-client integration tests remain auth-gated, the same as prior releases.
+
+### What did not change
+
+The verifier's hard-fail semantics and gap-framing escape hatch, the entity-coverage check itself, the `[N]` citation contract, the preset thresholds, the `RESEARCH_*` environment variables, the MCP tool and REST endpoint surfaces, and the public signatures of `extract_query_entities()` and `verify_synthesis_output()`. Two residuals are documented in code rather than fixed here: a lowercase-plus-digit compound (`tier-2`) still passes the cap-or-digit test, and recovering an entity from a leading imperative (`Evaluate Tavily` → `Tavily`) is deferred to a future typed-entity-metadata layer — both are bounded and neither affects the no-degradation invariant.
+
+---
+
 ## v0.3.3 (2026-05-21)
 
 Fixes contradiction detection silently no-op'ing on the configured reasoning model. The contradiction detector was the one structured LLM call left in the synthesis pipeline still using a flat output-token budget; on the 30B reasoning model its chain-of-thought consumed that budget before the structured output landed, so the detector reported a parse failure and surfaced no contradictions — even for the `contracrow` preset whose entire purpose is finding source disagreements. Locked by a codex GPT-5.5 high DESIGN session (`019e48fe`) and cleared by a fresh IMPL session (`019e4904`) per the TWO_SESSIONS rule, both with verbatim "zero remaining findings".
