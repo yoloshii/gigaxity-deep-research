@@ -123,6 +123,8 @@ async def health_check():
         # `llm_configured` reflects whether a key is set, not just the base URL.
         # The base URL has a default of http://localhost:8000/v1, which would
         # otherwise make this field always-true and useless as a readiness signal.
+        # Local servers without auth still need the user to set a placeholder key
+        # so this signal stays meaningful.
         llm_configured=bool(settings.llm_api_key),
     )
 
@@ -272,10 +274,11 @@ async def research(
             )
 
             # REJECT and PARTIAL-with-zero-good must short-circuit before
-            # synthesis — matches the v0.2.0 fix at /synthesize/p1 and the
-            # MCP `synthesize` path. Prior to v0.2.2 this endpoint silently
-            # fell through, running synthesis over the same sources the gate
-            # had just rejected. v0.2.2 codex Turn 7 item 4.
+            # synthesis — matches the v0.2.0 fix at /synthesize/p1
+            # (routes.py:1193-1228) and the MCP `synthesize` path. Prior to
+            # v0.2.2 this endpoint silently fell through, running synthesis
+            # over the same sources the gate had just rejected. v0.2.2 codex
+            # Turn 7 item 4.
             if gate_result.decision == QualityDecision.REJECT:
                 return ResearchResponse(
                     query=request.query,
@@ -940,7 +943,8 @@ async def synthesize_enhanced(
         elif gate_result.decision == QualityDecision.PARTIAL:
             # PARTIAL-with-zero-good (Turn 3 codex T3F2): mirror MCP F6
             # early-return. Without this, assigning empty good_sources into
-            # sources_for_synthesis lets synthesis run over zero sources.
+            # sources_for_synthesis lets synthesis run over zero sources —
+            # same gate-bypass class as REJECT-doesn't-reject.
             if not gate_result.good_sources:
                 return SynthesizeResponseEnhanced(
                     query=request.query,
@@ -1245,7 +1249,8 @@ async def synthesize_p1(
             )
         elif gate_result.decision == QualityDecision.PARTIAL:
             # PARTIAL-with-zero-good (Turn 3 codex T3F2): mirror MCP F6
-            # early-return.
+            # early-return. Same gate-bypass class as REJECT-doesn't-reject
+            # — synthesis must not run over zero sources.
             if not gate_result.good_sources:
                 return SynthesizeResponseP1(
                     query=request.query,

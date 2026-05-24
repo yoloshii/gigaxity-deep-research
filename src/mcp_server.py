@@ -1,7 +1,8 @@
 """FastMCP server for deep-research tools.
 
 Exposes research tools via Model Context Protocol using stdio transport.
-Uses LLMClient for LLM inference via OpenRouter API.
+Uses LLMClient for inference against any OpenAI-compatible chat-completions
+endpoint (vLLM, SGLang, llama.cpp, OpenRouter).
 
 Usage:
     python -m src.mcp_server
