@@ -20,6 +20,24 @@ import pytest
 
 from src.cache import HotCache, cache, cached, CacheEntry
 from src.llm_utils import LLMOutput
+from src.synthesis import AggregatedSynthesis, SynthesisStyle
+
+
+def _aggregated_for_test(content: str, citations: list[dict], llm_output: LLMOutput) -> AggregatedSynthesis:
+    """Phase 0 helper: finalize_synthesis uses isinstance() to dispatch over
+    AggregatedSynthesis / OutlinedSynthesis / dict — MagicMock surrogates
+    trip the unsupported-result-type guard. Tests that mock SynthesisAggregator
+    return values build the real dataclass instance through this helper.
+    """
+    return AggregatedSynthesis(
+        content=content,
+        citations=list(citations),
+        source_attribution={},
+        confidence=0.7 if content else 0.0,
+        style_used=SynthesisStyle.COMPREHENSIVE,
+        word_count=len(content.split()) if content else 0,
+        llm_output=llm_output,
+    )
 
 
 class TestHotCacheBasics:
@@ -365,7 +383,7 @@ class TestMCPToolWiring:
         )
 
         with patch('src.mcp_server.SearchAggregator') as mock_agg, \
-             patch('src.mcp_server.SynthesisEngine') as mock_engine:
+             patch('src.synthesis.wrappers.SynthesisEngine') as mock_engine:
             mock_agg_instance = MagicMock()
             mock_agg_instance.search = AsyncMock(return_value=([sample_source], {}))
             mock_agg.return_value = mock_agg_instance
@@ -470,23 +488,26 @@ class TestSynthesizeSourceAwareCaching:
             {"title": "Source 2", "url": "http://b.com", "content": "content 2"},
         ]
 
-        with patch('src.mcp_server.SynthesisAggregator') as mock_agg:
+        with patch('src.synthesis.wrappers.SynthesisAggregator') as mock_agg:
             mock_instance = MagicMock()
-            mock_result = MagicMock()
-            mock_result.content = "synthesis result [1] [2]"
-            mock_result.citations = [
-                {"number": 1, "title": "Source 1", "url": "http://a.com"},
-                {"number": 2, "title": "Source 2", "url": "http://b.com"},
-            ]
-            # A valid synthesis result: not truncated, not reasoning-only, with
-            # citations - so the post-synthesis verifier passes and the result
-            # is cached (an unverified/hard-gated result is not cached).
-            mock_result.llm_output = LLMOutput(
-                text="synthesis result [1] [2]",
-                source_field="content",
-                finish_reason="stop",
-                truncated=False,
-                reasoning_only=False,
+            # Phase 0: finalize_synthesis dispatches via isinstance — build
+            # the real AggregatedSynthesis dataclass instead of MagicMock.
+            mock_result = _aggregated_for_test(
+                content="synthesis result [1] [2]",
+                citations=[
+                    {"number": 1, "title": "Source 1", "url": "http://a.com"},
+                    {"number": 2, "title": "Source 2", "url": "http://b.com"},
+                ],
+                # A valid synthesis result: not truncated, not reasoning-only,
+                # with citations - so the post-synthesis verifier passes and
+                # the result is cached (a hard-gated result is not cached).
+                llm_output=LLMOutput(
+                    text="synthesis result [1] [2]",
+                    source_field="content",
+                    finish_reason="stop",
+                    truncated=False,
+                    reasoning_only=False,
+                ),
             )
             mock_instance.synthesize = AsyncMock(return_value=mock_result)
             mock_agg.return_value = mock_instance
@@ -504,23 +525,26 @@ class TestSynthesizeSourceAwareCaching:
         sources1 = [{"title": "S1", "url": "http://a.com", "content": "c1"}]
         sources2 = [{"title": "S2", "url": "http://b.com", "content": "c2"}]
 
-        with patch('src.mcp_server.SynthesisAggregator') as mock_agg:
+        with patch('src.synthesis.wrappers.SynthesisAggregator') as mock_agg:
             mock_instance = MagicMock()
-            mock_result = MagicMock()
-            mock_result.content = "synthesis result [1] [2]"
-            mock_result.citations = [
-                {"number": 1, "title": "Source 1", "url": "http://a.com"},
-                {"number": 2, "title": "Source 2", "url": "http://b.com"},
-            ]
-            # A valid synthesis result: not truncated, not reasoning-only, with
-            # citations - so the post-synthesis verifier passes and the result
-            # is cached (an unverified/hard-gated result is not cached).
-            mock_result.llm_output = LLMOutput(
-                text="synthesis result [1] [2]",
-                source_field="content",
-                finish_reason="stop",
-                truncated=False,
-                reasoning_only=False,
+            # Phase 0: finalize_synthesis dispatches via isinstance — build
+            # the real AggregatedSynthesis dataclass instead of MagicMock.
+            mock_result = _aggregated_for_test(
+                content="synthesis result [1] [2]",
+                citations=[
+                    {"number": 1, "title": "Source 1", "url": "http://a.com"},
+                    {"number": 2, "title": "Source 2", "url": "http://b.com"},
+                ],
+                # A valid synthesis result: not truncated, not reasoning-only,
+                # with citations - so the post-synthesis verifier passes and
+                # the result is cached (a hard-gated result is not cached).
+                llm_output=LLMOutput(
+                    text="synthesis result [1] [2]",
+                    source_field="content",
+                    finish_reason="stop",
+                    truncated=False,
+                    reasoning_only=False,
+                ),
             )
             mock_instance.synthesize = AsyncMock(return_value=mock_result)
             mock_agg.return_value = mock_instance
@@ -534,23 +558,26 @@ class TestSynthesizeSourceAwareCaching:
         """Different style must create a new cache entry."""
         sources = [{"title": "S1", "url": "http://a.com", "content": "c1"}]
 
-        with patch('src.mcp_server.SynthesisAggregator') as mock_agg:
+        with patch('src.synthesis.wrappers.SynthesisAggregator') as mock_agg:
             mock_instance = MagicMock()
-            mock_result = MagicMock()
-            mock_result.content = "synthesis result [1] [2]"
-            mock_result.citations = [
-                {"number": 1, "title": "Source 1", "url": "http://a.com"},
-                {"number": 2, "title": "Source 2", "url": "http://b.com"},
-            ]
-            # A valid synthesis result: not truncated, not reasoning-only, with
-            # citations - so the post-synthesis verifier passes and the result
-            # is cached (an unverified/hard-gated result is not cached).
-            mock_result.llm_output = LLMOutput(
-                text="synthesis result [1] [2]",
-                source_field="content",
-                finish_reason="stop",
-                truncated=False,
-                reasoning_only=False,
+            # Phase 0: finalize_synthesis dispatches via isinstance — build
+            # the real AggregatedSynthesis dataclass instead of MagicMock.
+            mock_result = _aggregated_for_test(
+                content="synthesis result [1] [2]",
+                citations=[
+                    {"number": 1, "title": "Source 1", "url": "http://a.com"},
+                    {"number": 2, "title": "Source 2", "url": "http://b.com"},
+                ],
+                # A valid synthesis result: not truncated, not reasoning-only,
+                # with citations - so the post-synthesis verifier passes and
+                # the result is cached (a hard-gated result is not cached).
+                llm_output=LLMOutput(
+                    text="synthesis result [1] [2]",
+                    source_field="content",
+                    finish_reason="stop",
+                    truncated=False,
+                    reasoning_only=False,
+                ),
             )
             mock_instance.synthesize = AsyncMock(return_value=mock_result)
             mock_agg.return_value = mock_instance

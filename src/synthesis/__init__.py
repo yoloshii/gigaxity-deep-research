@@ -33,9 +33,26 @@ from .contradictions import (
     ContradictionSeverity,
 )
 from .output_verifier import (
+    RetryAdvice,
     SynthesisVerdict,
-    verify_synthesis_output,
+    VerdictClass,
+    VerdictDiagnostics,
+    VerdictWarning,
     annotate_with_verdict,
+    verify_synthesis_output,
+)
+from .finalization import (
+    FinalizedSynthesis,
+    SurfaceName,
+    finalize_synthesis,
+)
+from .wrappers import (
+    SynthesisInvocationError,
+    run_aggregator_synthesize,
+    run_aggregator_synthesize_with_reasoning,
+    run_engine_research,
+    run_engine_synthesize,
+    run_outline_synthesize,
 )
 # P1 Enhancements
 from .outline import (
@@ -92,8 +109,22 @@ __all__ = [
     "ContradictionSeverity",
     # Post-synthesis output verification
     "SynthesisVerdict",
+    "VerdictClass",
+    "VerdictDiagnostics",
+    "VerdictWarning",
+    "RetryAdvice",
     "verify_synthesis_output",
     "annotate_with_verdict",
+    # Phase 0: post-synthesis finalization + wrappers
+    "FinalizedSynthesis",
+    "SurfaceName",
+    "finalize_synthesis",
+    "SynthesisInvocationError",
+    "run_aggregator_synthesize",
+    "run_aggregator_synthesize_with_reasoning",
+    "run_engine_research",
+    "run_engine_synthesize",
+    "run_outline_synthesize",
     # P1: Outline-Guided Synthesis
     "OutlineGuidedSynthesizer",
     "OutlinedSynthesis",

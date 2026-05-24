@@ -234,14 +234,20 @@ class TestReasonVerification:
 
     @staticmethod
     def _mock_result(content, citations, llm_output):
-        result = MagicMock()
-        result.content = content
-        result.citations = citations
-        result.source_attribution = {}
-        result.confidence = 0.7 if content else 0.0
-        result.word_count = len(content.split())
-        result.llm_output = llm_output
-        return result
+        # Phase 0: finalize_synthesis uses isinstance(result, AggregatedSynthesis)
+        # to dispatch normalizers, so tests must return the real dataclass.
+        # A MagicMock surrogate trips the unsupported-result-type guard in
+        # finalize_synthesis.
+        from src.synthesis import AggregatedSynthesis, SynthesisStyle
+        return AggregatedSynthesis(
+            content=content,
+            citations=list(citations),
+            source_attribution={},
+            confidence=0.7 if content else 0.0,
+            style_used=SynthesisStyle.COMPREHENSIVE,
+            word_count=len(content.split()) if content else 0,
+            llm_output=llm_output,
+        )
 
     @pytest.mark.unit
     def test_degraded_reason_result_not_cached(self, client):
@@ -254,7 +260,7 @@ class TestReasonVerification:
                 finish_reason="stop", truncated=False, reasoning_only=False,
             ),
         )
-        with patch("src.api.routes.SynthesisAggregator") as mock_agg:
+        with patch("src.synthesis.wrappers.SynthesisAggregator") as mock_agg:
             inst = MagicMock()
             inst.synthesize_with_reasoning = AsyncMock(return_value=degraded)
             mock_agg.return_value = inst
@@ -282,7 +288,7 @@ class TestReasonVerification:
                 finish_reason="stop", truncated=False, reasoning_only=False,
             ),
         )
-        with patch("src.api.routes.SynthesisAggregator") as mock_agg:
+        with patch("src.synthesis.wrappers.SynthesisAggregator") as mock_agg:
             inst = MagicMock()
             inst.synthesize_with_reasoning = AsyncMock(return_value=good)
             mock_agg.return_value = inst

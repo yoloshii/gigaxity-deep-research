@@ -12,13 +12,79 @@ used by both the MCP synthesize tool and the REST synthesis routes.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Literal, Optional
 
 from ..llm_utils import LLMOutput
 from .citations import detect_legacy_markers, detect_mixed_markers
 from .contradictions import ContradictionDetectionResult
 from .quality_gate import _entity_in_text
 from .sentence_utils import split_sentences
+
+
+# Forward-compat verdict envelope (Phase 0 scaffolding). The existing
+# `hard_failures` / `soft_warnings` / `.passed` shape is preserved verbatim
+# below; these new fields are populated by future phases:
+# - Phase 1: `failure_codes` (gap_unscoped, gap_section_polluted,
+#   gap_declared_but_section_open, gap_group_heading_unsupported); also
+#   `verdict_class == "calibrated_gap"` when the structural gap parser
+#   accepts a declared gap.
+# - Phase 5a: `warnings[code=coverage_grid_uncited_uncovered_cells]` etc.
+# - Phase 5b: `warnings[code=uncovered_cell_unacknowledged]` (after a 14-day
+#   fixture green-light) and the matching hard_failures entry.
+# - Phase 6: `retry_advice` populated when the verifier can recommend a
+#   surface-aware retry (gather_more_sources / resynthesize_same_sources /
+#   abort) and `diagnostics.tier_composition`.
+#
+# Phase 0 only sets `verdict_class` automatically (= "hard_fail" if
+# hard_failures else "pass"). Everything else defaults so a Phase 0 caller
+# sees behavior identical to pre-envelope output.
+VerdictClass = Literal["pass", "calibrated_gap", "hard_fail"]
+
+
+@dataclass
+class VerdictWarning:
+    """A structured advisory warning, mirroring a `soft_warnings` string entry.
+
+    The verifier emits both shapes in parallel: `soft_warnings` (list of
+    strings) remains the existing human-readable channel; `warnings` (list of
+    `VerdictWarning`) is the machine-readable parallel that downstream
+    consumers (Phase 6 retry advice, Phase 7 evolution loop) can pattern-match
+    on without re-parsing prose. Phase 0 emits empty.
+    """
+    code: str
+    message: str
+    severity: Literal["info", "warning"] = "warning"
+
+
+@dataclass
+class VerdictDiagnostics:
+    """Structured diagnostics produced by the verifier.
+
+    Field-granular dict slots so future phases can populate them independently
+    without bumping a schema version. Phase 0 leaves all slots None / empty.
+    """
+    gate_diagnostics: Optional[dict] = None
+    tier_composition: Optional[dict] = None
+    gap_declarations: list[str] = field(default_factory=list)
+    contracrow_result: Optional[dict] = None
+    coverage_grid_summary: Optional[dict] = None
+    bm25_mismatch_info: Optional[dict] = None
+
+
+@dataclass
+class RetryAdvice:
+    """Surface-aware retry advice emitted on hard-failure (Phase 6 territory).
+
+    Phase 0 always emits None. Phase 6 populates this when the verifier sees
+    a hard fail that the caller can address by re-discovery, re-synthesis, or
+    abort. Pure-synthesis surfaces never re-discover internally — the advice
+    is emitted FOR the caller (an orchestrator or research-workflow).
+    """
+    caller_action: Literal["gather_more_sources", "resynthesize_same_sources", "abort"]
+    missing_entities: list[str] = field(default_factory=list)
+    missing_aspects: list[tuple[str, str]] = field(default_factory=list)
+    suggested_queries: list[str] = field(default_factory=list)
+    rationale: str = ""
 
 
 # Explicit gap-framing phrases that indicate the synthesis acknowledged a
@@ -45,9 +111,44 @@ class SynthesisVerdict:
     `hard_failures` are blocking - the output must not be cached or relayed as
     a successful synthesis. `soft_warnings` are advisory - the output is usable
     but should be annotated for the caller.
+
+    The remaining fields (`verdict_class`, `failure_codes`, `warnings`,
+    `diagnostics`, `retry_advice`) are forward-compat envelope scaffolding
+    populated by later phases (1, 5a, 5b, 6). Phase 0 sets `verdict_class`
+    automatically (= "hard_fail" if any hard_failures else "pass") and leaves
+    the rest at their defaults so existing callers see identical observable
+    behavior. The `passed` property's semantics are unchanged.
     """
     hard_failures: list[str] = field(default_factory=list)
     soft_warnings: list[str] = field(default_factory=list)
+    verdict_class: VerdictClass = "pass"
+    failure_codes: list[str] = field(default_factory=list)
+    warnings: list[VerdictWarning] = field(default_factory=list)
+    diagnostics: VerdictDiagnostics = field(default_factory=VerdictDiagnostics)
+    retry_advice: Optional[RetryAdvice] = None
+
+    def __post_init__(self) -> None:
+        """Reconcile `verdict_class` with `hard_failures` shape on construction.
+
+        Without this, a direct constructor `SynthesisVerdict(hard_failures=["x"])`
+        would have `passed=False` but `verdict_class="pass"` (the default), which
+        is a contradictory state Phase 1/5/6 callers could easily produce. The
+        rule is:
+        - hard_failures non-empty → verdict_class = "hard_fail" (overrides any
+          other value; a hard failure dominates).
+        - hard_failures empty AND verdict_class == "hard_fail" → demote to
+          "pass" (verdict_class lied about an empty hard_failures list).
+        - hard_failures empty AND verdict_class == "calibrated_gap" → preserve
+          the calibrated_gap signal (Phase 1's structural-gap acknowledgement).
+        - hard_failures empty AND verdict_class == "pass" → no change.
+
+        Codex Turn 1 F5 (consistency on direct construction).
+        """
+        if self.hard_failures:
+            self.verdict_class = "hard_fail"
+        elif self.verdict_class == "hard_fail":
+            self.verdict_class = "pass"
+        # "pass" and "calibrated_gap" with empty hard_failures: preserve.
 
     @property
     def passed(self) -> bool:
@@ -235,6 +336,12 @@ def verify_synthesis_output(
                 f"{len(contradiction_result.contradictions)} contradiction(s) detected "
                 "- verify the synthesis surfaces them"
             )
+
+    # Phase 0 envelope: derive `verdict_class` from the hard_failures shape.
+    # "calibrated_gap" is reserved for Phase 1 (structural entity-section
+    # parser); Phase 0 only distinguishes pass vs hard_fail, mirroring the
+    # existing `.passed` property's semantics.
+    verdict.verdict_class = "hard_fail" if verdict.hard_failures else "pass"
 
     return verdict
 
