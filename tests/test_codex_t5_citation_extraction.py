@@ -140,23 +140,41 @@ def test_aggregator_extract_citations_delegates_to_shared():
     assert [c["number"] for c in actual] == [1, 2]
 
 
-def test_rest_extract_citations_from_content_delegates_to_shared():
-    """REST `_extract_citations_from_content` wraps the shared extractor's
-    dict output into CitationSchema."""
-    from src.api.routes import _extract_citations_from_content
-    from src.api.schemas import CitationSchema
+def test_outline_normalizer_delegates_to_shared_resolver():
+    """Phase 0 successor to `_extract_citations_from_content`: the outline
+    branch of finalize_synthesis runs the shared `[N]` resolver against
+    `OutlinedSynthesis.content` (which has no `citations` field of its own).
+
+    The legacy REST `_extract_citations_from_content` helper was removed in
+    Phase 0 (its job moved into `_normalize_outlined`). This test pins the
+    new contract — citations extracted from outline content match what the
+    shared resolver returns for the same content + source list.
+    """
+    from src.synthesis import OutlinedSynthesis, finalize_synthesis
+    from src.synthesis.outline import SynthesisOutline
 
     sources = [_src(1), _src(2), _src(3)]
     content = "claim [1] and [3]"
+    expected = extract_numeric_citations(content, sources)
 
-    citations = _extract_citations_from_content(content, sources)
+    outlined = OutlinedSynthesis(
+        content=content,
+        outline=SynthesisOutline(sections=["S"]),
+        sections={"S": content},
+        critique=None,
+        refined=False,
+        word_count=len(content.split()),
+        llm_output=None,
+    )
+    finalized = finalize_synthesis(
+        query="q",
+        result=outlined,
+        sources=sources,
+        surface="mcp_synthesize",
+    )
 
-    assert len(citations) == 2
-    assert all(isinstance(c, CitationSchema) for c in citations)
-    assert citations[0].id == "1"
-    assert citations[0].title == "Source 1"
-    assert citations[1].id == "3"
-    assert citations[1].url == "https://example.com/3"
+    assert finalized.citations == expected
+    assert [c["number"] for c in finalized.citations] == [1, 3]
 
 
 # ---------------------------------------------------------------------------
@@ -176,20 +194,28 @@ async def test_mcp_synthesize_outline_extracts_numeric_citations_from_content():
     content."""
     from src import mcp_server
 
-    # Mock outline result that contains valid [N] markers — exactly the
-    # failure mode codex flagged: aggregator-style markers, no `citations` attr
-    class FakeOutlineResult:
-        content = (
+    # Phase 0: finalize_synthesis isinstance-dispatches over OutlinedSynthesis
+    # — return the real dataclass. OutlinedSynthesis has no `citations` field
+    # by design (outline.py:37); the shared `[N]` resolver runs over .content
+    # inside _normalize_outlined to fill citations. This test pins exactly that
+    # contract: outline content with valid [N] markers MUST pass the verifier.
+    from src.synthesis import OutlinedSynthesis
+    from src.synthesis.outline import SynthesisOutline
+
+    fake_outline = MagicMock()
+    fake_outline.synthesize = AsyncMock(return_value=OutlinedSynthesis(
+        content=(
             "Anthropic released Claude Opus 4.7 on April 16 [1]. "
             "The conference was held May 6 in San Francisco [2]. "
             "Agent SDK billing changes effective June 15 [3]."
-        )
-        llm_output = MagicMock(reasoning_only=False, truncated=False, subcall_failed=False)
-        # NOTE: explicitly NO `citations` attribute — mirrors the real
-        # OutlinedSynthesis dataclass (outline.py:37)
-
-    fake_outline = MagicMock()
-    fake_outline.synthesize = AsyncMock(return_value=FakeOutlineResult())
+        ),
+        outline=SynthesisOutline(sections=["Overview"]),
+        sections={"Overview": "..."},
+        critique=None,
+        refined=False,
+        word_count=20,
+        llm_output=None,
+    ))
 
     # Aggregator must NOT be called for comprehensive (use_outline=True)
     fake_aggregator = MagicMock()
@@ -218,8 +244,8 @@ async def test_mcp_synthesize_outline_extracts_numeric_citations_from_content():
     fake_detector.detect = AsyncMock(return_value=MagicMock(contradictions=[], parse_failed=False))
 
     with patch.object(mcp_server, "_get_llm_client", return_value=MagicMock()), \
-         patch.object(mcp_server, "SynthesisAggregator", return_value=fake_aggregator), \
-         patch.object(mcp_server, "OutlineGuidedSynthesizer", return_value=fake_outline), \
+         patch("src.synthesis.wrappers.SynthesisAggregator", return_value=fake_aggregator), \
+         patch("src.synthesis.wrappers.OutlineGuidedSynthesizer", return_value=fake_outline), \
          patch.object(mcp_server, "SourceQualityGate", return_value=fake_gate), \
          patch.object(mcp_server, "RCSPreprocessor", return_value=fake_rcs), \
          patch.object(mcp_server, "ContradictionDetector", return_value=fake_detector), \
@@ -255,17 +281,27 @@ async def test_mcp_synthesize_outline_zero_citations_still_hard_fails():
     genuine missing-citation case."""
     from src import mcp_server
 
-    class FakeOutlineResultNoCitations:
-        content = (
+    # Phase 0: same dispatch contract as the prior test, but content has NO
+    # [N] markers — the verifier must still hard-fail with cites-none and
+    # the result must NOT be cached. The normalization MUST NOT mask the
+    # genuine missing-citation case.
+    from src.synthesis import OutlinedSynthesis
+    from src.synthesis.outline import SynthesisOutline
+
+    fake_outline = MagicMock()
+    fake_outline.synthesize = AsyncMock(return_value=OutlinedSynthesis(
+        content=(
             "Anthropic released Claude Opus 4.7 in April. "
             "The conference was held in San Francisco. "
             "Agent SDK billing changes are coming."
-        )
-        llm_output = MagicMock(reasoning_only=False, truncated=False, subcall_failed=False)
-        # NO `citations` attribute, AND content has no [N] markers
-
-    fake_outline = MagicMock()
-    fake_outline.synthesize = AsyncMock(return_value=FakeOutlineResultNoCitations())
+        ),
+        outline=SynthesisOutline(sections=["Overview"]),
+        sections={"Overview": "..."},
+        critique=None,
+        refined=False,
+        word_count=15,
+        llm_output=None,
+    ))
 
     test_sources = [
         PreGatheredSource(origin="t", url="https://a.com", title="A", content="x", source_type="article"),
@@ -287,7 +323,7 @@ async def test_mcp_synthesize_outline_zero_citations_still_hard_fails():
     fake_detector.detect = AsyncMock(return_value=MagicMock(contradictions=[], parse_failed=False))
 
     with patch.object(mcp_server, "_get_llm_client", return_value=MagicMock()), \
-         patch.object(mcp_server, "OutlineGuidedSynthesizer", return_value=fake_outline), \
+         patch("src.synthesis.wrappers.OutlineGuidedSynthesizer", return_value=fake_outline), \
          patch.object(mcp_server, "SourceQualityGate", return_value=fake_gate), \
          patch.object(mcp_server, "RCSPreprocessor", return_value=fake_rcs), \
          patch.object(mcp_server, "ContradictionDetector", return_value=fake_detector), \
@@ -318,18 +354,31 @@ async def test_mcp_synthesize_aggregator_path_still_uses_result_citations():
     from src import mcp_server
 
     aggregator_citations = [
-        {"number": 1, "title": "T1", "url": "u1", "origin": "o1", "source_type": "article"},
-        {"number": 2, "title": "T2", "url": "u2", "origin": "o2", "source_type": "article"},
+        {"number": 1, "id": "1", "source_id": None, "title": "T1", "url": "u1",
+         "origin": "o1", "source_type": "article"},
+        {"number": 2, "id": "2", "source_id": None, "title": "T2", "url": "u2",
+         "origin": "o2", "source_type": "article"},
     ]
 
-    class FakeAggregatorResult:
-        content = "Aggregator content with no [N] in it (citations come from result.citations)"
-        citations = aggregator_citations  # aggregator already extracted internally
-        llm_output = MagicMock(reasoning_only=False, truncated=False, subcall_failed=False)
-        source_attribution = {}
+    # Phase 0: aggregator path returns a real AggregatedSynthesis with citations
+    # already populated by the aggregator's internal _extract_citations call.
+    # finalize_synthesis._normalize_aggregated copies the citations through
+    # WITHOUT re-running the shared resolver — preserving the prior optimization
+    # that the aggregator never double-extracts. The test asserts this by
+    # spying on the resolver invoked inside finalize_synthesis (only the
+    # _normalize_outlined path uses it).
+    from src.synthesis import AggregatedSynthesis, SynthesisStyle as _Style
 
     fake_aggregator = MagicMock()
-    fake_aggregator.synthesize = AsyncMock(return_value=FakeAggregatorResult())
+    fake_aggregator.synthesize = AsyncMock(return_value=AggregatedSynthesis(
+        content="Aggregator content with no [N] in it (citations come from result.citations)",
+        citations=aggregator_citations,
+        source_attribution={},
+        confidence=0.7,
+        style_used=_Style.COMPARATIVE,
+        word_count=10,
+        llm_output=None,
+    ))
 
     fake_outline = MagicMock()
     fake_outline.synthesize = AsyncMock(side_effect=AssertionError(
@@ -355,15 +404,18 @@ async def test_mcp_synthesize_aggregator_path_still_uses_result_citations():
     fake_detector = MagicMock()
     fake_detector.detect = AsyncMock(return_value=MagicMock(contradictions=[], parse_failed=False))
 
-    # Spy on the shared extractor — it MUST NOT be called when result.citations
-    # is already populated. Otherwise we'd be doing double work on the happy path.
+    # Spy on the shared extractor inside finalize_synthesis — it MUST NOT be
+    # called when the aggregator already populated `citations`. After Phase 0
+    # the resolver is invoked from `src.synthesis.finalization` (inside
+    # `_normalize_outlined` only), not from `mcp_server` directly.
+    import src.synthesis.finalization as _fin_mod
     with patch.object(mcp_server, "_get_llm_client", return_value=MagicMock()), \
-         patch.object(mcp_server, "SynthesisAggregator", return_value=fake_aggregator), \
-         patch.object(mcp_server, "OutlineGuidedSynthesizer", return_value=fake_outline), \
+         patch("src.synthesis.wrappers.SynthesisAggregator", return_value=fake_aggregator), \
+         patch("src.synthesis.wrappers.OutlineGuidedSynthesizer", return_value=fake_outline), \
          patch.object(mcp_server, "SourceQualityGate", return_value=fake_gate), \
          patch.object(mcp_server, "RCSPreprocessor", return_value=fake_rcs), \
          patch.object(mcp_server, "ContradictionDetector", return_value=fake_detector), \
-         patch.object(mcp_server, "extract_numeric_citations", wraps=mcp_server.extract_numeric_citations) as spy, \
+         patch.object(_fin_mod, "extract_numeric_citations", wraps=_fin_mod.extract_numeric_citations) as spy, \
          patch.object(mcp_server.cache, "get", return_value=None), \
          patch.object(mcp_server.cache, "set"):
         result = await mcp_server.synthesize.fn(

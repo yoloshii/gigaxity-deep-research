@@ -405,7 +405,7 @@ async def test_mcp_research_surfaces_drift_warning_on_legacy_only_output():
     )
 
     with patch('src.mcp_server.SearchAggregator') as mock_agg, \
-         patch('src.mcp_server.SynthesisEngine') as mock_engine:
+         patch('src.synthesis.wrappers.SynthesisEngine') as mock_engine:
         mock_agg_instance = MagicMock()
         mock_agg_instance.search = AsyncMock(return_value=([sample_source], {}))
         mock_agg_instance.get_active_connectors = MagicMock(return_value=["searxng"])
@@ -447,7 +447,7 @@ async def test_mcp_research_surfaces_drift_warning_on_mixed_markers():
     )
 
     with patch('src.mcp_server.SearchAggregator') as mock_agg, \
-         patch('src.mcp_server.SynthesisEngine') as mock_engine:
+         patch('src.synthesis.wrappers.SynthesisEngine') as mock_engine:
         mock_agg_instance = MagicMock()
         mock_agg_instance.search = AsyncMock(return_value=([sample_source], {}))
         mock_agg_instance.get_active_connectors = MagicMock(return_value=["searxng"])
@@ -491,7 +491,7 @@ async def test_mcp_research_clean_numeric_no_drift_warning():
     )
 
     with patch('src.mcp_server.SearchAggregator') as mock_agg, \
-         patch('src.mcp_server.SynthesisEngine') as mock_engine:
+         patch('src.synthesis.wrappers.SynthesisEngine') as mock_engine:
         mock_agg_instance = MagicMock()
         mock_agg_instance.search = AsyncMock(return_value=([sample_source], {}))
         mock_agg_instance.get_active_connectors = MagicMock(return_value=["searxng"])
@@ -531,7 +531,7 @@ def test_rest_research_surfaces_drift_warning_on_legacy_only_output():
     )
 
     with patch('src.api.routes.SearchAggregator') as mock_agg, \
-         patch('src.api.routes.SynthesisEngine') as mock_engine:
+         patch('src.synthesis.wrappers.SynthesisEngine') as mock_engine:
         mock_agg_instance = MagicMock()
         mock_agg_instance.search = AsyncMock(return_value=([sample_source], {}))
         mock_agg_instance.get_active_connectors = MagicMock(return_value=["searxng"])
@@ -575,7 +575,7 @@ def test_rest_research_clean_numeric_no_annotation():
     )
 
     with patch('src.api.routes.SearchAggregator') as mock_agg, \
-         patch('src.api.routes.SynthesisEngine') as mock_engine:
+         patch('src.synthesis.wrappers.SynthesisEngine') as mock_engine:
         mock_agg_instance = MagicMock()
         mock_agg_instance.search = AsyncMock(return_value=([sample_source], {}))
         mock_agg_instance.get_active_connectors = MagicMock(return_value=["searxng"])

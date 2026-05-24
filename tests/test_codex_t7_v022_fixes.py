@@ -344,7 +344,7 @@ def test_rest_research_reject_short_circuits_before_synthesis():
     with patch.object(routes, "_get_llm_client", return_value=MagicMock()), \
          patch.object(routes, "SearchAggregator", return_value=fake_agg), \
          patch.object(routes, "SourceQualityGate", return_value=fake_gate), \
-         patch.object(routes, "SynthesisAggregator", side_effect=synth_called):
+         patch("src.synthesis.wrappers.SynthesisAggregator", side_effect=synth_called):
         response = client.post(
             "/api/v1/research",
             json={"query": "test", "top_k": 2, "preset": "comprehensive"},
@@ -398,7 +398,7 @@ def test_rest_research_partial_with_zero_good_short_circuits():
     with patch.object(routes, "_get_llm_client", return_value=MagicMock()), \
          patch.object(routes, "SearchAggregator", return_value=fake_agg), \
          patch.object(routes, "SourceQualityGate", return_value=fake_gate), \
-         patch.object(routes, "SynthesisAggregator", side_effect=synth_called):
+         patch("src.synthesis.wrappers.SynthesisAggregator", side_effect=synth_called):
         response = client.post(
             "/api/v1/research",
             json={"query": "test", "top_k": 1, "preset": "comprehensive"},
@@ -447,19 +447,30 @@ def test_rest_research_partial_with_good_sources_proceeds_to_synthesis():
     fake_gate.reject_threshold = 0.3
     fake_gate.pass_threshold = 0.5
 
-    # Mock the SynthesisAggregator to return a benign result
-    fake_synth_result = MagicMock()
-    fake_synth_result.content = "Synthesized answer [1]."
-    fake_synth_result.citations = [
-        {"number": 1, "title": "Good Source", "url": "https://example.com/1"}
-    ]
+    # Phase 0: finalize_synthesis isinstance-dispatches over
+    # AggregatedSynthesis — return a real instance. The MagicMock surrogate
+    # the pre-Phase-0 test used trips the unsupported-result-type guard.
+    from src.synthesis import AggregatedSynthesis, SynthesisStyle as _Style
+
+    fake_synth_result = AggregatedSynthesis(
+        content="Synthesized answer [1].",
+        citations=[
+            {"number": 1, "id": "1", "source_id": None, "title": "Good Source",
+             "url": "https://example.com/1", "origin": None, "source_type": None},
+        ],
+        source_attribution={},
+        confidence=0.7,
+        style_used=_Style.COMPREHENSIVE,
+        word_count=2,
+        llm_output=None,
+    )
     fake_synth = MagicMock()
     fake_synth.synthesize = AsyncMock(return_value=fake_synth_result)
 
     with patch.object(routes, "_get_llm_client", return_value=MagicMock()), \
          patch.object(routes, "SearchAggregator", return_value=fake_agg), \
          patch.object(routes, "SourceQualityGate", return_value=fake_gate), \
-         patch.object(routes, "SynthesisAggregator", return_value=fake_synth):
+         patch("src.synthesis.wrappers.SynthesisAggregator", return_value=fake_synth):
         # `comprehensive` (not `fast`) — `fast` has run_quality_gate=False
         # which would bypass the gate entirely and make the assertion below
         # impossible to validate.

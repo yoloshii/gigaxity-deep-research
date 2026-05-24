@@ -27,6 +27,7 @@ from .schemas import (
     PreGatheredSourceSchema,
     SynthesisAttributionSchema,
     SynthesisVerdictSchema,
+    verdict_to_schema,
     # Reasoning
     ReasonRequest,
     ReasonResponse,
@@ -52,29 +53,34 @@ from .schemas import (
     SynthesizeResponseP1,
 )
 from ..synthesis import (
-    SynthesisEngine,
-    SynthesisAggregator,
     SynthesisStyle,
     PreGatheredSource,
     # P0 Enhancements
     SourceQualityGate,
     QualityDecision,
-    extract_query_entities,
     ContradictionDetector,
     CitationVerifier,
     extract_claims_with_citations,
     # P1 Enhancements
-    OutlineGuidedSynthesizer,
     RCSPreprocessor,
     get_preset,
     get_preset_by_enum,
     list_presets,
     PresetName,
-    # Post-synthesis verification
-    verify_synthesis_output,
-    annotate_with_verdict,
+    # Phase 0 wrappers — the only public path to the three core synthesis
+    # classes. AST audit at scripts/audit_synthesis_callers.py enforces no
+    # direct import of SynthesisEngine / SynthesisAggregator /
+    # OutlineGuidedSynthesizer in this module. The wrappers internally
+    # call `verify_synthesis_output` + `annotate_with_verdict` so the
+    # post-synthesis verification + safe_content annotation are uniform
+    # across all routes regardless of branch (preset vs no-preset, outline
+    # vs aggregator).
+    SynthesisInvocationError,
+    run_aggregator_synthesize,
+    run_aggregator_synthesize_with_reasoning,
+    run_engine_research,
+    run_outline_synthesize,
 )
-from ..synthesis.citations import extract_numeric_citations
 from ..search import SearchAggregator
 from ..discovery import (
     Explorer,
@@ -117,8 +123,6 @@ async def health_check():
         # `llm_configured` reflects whether a key is set, not just the base URL.
         # The base URL has a default of http://localhost:8000/v1, which would
         # otherwise make this field always-true and useless as a readiness signal.
-        # Local servers without auth still need the user to set a placeholder key
-        # so this signal stays meaningful.
         llm_configured=bool(settings.llm_api_key),
     )
 
@@ -268,11 +272,10 @@ async def research(
             )
 
             # REJECT and PARTIAL-with-zero-good must short-circuit before
-            # synthesis — matches the v0.2.0 fix at /synthesize/p1
-            # (routes.py:1193-1228) and the MCP `synthesize` path. Prior to
-            # v0.2.2 this endpoint silently fell through, running synthesis
-            # over the same sources the gate had just rejected. v0.2.2 codex
-            # Turn 7 item 4.
+            # synthesis — matches the v0.2.0 fix at /synthesize/p1 and the
+            # MCP `synthesize` path. Prior to v0.2.2 this endpoint silently
+            # fell through, running synthesis over the same sources the gate
+            # had just rejected. v0.2.2 codex Turn 7 item 4.
             if gate_result.decision == QualityDecision.REJECT:
                 return ResearchResponse(
                     query=request.query,
@@ -346,7 +349,11 @@ async def research(
             ]
             rcs_guidance = [s.summary for s in rcs_result.summaries]
 
-        # Contradiction Detection
+        # Contradiction Detection. `detection` is hoisted so it can be passed
+        # through to the verifier via `contradiction_result=` on the wrapper
+        # call below — Phase 0 surface-parity fix for the previously-missing
+        # verification call on this path.
+        detection = None
         if preset.detect_contradictions and len(sources_for_synthesis) >= 2:
             detector = ContradictionDetector(llm_client=llm_client, model=settings.llm_model)
             detection = await detector.detect(request.query, sources_for_synthesis)
@@ -364,20 +371,33 @@ async def research(
                 for c in contradictions
             ]
 
-        # Synthesis (full sources reach the model; RCS summaries ride along as
-        # advisory guidance)
-        synth_aggregator = SynthesisAggregator(llm_client=llm_client, model=settings.llm_model)
-        result = await synth_aggregator.synthesize(
-            query=request.query,
-            sources=sources_for_synthesis,
-            style=preset.style,
-            max_tokens=preset.max_tokens,
-            guidance=rcs_guidance,
-        )
+        # Phase 0: route through the aggregator wrapper so post-synthesis
+        # verification runs over this surface. Prior to Phase 0 the
+        # preset-driven `/research` path skipped `verify_synthesis_output`
+        # entirely — uncited hallucinations could be returned as the canonical
+        # answer. The wrapper threads query_entities + sources_text +
+        # contradiction_result into the verifier per the locked design;
+        # `finalized.safe_content` is annotated in-band on hard-failure so a
+        # client that ignores structured response fields still sees the
+        # failure header.
+        try:
+            finalized = await run_aggregator_synthesize(
+                llm_client=llm_client,
+                model=settings.llm_model,
+                query=request.query,
+                sources=sources_for_synthesis,
+                style=preset.style,
+                max_tokens=preset.max_tokens,
+                guidance=rcs_guidance,
+                contradiction_result=detection,
+                surface="rest_research_preset",
+            )
+        except SynthesisInvocationError as e:
+            raise HTTPException(status_code=500, detail=f"Synthesis error: {e}")
 
         return ResearchResponse(
             query=request.query,
-            content=result.content,
+            content=finalized.safe_content,
             citations=[
                 CitationSchema(
                     id=str(c.get("number", "")),
@@ -386,7 +406,7 @@ async def research(
                     title=c.get("title", ""),
                     url=c.get("url", ""),
                 )
-                for c in result.citations
+                for c in finalized.citations
             ],
             sources=[
                 SourceSchema(
@@ -404,43 +424,29 @@ async def research(
             rcs_summaries=rcs_summaries_list,
         )
 
-    # Standard synthesis (no preset)
-    engine = SynthesisEngine(client=_get_llm_client(request.api_key, x_llm_api_key))
-    result = await engine.research(
-        query=request.query,
-        sources=sources,
-        reasoning_effort=request.reasoning_effort,
-    )
-
-    if "error" in result:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Synthesis error: {result['error']}"
+    # Standard synthesis (no preset). Phase 0: route through the engine
+    # wrapper so the verifier sees query_entities + sources_text on this
+    # path — prior to Phase 0 the verifier ran with both at None, which
+    # silently no-op'd the entity-coverage check for the no-preset
+    # `/research` surface. The wrapper raises SynthesisInvocationError on
+    # an engine `{"error": ...}` invocation failure (same shape that
+    # previously matched the `if "error" in result` branch); regular
+    # exceptions still propagate to the route's HTTPException converter.
+    try:
+        finalized = await run_engine_research(
+            client=_get_llm_client(request.api_key, x_llm_api_key),
+            model=settings.llm_model,
+            query=request.query,
+            sources=sources,
+            reasoning_effort=request.reasoning_effort,
+            surface="rest_research_no_preset",
         )
-
-    # Post-synthesis verification (codex DESIGN session 019e39f7 Q7, wired
-    # in v0.3.0 Turn 8 fix). Mirrors the MCP `research` and `/synthesize*`
-    # paths so a regressed model emitting `[xx_<hex>]` markers gets the
-    # marker-drift soft warning AND the existing cited_count==0 hard-fail,
-    # rather than silently returning content that looks successful.
-    # llm_output is None — SynthesisEngine handles truncation-retry
-    # internally and doesn't surface the artifact on the dict result.
-    raw_content = result["content"]
-    citations_list = result["citations"]
-    verdict = verify_synthesis_output(
-        content=raw_content,
-        llm_output=None,
-        cited_count=len(citations_list),
-        source_count=len(sources),
-    )
-    annotated_content = (
-        raw_content if verdict.passed and not verdict.soft_warnings
-        else annotate_with_verdict(raw_content, verdict)
-    )
+    except SynthesisInvocationError as e:
+        raise HTTPException(status_code=500, detail=f"Synthesis error: {e}")
 
     return ResearchResponse(
         query=request.query,
-        content=annotated_content,
+        content=finalized.safe_content,
         citations=[
             CitationSchema(
                 id=c["id"],
@@ -449,7 +455,7 @@ async def research(
                 title=c["title"],
                 url=c["url"],
             )
-            for c in citations_list
+            for c in finalized.citations
         ],
         sources=[
             SourceSchema(
@@ -463,8 +469,8 @@ async def research(
             for s in sources
         ],
         connectors_used=list(raw_results.keys()),
-        model=result.get("model"),
-        usage=result.get("usage"),
+        model=finalized.extras.get("model"),
+        usage=finalized.extras.get("usage"),
         focus_mode_used=focus_mode_used,
     )
 
@@ -680,10 +686,6 @@ async def synthesize(
         return SynthesizeResponse(**cached_result)
 
     llm_client = _get_llm_client(request.api_key, x_llm_api_key)
-    aggregator = SynthesisAggregator(
-        llm_client=llm_client,
-        model=settings.llm_model,
-    )
 
     # Convert request sources to internal format
     sources = [
@@ -708,44 +710,30 @@ async def synthesize(
     }
     style = style_map.get(request.style, SynthesisStyle.COMPREHENSIVE)
 
+    # Phase 0: route through the aggregator wrapper. The wrapper internally
+    # runs `verify_synthesis_output` with query_entities + sources_text +
+    # contradiction_result=None, returns a `FinalizedSynthesis` with
+    # safe_content already annotated in-band on hard-failure (mirroring
+    # the MCP synthesize path). Surface parity preserved.
     try:
-        result = await aggregator.synthesize(
+        finalized = await run_aggregator_synthesize(
+            llm_client=llm_client,
+            model=settings.llm_model,
             query=request.query,
             sources=sources,
             style=style,
             max_tokens=request.max_tokens,
+            surface="rest_synthesize",
         )
+    except SynthesisInvocationError as e:
+        raise HTTPException(status_code=500, detail=f"Synthesis error: {e}")
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Synthesis error: {e}"
-        )
+        raise HTTPException(status_code=500, detail=f"Synthesis error: {e}")
 
-    # Post-synthesis verification (includes entity-coverage check — catches
-    # uncited hallucination when the LLM writes about entities absent from
-    # the source set).
-    _q_entities = extract_query_entities(request.query)
-    _sources_text = " ".join((s.content + " " + s.title).lower() for s in sources)
-    verdict = verify_synthesis_output(
-        content=result.content,
-        llm_output=result.llm_output,
-        cited_count=len(result.citations),
-        source_count=len(sources),
-        contradiction_result=None,
-        query_entities=_q_entities,
-        sources_text=_sources_text,
-    )
-    # On a hard-gate failure, annotate the content in-band so a client that
-    # ignores the structured `verification` field still cannot mistake it for
-    # a clean synthesis (mirrors the MCP synthesize path).
-    safe_content = (
-        result.content if verdict.passed
-        else annotate_with_verdict(result.content, verdict)
-    )
-
+    verdict = finalized.verdict
     response = SynthesizeResponse(
         query=request.query,
-        content=safe_content,
+        content=finalized.safe_content,
         citations=[
             CitationSchema(
                 id=str(c.get("number", "")),
@@ -754,25 +742,21 @@ async def synthesize(
                 title=c.get("title", ""),
                 url=c.get("url", ""),
             )
-            for c in result.citations
+            for c in finalized.citations
         ],
         source_attribution=[
             SynthesisAttributionSchema(origin=origin, contribution=contrib)
-            for origin, contrib in result.source_attribution.items()
+            for origin, contrib in finalized.source_attribution.items()
         ],
-        confidence=result.confidence,
-        style_used=result.style_used.value,
-        word_count=result.word_count,
+        confidence=finalized.confidence,
+        style_used=(finalized.style_used.value if finalized.style_used else style.value),
+        word_count=finalized.word_count,
         model=settings.llm_model,
-        verification=SynthesisVerdictSchema(
-            passed=verdict.passed,
-            hard_failures=verdict.hard_failures,
-            soft_warnings=verdict.soft_warnings,
-        ),
+        verification=verdict_to_schema(verdict),
     )
 
     # Cache only a verified synthesis - never cache a hard-gated failure.
-    if verdict.passed:
+    if finalized.cache_eligible:
         cache.set(request.query, response.model_dump(), tier="synthesis", extra=cache_extra)
     return response
 
@@ -809,10 +793,6 @@ async def reason(
         return ReasonResponse(**cached_result)
 
     llm_client = _get_llm_client(request.api_key, x_llm_api_key)
-    aggregator = SynthesisAggregator(
-        llm_client=llm_client,
-        model=settings.llm_model,
-    )
 
     # Convert request sources to internal format
     sources = [
@@ -827,50 +807,31 @@ async def reason(
         for s in request.sources
     ]
 
+    # Phase 0: route through the reasoning wrapper. Same wrapper machinery
+    # as /synthesize but invokes `synthesize_with_reasoning` (which extracts
+    # only the <synthesis> block from the chain-of-thought — a missing
+    # <synthesis> tag returns "" which the verifier hard-fails). The
+    # `reasoning` field is reserved for future prompt configurations that
+    # emit a separable trace; current contract leaves it None.
     try:
-        result = await aggregator.synthesize_with_reasoning(
+        finalized = await run_aggregator_synthesize_with_reasoning(
+            llm_client=llm_client,
+            model=settings.llm_model,
             query=request.query,
             sources=sources,
+            surface="rest_reason",
         )
+    except SynthesisInvocationError as e:
+        raise HTTPException(status_code=500, detail=f"Reasoning error: {e}")
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Reasoning error: {e}"
-        )
+        raise HTTPException(status_code=500, detail=f"Reasoning error: {e}")
 
-    # `synthesize_with_reasoning` consumes the chain-of-thought inside its
-    # prompt and extracts only the <synthesis> block into result.content. If
-    # the model fails to emit the <synthesis> structure, result.content is ""
-    # (a degraded result) — the raw chain-of-thought is never dumped as if it
-    # were the answer. The reasoning field stays None on this path — reserved
-    # for future prompt configurations that explicitly emit a separable trace.
+    verdict = finalized.verdict
     reasoning = None
-
-    # Post-synthesis verification: a degraded/empty reasoning result
-    # must not be relayed as a clean answer or cached. On a hard-gate failure,
-    # annotate the content in-band so a client that ignores the structured
-    # `verification` field still cannot mistake it for a clean synthesis.
-    # Entity-coverage check applies here too — sources-aware reason is a
-    # synthesize surface.
-    _q_entities = extract_query_entities(request.query)
-    _sources_text = " ".join((s.content + " " + s.title).lower() for s in sources)
-    verdict = verify_synthesis_output(
-        content=result.content,
-        llm_output=result.llm_output,
-        cited_count=len(result.citations),
-        source_count=len(sources),
-        contradiction_result=None,
-        query_entities=_q_entities,
-        sources_text=_sources_text,
-    )
-    safe_content = (
-        result.content if verdict.passed
-        else annotate_with_verdict(result.content, verdict)
-    )
 
     response = ReasonResponse(
         query=request.query,
-        content=safe_content,
+        content=finalized.safe_content,
         reasoning=reasoning,
         citations=[
             CitationSchema(
@@ -880,24 +841,20 @@ async def reason(
                 title=c.get("title", ""),
                 url=c.get("url", ""),
             )
-            for c in result.citations
+            for c in finalized.citations
         ],
         source_attribution=[
             SynthesisAttributionSchema(origin=origin, contribution=contrib)
-            for origin, contrib in result.source_attribution.items()
+            for origin, contrib in finalized.source_attribution.items()
         ],
-        confidence=result.confidence,
-        word_count=result.word_count,
+        confidence=finalized.confidence,
+        word_count=finalized.word_count,
         model=settings.llm_model,
-        verification=SynthesisVerdictSchema(
-            passed=verdict.passed,
-            hard_failures=verdict.hard_failures,
-            soft_warnings=verdict.soft_warnings,
-        ),
+        verification=verdict_to_schema(verdict),
     )
 
     # Cache only a verified reasoning result — never cache a hard-gated failure.
-    if verdict.passed:
+    if finalized.cache_eligible:
         cache.set(request.query, response.model_dump(), tier="reason", extra=cache_extra)
     return response
 
@@ -983,8 +940,7 @@ async def synthesize_enhanced(
         elif gate_result.decision == QualityDecision.PARTIAL:
             # PARTIAL-with-zero-good (Turn 3 codex T3F2): mirror MCP F6
             # early-return. Without this, assigning empty good_sources into
-            # sources_for_synthesis lets synthesis run over zero sources —
-            # same gate-bypass class as REJECT-doesn't-reject.
+            # sources_for_synthesis lets synthesis run over zero sources.
             if not gate_result.good_sources:
                 return SynthesizeResponseEnhanced(
                     query=request.query,
@@ -1036,12 +992,6 @@ async def synthesize_enhanced(
     else:
         contradiction_context = ""
 
-    # Step 3: Synthesize with contradiction awareness
-    aggregator = SynthesisAggregator(
-        llm_client=llm_client,
-        model=settings.llm_model,
-    )
-
     style_map = {
         "comprehensive": SynthesisStyle.COMPREHENSIVE,
         "concise": SynthesisStyle.CONCISE,
@@ -1051,28 +1001,35 @@ async def synthesize_enhanced(
     }
     style = style_map.get(request.style, SynthesisStyle.COMPREHENSIVE)
 
+    # Phase 0: route through the aggregator wrapper. Contradiction guidance
+    # rides as a separate advisory formatter section (never merged into a
+    # source's content). The wrapper threads `contradiction_result=detection`
+    # into the verifier so the contracrow soft warning surfaces when
+    # detection ran.
     try:
-        # Contradiction guidance (if any) is passed as a separate advisory
-        # formatter section - never merged into a source's content, so it
-        # cannot be cited as source evidence or consume a source's budget.
-        result = await aggregator.synthesize(
+        finalized = await run_aggregator_synthesize(
+            llm_client=llm_client,
+            model=settings.llm_model,
             query=request.query,
             sources=sources_for_synthesis,
             style=style,
             max_tokens=request.max_tokens,
             contradiction_notes=contradiction_context or None,
+            contradiction_result=detection,
+            surface="rest_synthesize_enhanced",
         )
+    except SynthesisInvocationError as e:
+        raise HTTPException(status_code=500, detail=f"Enhanced synthesis error: {e}")
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Enhanced synthesis error: {e}"
-        )
+        raise HTTPException(status_code=500, detail=f"Enhanced synthesis error: {e}")
+
+    verdict = finalized.verdict
 
     # Step 4: Citation Verification (VeriCite-style, optional)
-    if request.verify_citations and result.citations:
+    if request.verify_citations and finalized.citations:
         verifier = CitationVerifier()
         claims_with_citations = extract_claims_with_citations(
-            result.content,
+            finalized.raw_content,
             sources_for_synthesis,
         )
 
@@ -1085,33 +1042,9 @@ async def synthesize_enhanced(
                 confidence=verified.confidence,
             ))
 
-    # Post-synthesis verification (entity-coverage check uses POST-gate source
-    # set so that gate-filtered entities are correctly flagged when the
-    # synthesis discusses them).
-    _q_entities = extract_query_entities(request.query)
-    _sources_text = " ".join(
-        (s.content + " " + s.title).lower() for s in sources_for_synthesis
-    )
-    verdict = verify_synthesis_output(
-        content=result.content,
-        llm_output=result.llm_output,
-        cited_count=len(result.citations),
-        source_count=len(sources_for_synthesis),
-        contradiction_result=detection,
-        query_entities=_q_entities,
-        sources_text=_sources_text,
-    )
-    # On a hard-gate failure, annotate the content in-band so a client that
-    # ignores the structured `verification` field still cannot mistake it for
-    # a clean synthesis (mirrors the MCP synthesize path).
-    safe_content = (
-        result.content if verdict.passed
-        else annotate_with_verdict(result.content, verdict)
-    )
-
     return SynthesizeResponseEnhanced(
         query=request.query,
-        content=safe_content,
+        content=finalized.safe_content,
         citations=[
             CitationSchema(
                 id=str(c.get("number", "")),
@@ -1120,24 +1053,20 @@ async def synthesize_enhanced(
                 title=c.get("title", ""),
                 url=c.get("url", ""),
             )
-            for c in result.citations
+            for c in finalized.citations
         ],
         source_attribution=[
             SynthesisAttributionSchema(origin=origin, contribution=contrib)
-            for origin, contrib in result.source_attribution.items()
+            for origin, contrib in finalized.source_attribution.items()
         ],
-        confidence=result.confidence,
-        style_used=result.style_used.value,
-        word_count=result.word_count,
+        confidence=finalized.confidence,
+        style_used=(finalized.style_used.value if finalized.style_used else style.value),
+        word_count=finalized.word_count,
         model=settings.llm_model,
         quality_gate=quality_gate_result,
         contradictions=contradictions_list,
         verified_claims=verified_claims_list,
-        verification=SynthesisVerdictSchema(
-            passed=verdict.passed,
-            hard_failures=verdict.hard_failures,
-            soft_warnings=verdict.soft_warnings,
-        ),
+        verification=verdict_to_schema(verdict),
     )
 
 
@@ -1316,8 +1245,7 @@ async def synthesize_p1(
             )
         elif gate_result.decision == QualityDecision.PARTIAL:
             # PARTIAL-with-zero-good (Turn 3 codex T3F2): mirror MCP F6
-            # early-return. Same gate-bypass class as REJECT-doesn't-reject
-            # — synthesis must not run over zero sources.
+            # early-return.
             if not gate_result.good_sources:
                 return SynthesizeResponseP1(
                     query=request.query,
@@ -1393,82 +1321,86 @@ async def synthesize_p1(
 
         contradiction_context = detector.format_for_synthesis(contradictions)
 
-    # Step 4: Synthesis (standard or outline-guided)
+    # Step 4: Synthesis (standard or outline-guided). Both branches route
+    # through Phase 0 wrappers; the wrappers internally finalize_synthesis,
+    # so the same verdict + safe_content semantics apply regardless of which
+    # core synthesizer ran. Contradiction guidance + RCS guidance ride along
+    # as separate advisory formatter sections — never merged into source content.
+    try:
+        if use_outline:
+            finalized = await run_outline_synthesize(
+                llm_client=llm_client,
+                model=settings.llm_model,
+                query=request.query,
+                sources=sources_for_synthesis,
+                style=style,
+                max_tokens=max_tokens,
+                guidance=rcs_guidance,
+                contradiction_notes=contradiction_context or None,
+                contradiction_result=detection,
+                surface="rest_synthesize_p1",
+            )
+            outline_sections = finalized.extras.get("outline_sections", []) or None
+            sections_dict = finalized.extras.get("sections", {}) or None
+            _critique_obj = finalized.extras.get("critique")
+            if _critique_obj is not None:
+                critique_result = CritiqueSchema(
+                    issues=_critique_obj.issues,
+                    has_critical=_critique_obj.has_critical,
+                )
+            # Outline confidence heuristic preserved verbatim from the prior
+            # /synthesize/p1 path: 0.8 baseline, 0.6 if critique surfaced
+            # critical issues. The aggregator path's `finalized.confidence`
+            # carries the aggregator's own composite score; only the outline
+            # branch substitutes the heuristic.
+            confidence = 0.8 if (_critique_obj is None or not _critique_obj.has_critical) else 0.6
+        else:
+            finalized = await run_aggregator_synthesize(
+                llm_client=llm_client,
+                model=settings.llm_model,
+                query=request.query,
+                sources=sources_for_synthesis,
+                style=style,
+                max_tokens=max_tokens,
+                guidance=rcs_guidance,
+                contradiction_notes=contradiction_context or None,
+                contradiction_result=detection,
+                surface="rest_synthesize_p1",
+            )
+            confidence = finalized.confidence
+    except SynthesisInvocationError as e:
+        raise HTTPException(status_code=500, detail=f"P1 synthesis error: {e}")
+
+    verdict = finalized.verdict
+    citations = [
+        CitationSchema(
+            id=str(c.get("number", "")),
+            number=c.get("number", 0),
+            source_id=c.get("source_id"),
+            title=c.get("title", ""),
+            url=c.get("url", ""),
+        )
+        for c in finalized.citations
+    ]
     if use_outline:
-        # Outline-guided synthesis (SciRAG)
-        synthesizer = OutlineGuidedSynthesizer(
-            llm_client=llm_client,
-            model=settings.llm_model,
-        )
-        outlined_result = await synthesizer.synthesize(
-            query=request.query,
-            sources=sources_for_synthesis,
-            style=style,
-            max_tokens=max_tokens,
-            guidance=rcs_guidance,
-            contradiction_notes=contradiction_context or None,
-        )
-
-        content = outlined_result.content
-        synthesis_llm_output = outlined_result.llm_output
-        outline_sections = outlined_result.outline.sections
-        sections_dict = outlined_result.sections
-        word_count = outlined_result.word_count
-
-        if outlined_result.critique:
-            critique_result = CritiqueSchema(
-                issues=outlined_result.critique.issues,
-                has_critical=outlined_result.critique.has_critical,
-            )
-
-        # Generate citations from content
-        citations = _extract_citations_from_content(content, sources_for_synthesis)
-        source_attribution = _compute_attribution(content, sources_for_synthesis)
-        confidence = 0.8 if not outlined_result.critique or not outlined_result.critique.has_critical else 0.6
-
+        # The outline normalizer leaves source_attribution empty (no per-origin
+        # counts at the outline layer). Preserve prior behavior of computing
+        # attribution from raw content + sources for /synthesize/p1 outline.
+        source_attribution = _compute_attribution(finalized.raw_content, sources_for_synthesis)
     else:
-        # Standard synthesis
-        aggregator = SynthesisAggregator(
-            llm_client=llm_client,
-            model=settings.llm_model,
-        )
-
-        # Contradiction guidance (if any) and RCS guidance ride along as
-        # separate advisory formatter sections - never merged into a source's
-        # content.
-        result = await aggregator.synthesize(
-            query=request.query,
-            sources=sources_for_synthesis,
-            style=style,
-            max_tokens=max_tokens,
-            guidance=rcs_guidance,
-            contradiction_notes=contradiction_context or None,
-        )
-
-        content = result.content
-        synthesis_llm_output = result.llm_output
-        word_count = result.word_count
-        citations = [
-            CitationSchema(
-                id=str(c.get("number", "")),
-                number=c.get("number", 0),
-                source_id=c.get("source_id"),
-                title=c.get("title", ""),
-                url=c.get("url", ""),
-            )
-            for c in result.citations
-        ]
         source_attribution = [
             SynthesisAttributionSchema(origin=origin, contribution=contrib)
-            for origin, contrib in result.source_attribution.items()
+            for origin, contrib in finalized.source_attribution.items()
         ]
-        confidence = result.confidence
+    word_count = finalized.word_count
 
-    # Step 5: Citation Verification (VeriCite-style, optional)
+    # Step 5: Citation Verification (VeriCite-style, optional). Uses
+    # `finalized.raw_content` so claim-extraction sees the LLM's verbatim
+    # output, not the (potentially) annotated `safe_content`.
     if verify_citations and citations:
         verifier = CitationVerifier()
         claims_with_citations = extract_claims_with_citations(
-            content,
+            finalized.raw_content,
             sources_for_synthesis,
         )
 
@@ -1481,33 +1413,9 @@ async def synthesize_p1(
                 confidence=verified.confidence,
             ))
 
-    # Post-synthesis verification (entity-coverage check uses POST-gate source
-    # set so gate-filtered entities are correctly flagged when the synthesis
-    # discusses them).
-    _q_entities = extract_query_entities(request.query)
-    _sources_text = " ".join(
-        (s.content + " " + s.title).lower() for s in sources_for_synthesis
-    )
-    verdict = verify_synthesis_output(
-        content=content,
-        llm_output=synthesis_llm_output,
-        cited_count=len(citations),
-        source_count=len(sources_for_synthesis),
-        contradiction_result=detection,
-        query_entities=_q_entities,
-        sources_text=_sources_text,
-    )
-    # On a hard-gate failure, annotate the content in-band so a client that
-    # ignores the structured `verification` field still cannot mistake it for
-    # a clean synthesis (mirrors the MCP synthesize path).
-    safe_content = (
-        content if verdict.passed
-        else annotate_with_verdict(content, verdict)
-    )
-
     return SynthesizeResponseP1(
         query=request.query,
-        content=safe_content,
+        content=finalized.safe_content,
         citations=citations,
         source_attribution=source_attribution,
         confidence=confidence,
@@ -1517,11 +1425,7 @@ async def synthesize_p1(
         quality_gate=quality_gate_result,
         contradictions=contradictions_list,
         verified_claims=verified_claims_list,
-        verification=SynthesisVerdictSchema(
-            passed=verdict.passed,
-            hard_failures=verdict.hard_failures,
-            soft_warnings=verdict.soft_warnings,
-        ),
+        verification=verdict_to_schema(verdict),
         preset_used=preset_used,
         outline=outline_sections,
         sections=sections_dict,
@@ -1529,28 +1433,6 @@ async def synthesize_p1(
         rcs_summaries=rcs_summaries_list,
         sources_filtered=sources_filtered,
     )
-
-
-def _extract_citations_from_content(
-    content: str,
-    sources: list[PreGatheredSource],
-) -> list[CitationSchema]:
-    """Extract citation references from content.
-
-    Delegates to the shared `[N]` resolver in `synthesis.citations` so REST
-    `/synthesize/p1`, the aggregator, and MCP outline results all parse from
-    the same regex and the same source-index mapping.
-    """
-    return [
-        CitationSchema(
-            id=str(c["number"]),
-            number=c["number"],
-            source_id=c.get("source_id"),
-            title=c["title"],
-            url=c["url"],
-        )
-        for c in extract_numeric_citations(content, sources)
-    ]
 
 
 def _compute_attribution(

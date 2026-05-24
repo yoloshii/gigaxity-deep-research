@@ -260,16 +260,71 @@ class SynthesisAttributionSchema(BaseModel):
     contribution: float = Field(..., description="Contribution percentage")
 
 
+class VerdictWarningSchema(BaseModel):
+    """Structured advisory warning emitted alongside the verdict.
+
+    Phase 0 leaves this list empty on the wire. Phases 5a / 5b / 6 populate
+    it with coverage-grid BM25 mismatches, structural-coverage warnings, and
+    tier-insufficient signals respectively.
+    """
+
+    code: str
+    message: str
+    severity: Literal["info", "warning"] = "warning"
+
+
+class VerdictDiagnosticsSchema(BaseModel):
+    """Structured diagnostics produced by the verifier.
+
+    Field-granular dict slots so future phases can populate them independently
+    without bumping a schema version. Phase 0 leaves all slots empty.
+    """
+
+    gate_diagnostics: dict | None = None
+    tier_composition: dict | None = None
+    gap_declarations: list[str] = Field(default_factory=list)
+    contracrow_result: dict | None = None
+    coverage_grid_summary: dict | None = None
+    bm25_mismatch_info: dict | None = None
+
+
+class RetryAdviceSchema(BaseModel):
+    """Surface-aware retry advice emitted on hard-failure (Phase 6).
+
+    Phase 0 always emits None on the wire. Phase 6 populates this when the
+    verifier can recommend a caller action.
+    """
+
+    caller_action: Literal[
+        "gather_more_sources", "resynthesize_same_sources", "abort"
+    ]
+    missing_entities: list[str] = Field(default_factory=list)
+    missing_aspects: list[tuple[str, str]] = Field(default_factory=list)
+    suggested_queries: list[str] = Field(default_factory=list)
+    rationale: str = ""
+
+
 class SynthesisVerdictSchema(BaseModel):
     """Post-synthesis verification verdict.
 
     `passed` is False when there is a blocking (hard) failure - the content
     must not be treated as a reliable synthesis. `soft_warnings` are advisory.
+
+    `verdict_class`, `failure_codes`, `warnings`, `diagnostics`, and
+    `retry_advice` are the Phase 0 envelope additions (mirror the
+    `SynthesisVerdict` dataclass). Backward-compat defaults so existing
+    clients that read only `passed` / `hard_failures` / `soft_warnings`
+    observe no change.
     """
 
     passed: bool
     hard_failures: list[str] = Field(default_factory=list)
     soft_warnings: list[str] = Field(default_factory=list)
+    verdict_class: Literal["pass", "calibrated_gap", "hard_fail"] = "pass"
+    failure_codes: list[str] = Field(default_factory=list)
+    warnings: list[VerdictWarningSchema] = Field(default_factory=list)
+    diagnostics: VerdictDiagnosticsSchema = Field(default_factory=VerdictDiagnosticsSchema)
+    retry_advice: RetryAdviceSchema | None = None
 
 
 class SynthesizeResponse(BaseModel):
@@ -652,3 +707,48 @@ class SynthesizeResponseP1(BaseModel):
 
 # Rebuild models with forward references
 ResearchResponse.model_rebuild()
+
+
+def verdict_to_schema(verdict) -> SynthesisVerdictSchema:
+    """Convert a `SynthesisVerdict` dataclass into its REST schema form.
+
+    Phase 0 envelope: pass through `passed`, `hard_failures`, `soft_warnings`
+    (existing), plus `verdict_class`, `failure_codes`, `warnings`,
+    `diagnostics`, `retry_advice` (new). All 4 REST routes that emit a
+    structured `verification=` block route through this helper so the
+    Pydantic shape stays in lockstep with the dataclass shape.
+
+    Imported lazily to avoid coupling schemas.py to the synthesis package
+    at module-load time (schemas.py is also imported by mcp_server.py and
+    we want the API-side dependency graph to stay one-way).
+    """
+    return SynthesisVerdictSchema(
+        passed=verdict.passed,
+        hard_failures=list(verdict.hard_failures),
+        soft_warnings=list(verdict.soft_warnings),
+        verdict_class=verdict.verdict_class,
+        failure_codes=list(verdict.failure_codes),
+        warnings=[
+            VerdictWarningSchema(code=w.code, message=w.message, severity=w.severity)
+            for w in verdict.warnings
+        ],
+        diagnostics=VerdictDiagnosticsSchema(
+            gate_diagnostics=verdict.diagnostics.gate_diagnostics,
+            tier_composition=verdict.diagnostics.tier_composition,
+            gap_declarations=list(verdict.diagnostics.gap_declarations),
+            contracrow_result=verdict.diagnostics.contracrow_result,
+            coverage_grid_summary=verdict.diagnostics.coverage_grid_summary,
+            bm25_mismatch_info=verdict.diagnostics.bm25_mismatch_info,
+        ),
+        retry_advice=(
+            RetryAdviceSchema(
+                caller_action=verdict.retry_advice.caller_action,
+                missing_entities=list(verdict.retry_advice.missing_entities),
+                missing_aspects=[tuple(a) for a in verdict.retry_advice.missing_aspects],
+                suggested_queries=list(verdict.retry_advice.suggested_queries),
+                rationale=verdict.retry_advice.rationale,
+            )
+            if verdict.retry_advice is not None
+            else None
+        ),
+    )

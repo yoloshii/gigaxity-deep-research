@@ -1,8 +1,7 @@
 """FastMCP server for deep-research tools.
 
 Exposes research tools via Model Context Protocol using stdio transport.
-Uses LLMClient for inference against any OpenAI-compatible chat-completions
-endpoint (vLLM, SGLang, llama.cpp, OpenRouter).
+Uses LLMClient for LLM inference via OpenRouter API.
 
 Usage:
     python -m src.mcp_server
@@ -23,21 +22,30 @@ from .llm_client import get_llm_client
 from .llm_utils import get_llm_content, derive_effective_budget
 from .search import SearchAggregator
 from .synthesis import (
-    SynthesisEngine,
-    SynthesisAggregator,
     SynthesisStyle,
     PreGatheredSource,
     SourceQualityGate,
     QualityDecision,
     ContradictionDetector,
-    OutlineGuidedSynthesizer,
     RCSPreprocessor,
     get_preset,
-    verify_synthesis_output,
     annotate_with_verdict,
     extract_query_entities,
+    # Phase 0 wrappers — the only public path to the three core synthesis
+    # classes. AST audit at scripts/audit_synthesis_callers.py enforces no
+    # direct import of SynthesisEngine / SynthesisAggregator /
+    # OutlineGuidedSynthesizer in this module. The wrappers internally
+    # call `verify_synthesis_output` + `annotate_with_verdict`; this
+    # module still imports `annotate_with_verdict` because each MCP tool
+    # assembles the final shipped output (synthesis + citations +
+    # metadata footer) and annotates the FULL artifact with the verdict
+    # that the wrapper computed on `raw_content`.
+    SynthesisInvocationError,
+    run_aggregator_synthesize,
+    run_aggregator_synthesize_with_reasoning,
+    run_engine_research,
+    run_outline_synthesize,
 )
-from .synthesis.citations import extract_numeric_citations
 from .discovery import (
     Explorer,
     FocusModeType,
@@ -71,11 +79,11 @@ async def search(
     Args:
         query: Search query
         top_k: Results per source (1-50)
-        api_key: Per-request LLM key override; ignored by `search` since
+        api_key: Per-request key override; ignored by `search` since
             no LLM call is made, but accepted for consistency across tools.
     """
-    # search makes no LLM call, but we accept api_key for surface consistency
-    # so callers can use the same shape across all six tools.
+    # search makes no LLM call, but we accept api_key for surface
+    # consistency so callers can use the same shape across all six tools.
     _ = api_key
     aggregator = SearchAggregator()
     sources, raw_results = await aggregator.search(query=query, top_k=top_k)
@@ -106,7 +114,7 @@ async def research(
         query: Research query
         top_k: Results per source
         reasoning_effort: Depth of analysis (low=concise, medium=balanced, high=academic)
-        api_key: Per-request LLM key override; defaults to RESEARCH_LLM_API_KEY.
+        api_key: Per-request key override; defaults to RESEARCH_LLM_API_KEY.
     """
     aggregator = SearchAggregator()
     sources, raw_results = await aggregator.search(query=query, top_k=top_k)
@@ -115,20 +123,30 @@ async def research(
         return f"No sources found for query.\n\n---\n*0 results from [] (configured: {aggregator.get_active_connectors()})*"
 
     client = _get_llm_client(api_key)
-    engine = SynthesisEngine(client=client, model=settings.llm_model)
 
-    result = await engine.research(
-        query=query,
-        sources=sources,
-        reasoning_effort=reasoning_effort,
-    )
+    # Phase 0: route through the engine wrapper. The wrapper internally runs
+    # `verify_synthesis_output` with query_entities + sources_text threaded —
+    # prior to Phase 0 this surface ran the verifier with both at None, so
+    # the entity-coverage hallucination check silently no-op'd on MCP
+    # `research`. SynthesisInvocationError carries the engine `{"error": ...}`
+    # path; for MCP tools we surface it as an error line in the response.
+    try:
+        finalized = await run_engine_research(
+            client=client,
+            model=settings.llm_model,
+            query=query,
+            sources=sources,
+            reasoning_effort=reasoning_effort,
+            surface="mcp_research",
+        )
+    except SynthesisInvocationError as e:
+        return f"# Research: {query}\n\nSynthesis error: {e}"
 
     lines = [f"# Research: {query}\n"]
-    lines.append(result.get("content", ""))
-    citations = result.get("citations", [])
-    if citations:
+    lines.append(finalized.raw_content)
+    if finalized.citations:
         lines.append("\n## Citations\n")
-        for c in citations:
+        for c in finalized.citations:
             # Render `[N]` marker (matches the in-body markers; v0.3.0 unified
             # contract per codex DESIGN session 019e39f7 Q5). source_id is a
             # structured field for REST callers; not rendered here.
@@ -136,21 +154,11 @@ async def research(
 
     lines.append(f"\n---\n*{len(sources)} sources from {list(raw_results.keys())} (configured: {aggregator.get_active_connectors()})*")
 
-    # Post-synthesis verification (codex DESIGN session 019e39f7 Q7, wired
-    # in v0.3.0 Turn 8 fix). Mirrors the synthesize() path so legacy-only
-    # `[xx_<hex>]` output hard-fails AND surfaces the marker-drift soft
-    # warning, and mixed `[N]` + `[xx_<hex>]` output gets the diagnostic
-    # warning. Without this call the migrated `research` surface would
-    # silently ship "content with no citations" on prompt regression.
-    # llm_output is None because SynthesisEngine does not expose it on the
-    # dict result; engine.py:100-113 handles truncation-retry internally.
-    verdict = verify_synthesis_output(
-        content=result.get("content", ""),
-        llm_output=None,
-        cited_count=len(citations),
-        source_count=len(sources),
-    )
-    return annotate_with_verdict("\n".join(lines), verdict)
+    # Annotate the FULL assembled output (content + citations + metadata
+    # footer) with the verdict the wrapper already computed. The wrapper's
+    # own `finalized.safe_content` would annotate only the raw content; MCP
+    # tools want the failure header on the complete shipped artifact.
+    return annotate_with_verdict("\n".join(lines), finalized.verdict)
 
 
 @mcp.tool()
@@ -167,7 +175,7 @@ async def ask(
     Args:
         query: Question to answer
         context: Optional context to consider
-        api_key: Per-request LLM key override; defaults to RESEARCH_LLM_API_KEY.
+        api_key: Per-request key override; defaults to RESEARCH_LLM_API_KEY.
     """
     client = _get_llm_client(api_key)
 
@@ -204,7 +212,7 @@ async def discover(
         top_k: Results per source
         identify_gaps: Analyze knowledge gaps
         focus_mode: Domain-specific discovery mode
-        api_key: Per-request LLM key override; defaults to RESEARCH_LLM_API_KEY.
+        api_key: Per-request key override; defaults to RESEARCH_LLM_API_KEY.
     """
     client = _get_llm_client(api_key)
     aggregator = SearchAggregator()
@@ -288,7 +296,7 @@ async def synthesize(
         gate_focus: Optional focus string the pre-synthesis relevance gate scores
             sources against instead of the full query (Q2 precision lever for
             verbose queries). Omitted/None/whitespace uses the full query.
-        api_key: Per-request LLM key override; defaults to RESEARCH_LLM_API_KEY.
+        api_key: Per-request key override; defaults to RESEARCH_LLM_API_KEY.
     """
     # Resolve preset_config up-front so per-preset config can drive style
     # selection, quality-gate thresholds, and entity-balanced filtering.
@@ -346,10 +354,8 @@ async def synthesize(
     # Style resolution precedence: explicit caller arg wins; otherwise the
     # preset's style; otherwise COMPREHENSIVE. Previously the `style` parameter
     # defaulted to "comprehensive" (string), so preset.style was silently
-    # dropped whenever a caller omitted style — the documented `synthesize(query,
-    # sources, preset)` usage was always taking the wrong style. Sentinel
-    # style=None now disambiguates "caller didn't pass" from "caller passed
-    # an explicit value".
+    # dropped whenever a caller omitted style. Sentinel style=None now
+    # disambiguates "caller didn't pass" from "caller passed an explicit value".
     if style is not None:
         synth_style = style_map.get(style, SynthesisStyle.COMPREHENSIVE)
     elif preset_config is not None:
@@ -357,11 +363,8 @@ async def synthesize(
     else:
         synth_style = SynthesisStyle.COMPREHENSIVE
 
-    # Pre-compute entity + source corpus for the post-synthesis verifier's
-    # entity-coverage check. The verifier hard-fails when the synthesis
-    # discusses entities that are absent from every retained source — catches
-    # the hallucination class where the gate filters out all sources for an
-    # entity but the LLM writes about it anyway from prior knowledge.
+    # Pre-compute entity list for the post-synthesis verifier's entity-coverage
+    # check.
     query_entities = extract_query_entities(query)
 
     if preset_config:
@@ -380,11 +383,8 @@ async def synthesize(
             gate_result = await quality_gate.evaluate(query=query, sources=pre_sources, gate_focus=gate_focus)
 
             # REJECT early-return mirrors REST behavior at routes.py:848.
-            # Previously the MCP path initialized processed_sources = pre_sources
-            # and only PARTIAL/PROCEED updated it — REJECT silently fell
-            # through and synthesis ran over ALL original sources, defeating
-            # the gate. Output is NOT cached: REJECT must re-evaluate against
-            # whatever sources the next call brings.
+            # Previously REJECT silently fell through and synthesis ran over
+            # ALL original sources, defeating the gate. Output is NOT cached.
             if gate_result.decision == QualityDecision.REJECT:
                 lines = [
                     f"# Synthesis: {query}\n",
@@ -421,12 +421,8 @@ async def synthesize(
                     )
                 return "\n".join(lines)
 
-            # PARTIAL-with-zero-good (Turn 2 codex F6): when avg relevance is
-            # above the reject floor but no source clears the pass threshold,
-            # the gate returns PARTIAL with empty good_sources. Falling back
-            # to pre_sources reintroduces the same gate-bypass class as H2
-            # (REJECT didn't reject) — synthesis runs over the bypassed
-            # source set. Treat as effectively REJECT and early-return.
+            # PARTIAL-with-zero-good (Turn 2 codex F6): same gate-bypass class
+            # as H2 — treat as effectively REJECT.
             if gate_result.decision == QualityDecision.PARTIAL and not gate_result.good_sources:
                 lines = [
                     f"# Synthesis: {query}\n",
@@ -465,8 +461,7 @@ async def synthesize(
                 return "\n".join(lines)
 
             if gate_result.decision in (QualityDecision.PARTIAL, QualityDecision.PROCEED):
-                # good_sources is non-empty here (PARTIAL-with-zero-good
-                # handled above).
+                # good_sources is non-empty here (PARTIAL-with-zero-good handled above).
                 processed_sources = gate_result.good_sources
             metadata["quality_gate"] = {
                 "passed": len(gate_result.good_sources),
@@ -497,30 +492,44 @@ async def synthesize(
             contradictions = detection.contradictions
             metadata["contradictions_found"] = len(contradictions)
 
-        # Synthesis (full sources reach the model; RCS summaries ride along as
-        # advisory guidance). preset.max_tokens is the answer-budget base; the
-        # synthesis methods derive the model-aware effective budget from it.
+        # Phase 0: route through the appropriate wrapper. Both branches
+        # internally run `verify_synthesis_output` (with query_entities +
+        # sources_text + contradiction_result threaded) and emit a uniform
+        # `FinalizedSynthesis`. The wrapper normalizes outline citations via
+        # the shared `[N]` resolver too, so the prior MCP-specific
+        # `result_citations = getattr(result, "citations", None)` fallback
+        # is no longer needed (the parity fix from codex Turn 5 lives
+        # inside finalize_synthesis now).
         if preset_config.use_outline:
-            outline_synth = OutlineGuidedSynthesizer(client, model=settings.llm_model)
-            result = await outline_synth.synthesize(query=query, sources=processed_sources, style=synth_style, max_tokens=preset_config.max_tokens, guidance=rcs_guidance)
+            finalized = await run_outline_synthesize(
+                llm_client=client,
+                model=settings.llm_model,
+                query=query,
+                sources=processed_sources,
+                style=synth_style,
+                max_tokens=preset_config.max_tokens,
+                guidance=rcs_guidance,
+                contradiction_result=detection,
+                query_entities=query_entities,
+                surface="mcp_synthesize",
+            )
         else:
-            aggregator = SynthesisAggregator(client, model=settings.llm_model)
-            result = await aggregator.synthesize(query=query, sources=processed_sources, style=synth_style, max_tokens=preset_config.max_tokens, guidance=rcs_guidance)
-
-        # Normalize citations across the two synthesis paths. Aggregator
-        # results carry their own `citations` list (extracted internally);
-        # `OutlinedSynthesis` has no `citations` field so its content goes
-        # unparsed unless we extract here. Without this, every outline-preset
-        # call hard-fails the verifier with "cites none of N sources" even
-        # when the model emitted valid `[N]` markers — REST `/synthesize/p1`
-        # had parity (routes.py:1313) but MCP did not (codex Turn 5).
-        result_citations = getattr(result, "citations", None)
-        if not result_citations:
-            result_citations = extract_numeric_citations(result.content, processed_sources)
+            finalized = await run_aggregator_synthesize(
+                llm_client=client,
+                model=settings.llm_model,
+                query=query,
+                sources=processed_sources,
+                style=synth_style,
+                max_tokens=preset_config.max_tokens,
+                guidance=rcs_guidance,
+                contradiction_result=detection,
+                query_entities=query_entities,
+                surface="mcp_synthesize",
+            )
 
         lines = [f"# Synthesis: {query}\n"]
         lines.append(f"*Preset: {preset_config.name}*\n")
-        lines.append(result.content)
+        lines.append(finalized.raw_content)
 
         # Defense in depth: even if a malformed contradiction slipped past the
         # detector's filter (see contradictions._parse_contradictions), don't
@@ -536,13 +545,10 @@ async def synthesize(
                 if c.resolution_hint:
                     lines.append(f"  - Resolution: {c.resolution_hint}")
 
-        if result_citations:
+        if finalized.citations:
             lines.append("\n## Citations\n")
-            for c in result_citations:
-                if hasattr(c, 'title'):
-                    lines.append(f"- [{c.id}] [{c.title}]({c.url})")
-                else:
-                    lines.append(f"- [{c.get('number', '?')}] [{c.get('title', 'Unknown')}]({c.get('url', '')})")
+            for c in finalized.citations:
+                lines.append(f"- [{c.get('number', '?')}] [{c.get('title', 'Unknown')}]({c.get('url', '')})")
 
         if metadata.get("quality_gate"):
             qg = metadata["quality_gate"]
@@ -568,57 +574,41 @@ async def synthesize(
         if metadata.get("rcs_applied"):
             lines.append(f"*RCS: {metadata.get('rcs_kept', 0)} sources processed*")
 
-        # Post-synthesis verification: a failed synthesis must not be
-        # reported as a success or cached. Entity-coverage check (H3) uses
-        # the POST-gate source set (processed_sources) — checking against
-        # pre-gate would mask the case where the gate filtered out an
-        # entity's only source and the LLM then hallucinated it.
-        sources_text_lower = " ".join(
-            (s.content + " " + s.title).lower() for s in processed_sources
-        )
-        verdict = verify_synthesis_output(
-            content=result.content,
-            llm_output=result.llm_output,
-            cited_count=len(result_citations),
-            source_count=len(processed_sources),
-            contradiction_result=detection,
-            query_entities=query_entities,
-            sources_text=sources_text_lower,
-        )
-        output = annotate_with_verdict("\n".join(lines), verdict)
-        if verdict.passed:
+        # Annotate the FULL assembled output (synthesis + contradictions +
+        # citations + metadata) with the verdict the wrapper already
+        # computed. The wrapper's `safe_content` would annotate only
+        # `raw_content`; MCP synthesize wants the failure header on the
+        # complete shipped artifact. Cache only on a verified result.
+        output = annotate_with_verdict("\n".join(lines), finalized.verdict)
+        if finalized.cache_eligible:
             cache.set(query, output, tier="synthesis", extra=cache_extra)
         return output
 
-    # Standard synthesis (no preset). settings.llm_max_tokens is the
-    # answer-budget base; the aggregator derives the effective budget from it.
-    aggregator = SynthesisAggregator(client, model=settings.llm_model)
-    result = await aggregator.synthesize(query=query, sources=pre_sources, style=synth_style, max_tokens=settings.llm_max_tokens)
+    # Standard synthesis (no preset). Phase 0: route through the aggregator
+    # wrapper too — same shape as the preset/aggregator branch above with
+    # no gate filtering and no contradiction detection. `settings.llm_max_tokens`
+    # is the answer-budget base; the wrapper passes it through unchanged.
+    finalized = await run_aggregator_synthesize(
+        llm_client=client,
+        model=settings.llm_model,
+        query=query,
+        sources=pre_sources,
+        style=synth_style,
+        max_tokens=settings.llm_max_tokens,
+        query_entities=query_entities,
+        surface="mcp_synthesize",
+    )
 
     lines = [f"# Synthesis: {query}\n"]
-    lines.append(result.content)
+    lines.append(finalized.raw_content)
 
-    if result.citations:
+    if finalized.citations:
         lines.append("\n## Citations\n")
-        for c in result.citations:
+        for c in finalized.citations:
             lines.append(f"- [{c.get('number', '?')}] [{c.get('title', 'Unknown')}]({c.get('url', '')})")
 
-    # Post-synthesis verification. No-preset path uses pre_sources directly
-    # (no gate filtering).
-    sources_text_lower = " ".join(
-        (s.content + " " + s.title).lower() for s in pre_sources
-    )
-    verdict = verify_synthesis_output(
-        content=result.content,
-        llm_output=result.llm_output,
-        cited_count=len(result.citations) if result.citations else 0,
-        source_count=len(pre_sources),
-        contradiction_result=None,
-        query_entities=query_entities,
-        sources_text=sources_text_lower,
-    )
-    output = annotate_with_verdict("\n".join(lines), verdict)
-    if verdict.passed:
+    output = annotate_with_verdict("\n".join(lines), finalized.verdict)
+    if finalized.cache_eligible:
         cache.set(query, output, tier="synthesis", extra=cache_extra)
     return output
 
@@ -654,7 +644,7 @@ async def reason(
             sources-aware mode and uses chain-of-thought synthesis.
         reasoning_depth: How thorough (no-sources mode only).
             shallow=2-3 steps, moderate=4-6, deep=7+
-        api_key: Per-request LLM key override; defaults to RESEARCH_LLM_API_KEY.
+        api_key: Per-request key override; defaults to RESEARCH_LLM_API_KEY.
     """
     client = _get_llm_client(api_key)
 
@@ -670,36 +660,25 @@ async def reason(
             for s in sources
         ]
 
-        aggregator = SynthesisAggregator(client, model=settings.llm_model)
-        result = await aggregator.synthesize_with_reasoning(
+        # Phase 0: route through the reasoning wrapper. Sources-aware reason
+        # is a synthesize surface, so the wrapper applies the same verifier
+        # (including the entity-coverage check) used by MCP `synthesize` and
+        # the REST synthesize routes.
+        finalized = await run_aggregator_synthesize_with_reasoning(
+            llm_client=client,
+            model=settings.llm_model,
             query=query,
             sources=pre_sources,
+            surface="mcp_reason",
         )
 
         lines = [f"# Reasoning: {query}\n"]
-        lines.append(result.content)
-        if result.citations:
+        lines.append(finalized.raw_content)
+        if finalized.citations:
             lines.append("\n## Citations\n")
-            for c in result.citations:
+            for c in finalized.citations:
                 lines.append(f"- [{c.get('number', '?')}] [{c.get('title', 'Unknown')}]({c.get('url', '')})")
-        # Post-synthesis verification: the sources-aware reason path is a
-        # synthesize surface, so a degraded/empty result must not be
-        # relayed as a clean answer. Apply the same verifier used by the
-        # MCP `synthesize` and REST `/synthesize*` paths, including the
-        # entity-coverage check.
-        sources_text_lower = " ".join(
-            (s.content + " " + s.title).lower() for s in pre_sources
-        )
-        verdict = verify_synthesis_output(
-            content=result.content,
-            llm_output=result.llm_output,
-            cited_count=len(result.citations) if result.citations else 0,
-            source_count=len(pre_sources),
-            contradiction_result=None,
-            query_entities=extract_query_entities(query),
-            sources_text=sources_text_lower,
-        )
-        return annotate_with_verdict("\n".join(lines), verdict)
+        return annotate_with_verdict("\n".join(lines), finalized.verdict)
 
     depth_prompts = {
         "shallow": "Provide a brief analysis.",

@@ -460,15 +460,22 @@ async def test_mcp_synthesize_preset_style_honored_when_style_omitted():
 
     captured = {}
 
-    class FakeResult:
-        content = "Synthesis output"
-        citations = []
-        llm_output = MagicMock(reasoning_only=False, truncated=False, subcall_failed=False)
-        source_attribution = {}
+    # Phase 0: finalize_synthesis isinstance-dispatches over
+    # AggregatedSynthesis — return a real instance, not a duck-typed surrogate.
+    from src.synthesis import AggregatedSynthesis, SynthesisStyle as _Style
 
-    async def fake_synthesize(query, sources, style, max_tokens, guidance=None):
+    async def fake_synthesize(query, sources, style, max_tokens, guidance=None, contradiction_notes=None):
         captured["style"] = style
-        return FakeResult()
+        return AggregatedSynthesis(
+            content="Synthesis output [1]",
+            citations=[{"number": 1, "id": "1", "source_id": None, "title": "T",
+                        "url": "u", "origin": None, "source_type": None}],
+            source_attribution={},
+            confidence=0.7,
+            style_used=style,
+            word_count=2,
+            llm_output=None,
+        )
 
     # OutlineGuidedSynthesizer is used when preset.use_outline=True
     # (comprehensive uses it; contracrow does NOT — uses SynthesisAggregator directly)
@@ -496,8 +503,8 @@ async def test_mcp_synthesize_preset_style_honored_when_style_omitted():
     fake_detector.detect = AsyncMock(return_value=MagicMock(contradictions=[], parse_failed=False))
 
     with patch.object(mcp_server, "_get_llm_client", return_value=MagicMock()), \
-         patch.object(mcp_server, "SynthesisAggregator", return_value=fake_aggregator), \
-         patch.object(mcp_server, "OutlineGuidedSynthesizer", return_value=fake_outline), \
+         patch("src.synthesis.wrappers.SynthesisAggregator", return_value=fake_aggregator), \
+         patch("src.synthesis.wrappers.OutlineGuidedSynthesizer", return_value=fake_outline), \
          patch.object(mcp_server, "SourceQualityGate", return_value=fake_gate), \
          patch.object(mcp_server, "RCSPreprocessor", return_value=fake_rcs), \
          patch.object(mcp_server, "ContradictionDetector", return_value=fake_detector), \
@@ -553,8 +560,8 @@ async def test_mcp_synthesize_reject_early_returns():
     fake_gate.reject_threshold = 0.2
 
     with patch.object(mcp_server, "_get_llm_client", return_value=MagicMock()), \
-         patch.object(mcp_server, "SynthesisAggregator", return_value=fake_aggregator), \
-         patch.object(mcp_server, "OutlineGuidedSynthesizer", return_value=fake_outline), \
+         patch("src.synthesis.wrappers.SynthesisAggregator", return_value=fake_aggregator), \
+         patch("src.synthesis.wrappers.OutlineGuidedSynthesizer", return_value=fake_outline), \
          patch.object(mcp_server, "SourceQualityGate", return_value=fake_gate), \
          patch.object(mcp_server.cache, "get", return_value=None), \
          patch.object(mcp_server.cache, "set") as cache_set:
@@ -603,8 +610,8 @@ async def test_mcp_synthesize_partial_with_zero_good_early_returns():
     fake_gate.pass_threshold = 0.4
 
     with patch.object(mcp_server, "_get_llm_client", return_value=MagicMock()), \
-         patch.object(mcp_server, "SynthesisAggregator", return_value=fake_aggregator), \
-         patch.object(mcp_server, "OutlineGuidedSynthesizer", return_value=fake_outline), \
+         patch("src.synthesis.wrappers.SynthesisAggregator", return_value=fake_aggregator), \
+         patch("src.synthesis.wrappers.OutlineGuidedSynthesizer", return_value=fake_outline), \
          patch.object(mcp_server, "SourceQualityGate", return_value=fake_gate), \
          patch.object(mcp_server.cache, "get", return_value=None), \
          patch.object(mcp_server.cache, "set") as cache_set:
