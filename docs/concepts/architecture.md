@@ -104,6 +104,12 @@ The final JSON looks roughly like:
 }
 ```
 
+## Choosing a model
+
+The synthesis layer drives the model as a plain chat-completions text generator — the pipeline never hands it tools or runs an agentic loop (the synthesis flow, stages 5–7 above, is orchestrated by deterministic Python). So when picking or swapping a model, weigh **reasoning, instruction-following, single-pass synthesis quality, and long context** — not agentic deep-research benchmarks (BrowseComp, GAIA, web traversal), which this pipeline never exercises.
+
+That is why the recommended default is a general *thinking* model (Qwen3-30B-A3B-Thinking-2507) rather than a deep-research *agent* finetune like Tongyi-DeepResearch-30B-A3B — even though both are finetunes of the same `Qwen3-30B-A3B-Base`. Tongyi's training is ReAct tool-call trajectories (`Thought → tool_call → Observation → …`); driven as a one-shot generator it never uses that specialization, and its output distribution is misaligned with single-pass synthesis. The thinking finetune targets exactly what this pipeline asks for, and its `<think>…</think>` + final-answer shape is what the extraction layer already parses. Any OpenAI-compatible model still works — this is guidance for the default, not a requirement.
+
 ## Branches
 
 | Branch | LLM client | Default `RESEARCH_LLM_API_BASE` |
