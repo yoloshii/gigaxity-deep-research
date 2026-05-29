@@ -329,8 +329,11 @@ class TestCachedDecorator:
 
 def _tool_fn(name: str):
     """Return the underlying async function for a registered FastMCP tool."""
-    from src.mcp_server import mcp
-    return mcp._tool_manager._tools[name].fn
+    from src import mcp_server
+    # FastMCP >=3 leaves the original coroutine fn bound at the module name
+    # (the @mcp.tool() decorator no longer wraps it in a Tool with `.fn`), so
+    # resolve by attribute instead of reaching into private registry internals.
+    return getattr(mcp_server, name)
 
 
 try:
@@ -592,11 +595,11 @@ class TestSynthesizeSourceAwareCaching:
 class TestToolRegistryCoverage:
     """Sanity-check that all six stdio MCP tools are registered."""
 
-    def test_six_tools_registered(self):
+    async def test_six_tools_registered(self):
         """The stdio MCP surface must register exactly the six documented tools."""
         from src.mcp_server import mcp
 
-        registered = set(mcp._tool_manager._tools.keys())
+        registered = {t.name for t in await mcp.list_tools()}
         expected = {"search", "research", "ask", "discover", "synthesize", "reason"}
         assert expected.issubset(registered), (
             f"Missing tools: {expected - registered}. "
@@ -606,9 +609,9 @@ class TestToolRegistryCoverage:
     def test_synthesize_uses_inline_cache(self):
         """`synthesize` is the only stdio tool with built-in cache.get/cache.set."""
         import inspect
-        from src.mcp_server import mcp
+        from src import mcp_server
 
-        synthesize_fn = mcp._tool_manager._tools["synthesize"].fn
+        synthesize_fn = mcp_server.synthesize
         source = inspect.getsource(synthesize_fn)
         assert "cache.get(" in source
         assert "cache.set(" in source

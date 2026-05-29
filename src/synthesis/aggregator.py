@@ -23,6 +23,7 @@ from typing import Optional
 from ..config import settings
 from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction, derive_effective_budget
 from .citations import CITATION_FORMAT_GUIDE, extract_numeric_citations
+from .output_cleanup import extract_delimited_answer
 from .source_formatting import derive_input_budget, format_sources_for_synthesis
 
 
@@ -58,6 +59,15 @@ class AggregatedSynthesis:
     llm_output: Optional[LLMOutput] = None  # provenance/truncation signal from the synthesis call
 
 
+# Shared across the free-form synthesis prompts. The <answer> delimiter is the
+# load-bearing mechanism (output_cleanup.extract_delimited_answer extracts it
+# and drops anything after </answer>); the "nothing after" instruction makes a
+# self-edit changelog land outside the tags where it is dropped.
+_OUTPUT_DISCIPLINE = """OUTPUT FORMAT:
+- Wrap your entire synthesis in <answer> and </answer> tags.
+- Put NOTHING after the closing </answer> tag — no changelog, no notes about your own process, no "corrections made", "changes implemented", or "editorial notes"."""
+
+
 # Synthesis prompts optimized for aggregation (not search)
 COMPREHENSIVE_SYNTHESIS_PROMPT = f"""You are synthesizing research findings from multiple pre-gathered sources.
 
@@ -80,6 +90,8 @@ Instructions:
 
 {CITATION_FORMAT_GUIDE}
 
+{_OUTPUT_DISCIPLINE}
+
 Provide a thorough synthesis:"""
 
 CONCISE_SYNTHESIS_PROMPT = f"""Synthesize these pre-gathered sources into a focused, concise answer.
@@ -95,6 +107,8 @@ Instructions:
 3. Skip tangential information
 
 {CITATION_FORMAT_GUIDE}
+
+{_OUTPUT_DISCIPLINE}
 
 Concise synthesis:"""
 
@@ -113,6 +127,8 @@ Instructions:
 
 {CITATION_FORMAT_GUIDE}
 
+{_OUTPUT_DISCIPLINE}
+
 Comparative analysis:"""
 
 ACADEMIC_SYNTHESIS_PROMPT = f"""Synthesize these sources in an academic/scholarly style.
@@ -129,6 +145,8 @@ Instructions:
 4. Structure as: Background → Analysis → Discussion → Conclusions
 
 {CITATION_FORMAT_GUIDE}
+
+{_OUTPUT_DISCIPLINE}
 
 Academic synthesis:"""
 
@@ -255,7 +273,10 @@ class SynthesisAggregator:
         # model needs headroom to reason AND answer; the bare answer-budget
         # base would be consumed by chain-of-thought).
         output = await self._call_llm(prompt, effective_output_budget, mode=ExtractionMode.FINAL_ANSWER)
-        content = output.text
+        # Extract the <answer>…</answer> the prompt asked for, dropping any
+        # trailing self-edit changelog the model appended after </answer>.
+        # Falls back to the full text when the tags are absent (never strips).
+        content = extract_delimited_answer(output.text)
 
         # FINAL_ANSWER fail-fast: an empty result (truly empty, or a
         # reasoning-only trace that FINAL_ANSWER mode refuses) is not a
