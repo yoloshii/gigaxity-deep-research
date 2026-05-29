@@ -251,7 +251,7 @@ async def test_mcp_synthesize_outline_extracts_numeric_citations_from_content():
          patch.object(mcp_server, "ContradictionDetector", return_value=fake_detector), \
          patch.object(mcp_server.cache, "get", return_value=None), \
          patch.object(mcp_server.cache, "set"):
-        result = await mcp_server.synthesize.fn(
+        result = await mcp_server.synthesize(
             query="anthropic may 2026 announcements",
             sources=[
                 {"title": "A", "content": "x"},
@@ -329,7 +329,7 @@ async def test_mcp_synthesize_outline_zero_citations_still_hard_fails():
          patch.object(mcp_server, "ContradictionDetector", return_value=fake_detector), \
          patch.object(mcp_server.cache, "get", return_value=None), \
          patch.object(mcp_server.cache, "set") as cache_set:
-        result = await mcp_server.synthesize.fn(
+        result = await mcp_server.synthesize(
             query="test query",
             sources=[
                 {"title": "A", "content": "x"},
@@ -418,7 +418,7 @@ async def test_mcp_synthesize_aggregator_path_still_uses_result_citations():
          patch.object(_fin_mod, "extract_numeric_citations", wraps=_fin_mod.extract_numeric_citations) as spy, \
          patch.object(mcp_server.cache, "get", return_value=None), \
          patch.object(mcp_server.cache, "set"):
-        result = await mcp_server.synthesize.fn(
+        result = await mcp_server.synthesize(
             query="compare X vs Y",
             sources=[
                 {"title": "T1", "content": "x"},

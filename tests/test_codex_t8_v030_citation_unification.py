@@ -395,9 +395,12 @@ async def test_mcp_research_surfaces_drift_warning_on_legacy_only_output():
     """
     from unittest.mock import MagicMock, patch
     from src.connectors.base import Source
-    from src.mcp_server import mcp
+    from src import mcp_server
     def _tool_fn(name):
-        return mcp._tool_manager._tools[name].fn
+        # FastMCP >=3 keeps the original coroutine fn bound at the module
+        # name (the @mcp.tool() decorator no longer wraps it), so resolve the
+        # tool by attribute rather than reaching into private internals.
+        return getattr(mcp_server, name)
 
     sample_source = Source(
         id="s1", title="t", url="https://example.com",
@@ -437,9 +440,12 @@ async def test_mcp_research_surfaces_drift_warning_on_mixed_markers():
     """
     from unittest.mock import MagicMock, patch
     from src.connectors.base import Source
-    from src.mcp_server import mcp
+    from src import mcp_server
     def _tool_fn(name):
-        return mcp._tool_manager._tools[name].fn
+        # FastMCP >=3 keeps the original coroutine fn bound at the module
+        # name (the @mcp.tool() decorator no longer wraps it), so resolve the
+        # tool by attribute rather than reaching into private internals.
+        return getattr(mcp_server, name)
 
     sample_source = Source(
         id="s1", title="Alpha", url="https://example.com",
@@ -481,9 +487,12 @@ async def test_mcp_research_clean_numeric_no_drift_warning():
     """
     from unittest.mock import MagicMock, patch
     from src.connectors.base import Source
-    from src.mcp_server import mcp
+    from src import mcp_server
     def _tool_fn(name):
-        return mcp._tool_manager._tools[name].fn
+        # FastMCP >=3 keeps the original coroutine fn bound at the module
+        # name (the @mcp.tool() decorator no longer wraps it), so resolve the
+        # tool by attribute rather than reaching into private internals.
+        return getattr(mcp_server, name)
 
     sample_source = Source(
         id="s1", title="Alpha", url="https://example.com",

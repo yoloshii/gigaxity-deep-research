@@ -1,5 +1,19 @@
 # Release notes
 
+## v0.3.7 (2026-05-29)
+
+Fixes a cosmetic leak in `synthesize` output and restores FastMCP 3.3.1 test compatibility. The synthesis fix is a behavior change in the free-form synthesis path only — no API, configuration, or pipeline-contract change. Cleared by codex GPT-5.5 high review session `019e721b` ("Zero remaining findings — ship as is.") after nine review turns; the full unit suite passes on both `main` and `local-inference`.
+
+### Synthesis output discipline
+
+The thinking-mode default model (Qwen3-30B-A3B-Thinking) sometimes appended a self-narrated changelog ("Key Corrections Implemented: ...") to its free-form synthesis, and the aggregator returned it verbatim. The four free-form synthesis prompts (`comprehensive` / `concise` / `comparative` / `academic`) and the engine's `RESEARCH_SYSTEM_PROMPT` now instruct the model to wrap its entire answer in `<answer>...</answer>` and to put nothing after the closing tag. A new extractor (`src/synthesis/output_cleanup.py::extract_delimited_answer`) returns the wrapped content and drops anything after `</answer>`, where the changelog lands.
+
+The extractor acts only on the delimiter boundary, never on content semantics, so a legitimate errata or "corrections made" section *inside* the answer is preserved. This delimiter approach was chosen after a nine-turn adversarial review proved that no content heuristic can reliably separate the model's self-changelog from a legitimate correction-notice section. The fallback is non-destructive: when the tags are absent, the full text is returned unchanged. The reasoning path (`synthesize_with_reasoning`) was already immune via its `<synthesis>` tags.
+
+### FastMCP 3.3.1 test compatibility
+
+The MCP tool-registry tests reached into FastMCP's private `_tool_manager._tools`, which FastMCP 3.3.1 removed. They now resolve each tool's coroutine by module attribute (`getattr(mcp_server, name)` — the `@mcp.tool()` decorator leaves the original function bound at the module name) and enumerate registered tools via the public `await mcp.list_tools()`. Test-only change; no runtime behavior is affected.
+
 ## v0.3.6 (2026-05-29)
 
 Migrates the default synthesis model off `alibaba/tongyi-deepresearch-30b-a3b` (HuggingFace `Alibaba-NLP/Tongyi-DeepResearch-30B-A3B`), which was delisted from OpenRouter — its provider endpoint now returns HTTP 404 `No endpoints found`, breaking every hosted call. The replacement is **Qwen3-30B-A3B-Thinking-2507** (`qwen/qwen3-30b-a3b-thinking-2507` on OpenRouter, `Qwen/Qwen3-30B-A3B-Thinking-2507` on HuggingFace). This is a default-and-documentation change only — no pipeline logic, API surface, or configuration contract changed. Cleared by a fresh codex GPT-5.5 high review session (`019e721b`) with verbatim "Zero remaining findings — ship as is."

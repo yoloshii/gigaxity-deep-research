@@ -6,6 +6,7 @@ from ..config import settings
 from ..llm_utils import ExtractionMode, extract_llm_output
 from ..llm_client import OpenRouterClient, get_llm_client
 from .citations import extract_numeric_citations
+from .output_cleanup import extract_delimited_answer
 from .prompts import RESEARCH_SYSTEM_PROMPT, build_research_prompt
 
 
@@ -113,7 +114,10 @@ class SynthesisEngine:
                     ExtractionMode.FINAL_ANSWER,
                 )
 
-            content = output.text
+            # Extract the <answer>…</answer> the prompt asked for, dropping any
+            # trailing self-edit changelog after </answer>. Falls back to the
+            # full text when the tags are absent (never strips).
+            content = extract_delimited_answer(output.text)
 
             # FINAL_ANSWER fail-fast: an empty result (truly empty, or a
             # reasoning-only trace) is not a synthesis answer.

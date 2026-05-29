@@ -515,8 +515,9 @@ async def test_mcp_synthesize_preset_style_honored_when_style_omitted():
             PreGatheredSource(origin="t", url="u", title="T", content="c", source_type="article")
         ]
 
-        # Call synthesize directly (it's an mcp.tool() wrapper; access fn attr if needed)
-        result = await mcp_server.synthesize.fn(
+        # Call synthesize directly (the @mcp.tool() decorator leaves the
+        # coroutine fn bound at the module name in FastMCP >=3).
+        result = await mcp_server.synthesize(
             query="test query",
             sources=[{"title": "T", "content": "c"}],
             preset="contracrow",
@@ -565,7 +566,7 @@ async def test_mcp_synthesize_reject_early_returns():
          patch.object(mcp_server, "SourceQualityGate", return_value=fake_gate), \
          patch.object(mcp_server.cache, "get", return_value=None), \
          patch.object(mcp_server.cache, "set") as cache_set:
-        result = await mcp_server.synthesize.fn(
+        result = await mcp_server.synthesize(
             query="some weak query",
             sources=[{"title": "T", "content": "c"}],
             preset="comprehensive",
@@ -615,7 +616,7 @@ async def test_mcp_synthesize_partial_with_zero_good_early_returns():
          patch.object(mcp_server, "SourceQualityGate", return_value=fake_gate), \
          patch.object(mcp_server.cache, "get", return_value=None), \
          patch.object(mcp_server.cache, "set") as cache_set:
-        result = await mcp_server.synthesize.fn(
+        result = await mcp_server.synthesize(
             query="query with weak sources",
             sources=[{"title": "T", "content": "c"}],
             preset="comprehensive",

@@ -32,7 +32,11 @@ QUALITY REQUIREMENTS:
 - Synthesize information across sources; don't just summarize each.
 - Identify agreements and disagreements between sources.
 - Note when information is limited or uncertain.
-- Prioritize recent and authoritative sources."""
+- Prioritize recent and authoritative sources.
+
+OUTPUT FORMAT:
+- Wrap your entire answer in <answer> and </answer> tags.
+- Put NOTHING after the closing </answer> tag — no changelog, no notes about your own process (no "corrections made", "changes implemented", or "editorial notes")."""
 
 
 def build_research_prompt(query: str, sources: list[Source]) -> str:
