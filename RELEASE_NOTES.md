@@ -1,5 +1,27 @@
 # Release notes
 
+## v0.3.6 (2026-05-29)
+
+Migrates the default synthesis model off `alibaba/tongyi-deepresearch-30b-a3b` (HuggingFace `Alibaba-NLP/Tongyi-DeepResearch-30B-A3B`), which was delisted from OpenRouter — its provider endpoint now returns HTTP 404 `No endpoints found`, breaking every hosted call. The replacement is **Qwen3-30B-A3B-Thinking-2507** (`qwen/qwen3-30b-a3b-thinking-2507` on OpenRouter, `Qwen/Qwen3-30B-A3B-Thinking-2507` on HuggingFace). This is a default-and-documentation change only — no pipeline logic, API surface, or configuration contract changed. Cleared by a fresh codex GPT-5.5 high review session (`019e721b`) with verbatim "Zero remaining findings — ship as is."
+
+### Why this model
+
+Qwen3-30B-A3B-Thinking-2507 is a near-exact structural match for the model it replaces: a 30B-A3B mixture-of-experts model (~3B active parameters, so the same cheap-to-serve profile), 131072-token context as served on OpenRouter (262K native on HuggingFace), reasoning-tuned, and thinking-mode-only — it emits chain-of-thought to the `reasoning` / `reasoning_content` field that the pipeline's extraction layer (`src/llm_utils.py`) already reads. Its OpenRouter slug contains `thinking`, which the existing reasoning-model detector (`is_reasoning_model`) already matches, so the chain-of-thought output-token headroom (`llm_reasoning_headroom` for synthesis, `llm_scoring_headroom` for the quality-gate scorer) applies with no code change. The synthesis pipeline remains model-agnostic — any OpenAI-compatible chat-completions model still works; this only changes the recommended default.
+
+### What changed
+
+- **Default model.** `src/config.py` `llm_model` default → the new model (OpenRouter slug on `main`, HuggingFace path on `local-inference`). `.env.example` and `docker-compose.yml` updated to match.
+- **Context-window map.** `src/llm_utils.py` `MODEL_CONTEXT_WINDOWS` maps both id spellings to 131072 (the OpenRouter-served window; conservative for local HuggingFace deployments that can run the 262K native context). Unknown models still fall back to 32768, so the budget-aware source formatter never over-bounds.
+- **Reasoning-model detection unchanged.** `_REASONING_MODEL_MARKERS` already contains `thinking`; no change was needed for the new model to receive chain-of-thought budget headroom.
+- **Documentation.** README, CLAUDE.md / AGENTS.md (kept byte-identical), CONTRIBUTING, SKILL, and the `docs/` guides now reference the new model. GGUF quant guidance was genericized: specific community quanter repositories were replaced with a HuggingFace quant-search link and a `<quanter>` placeholder, because Qwen3 GGUF repos were not independently verified at release time. Quantization sizes and VRAM figures (≈18.7 GB Q4_K_M on a 24 GB GPU) are unchanged — they are determined by the 30B-A3B architecture, which is identical between the old and new model.
+- **Packaging.** `pyproject.toml` description made model-agnostic (it no longer names a specific model, to avoid another migration the next time a hosted model is delisted); the `tongyi-deepresearch` keyword became `qwen3`.
+
+### What did not change
+
+The six MCP tool names and surface contracts, the REST endpoint shapes, the `[N]` citation contract, the preset thresholds, the `RESEARCH_*` environment variables, the synthesis / quality-gate / contradiction-detection / outline / RCS behavior, the verdict envelope, and the cache key fingerprint. The Phase 0 synthesis chokepoint shipped in v0.3.5 is untouched. This release changes which model the pipeline talks to by default and the docs that name it — nothing else.
+
+---
+
 ## v0.3.5 (2026-05-25)
 
 Centralizes every synthesis-result code path through a single post-synthesis chokepoint and fixes three real call-site deficiencies the prior architecture left in place. Locked by a codex GPT-5.5 high DESIGN session (`019e5b0f`, 6 turns) and cleared by the same continuous-review session across IMPL (3 turns), both with verbatim "Zero remaining findings — ship as is." per the ONE_SESSION rule (codex was reviewer-only throughout — Claude authored DESIGN and IMPL, codex critiqued both against the locked specification). The DESIGN draws on two May 2026 Peking University papers — LIFE-HARNESS (arXiv:2605.22166) on runtime-harness adaptation for deterministic LLM agents, and DeepWebBench (arXiv:2605.21482) on deep-research evaluation finding derivation and calibration carry ~70% of failure mass while retrieval is only ~12-14% — and treats Phase 0 as the substrate every later phase (1 through 7) builds on.

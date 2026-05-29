@@ -121,7 +121,7 @@ HTTP transport with bearer token. Fully hosted — no install. Sign up at https:
   "env": {
     "RESEARCH_LLM_API_BASE": "https://openrouter.ai/api/v1",
     "RESEARCH_LLM_API_KEY": "YOUR_OPENROUTER_API_KEY_PLACEHOLDER",
-    "RESEARCH_LLM_MODEL": "alibaba/tongyi-deepresearch-30b-a3b",
+    "RESEARCH_LLM_MODEL": "qwen/qwen3-30b-a3b-thinking-2507",
     "RESEARCH_SEARXNG_HOST": "http://localhost:8888"
   }
 }
@@ -129,7 +129,7 @@ HTTP transport with bearer token. Fully hosted — no install. Sign up at https:
 
 **Tools exposed:** `ask`, `discover`, `synthesize`, `reason`.
 
-**Use for:** the full multi-source synthesis pipeline against Tongyi DeepResearch 30B. See [mcp-tools.md](mcp-tools.md) for input/output schemas.
+**Use for:** the full multi-source synthesis pipeline against Qwen3-30B-A3B-Thinking. See [mcp-tools.md](mcp-tools.md) for input/output schemas.
 
 **Critical rule:** `synthesize` does NOT re-search the web. Pass it pre-gathered sources (from `discover` or from your own URL reads). Pairing `synthesize` with a fresh search-and-read is the caller's job.
 

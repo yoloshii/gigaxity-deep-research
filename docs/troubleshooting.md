@@ -21,7 +21,7 @@ Symptom-fix lookup table for common boot and runtime errors. Find your symptom i
 | 401 from OpenRouter on every call | Invalid or expired key | Regenerate at https://openrouter.ai/keys |
 | 402 from OpenRouter | Account out of credits | Top up at https://openrouter.ai/account |
 | 429 from OpenRouter | Rate limit hit | Reduce `RESEARCH_DEFAULT_TOP_K`, switch to `fast` preset, or wait the indicated retry-after |
-| `Model not found` 400 | Model slug typo | Use exactly `alibaba/tongyi-deepresearch-30b-a3b` (case-sensitive) |
+| `Model not found` 400 | Model slug typo | Use exactly `qwen/qwen3-30b-a3b-thinking-2507` (case-sensitive) |
 | `Context length exceeded` | Sources too large for model context | Lower `RESEARCH_DEFAULT_TOP_K`, enable RCS via `synthesize/p1` endpoint, or shorten source content |
 | Empty completions | Model loaded but rate-limited | Check OpenRouter dashboard for model status |
 | Inconsistent quality on repeated calls | Temperature too high | Lower `RESEARCH_LLM_TEMPERATURE` to 0.3–0.5 |
@@ -67,7 +67,7 @@ Symptom-fix lookup table for common boot and runtime errors. Find your symptom i
 | `discover` slow | Multiple search engines + decomposition | Disable LinkUp/Tavily by clearing their keys; reduce engine list in `RESEARCH_SEARXNG_ENGINES` |
 | First call after long idle is slow | OpenRouter cold-start | Send a warmup `ask` call before traffic |
 | High RAM usage | Large source content + RCS off | Enable RCS via `/synthesize/p1` endpoint |
-| Per-request latency uneven | OpenRouter routing across providers | Pin a specific provider with model's full path: `alibaba/tongyi-deepresearch-30b-a3b:openrouter/auto` |
+| Per-request latency uneven | OpenRouter routing across providers | Pin a specific provider with model's full path: `qwen/qwen3-30b-a3b-thinking-2507:openrouter/auto` |
 | First `synthesize` call after upgrade is slow | `SYNTH_CACHE_VERSION` was bumped (cache key now includes the effective output budget plus source order), invalidating prior entries. | One-time cost; subsequent calls re-cache. No action required. |
 
 ## Local inference (`local-inference` branch) errors
@@ -78,7 +78,7 @@ Symptom-fix lookup table for common boot and runtime errors. Find your symptom i
 | `Unauthorized` from model server | Bearer token mismatch | Set `RESEARCH_LLM_API_KEY` to whatever your model server expects; empty string for open endpoints |
 | OOM at model-server startup | Model larger than VRAM | Switch to a quantized variant or smaller model |
 | Slow first request after model load | Prompt-eval cold-start | Send a warmup request after the model server reports loaded |
-| Inconsistent output quality | Wrong template applied to reasoning model | For Tongyi/DeepSeek-R1, ensure the model server uses the chat template that exposes `<thinking>...</thinking>` tags |
+| Inconsistent output quality | Wrong template applied to reasoning model | For Qwen3-Thinking/DeepSeek-R1, ensure the model server uses the chat template that exposes `<thinking>...</thinking>` tags |
 
 ## Multi-tenant edge cases
 

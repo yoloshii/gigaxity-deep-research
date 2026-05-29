@@ -1,6 +1,6 @@
 # Gigaxity Deep Research — Agent Reference
 
-This is the agent reference for Gigaxity Deep Research, an open-source deep research MCP server for Claude Code, Hermes, Cursor, and other MCP-compatible agents. Tongyi DeepResearch 30B runs via OpenRouter, the Triple Stack search MCPs (Ref, Exa, Jina) handle web/docs/code retrieval, and the bundled `research-workflow` skill routes queries to the right tool per query class.
+This is the agent reference for Gigaxity Deep Research, an open-source deep research MCP server for Claude Code, Hermes, Cursor, and other MCP-compatible agents. Qwen3-30B-A3B-Thinking runs via OpenRouter, the Triple Stack search MCPs (Ref, Exa, Jina) handle web/docs/code retrieval, and the bundled `research-workflow` skill routes queries to the right tool per query class.
 
 This file is loaded by Claude Code (`CLAUDE.md`) and other MCP-compatible agents (`AGENTS.md` is byte-identical). It documents how to operate the six MCP tools this server exposes (two primitives plus four deep-research tools) and how to plug them into the broader deep research stack.
 
@@ -61,7 +61,7 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 |---|---|---|
 | `RESEARCH_LLM_API_BASE` | `https://openrouter.ai/api/v1` | LLM endpoint. For local inference, set to `http://localhost:8000/v1` etc. |
 | `RESEARCH_LLM_API_KEY` | *(empty — required)* | OpenRouter or local-server API key |
-| `RESEARCH_LLM_MODEL` | `alibaba/tongyi-deepresearch-30b-a3b` | Any OpenAI-compatible chat-completions model |
+| `RESEARCH_LLM_MODEL` | `qwen/qwen3-30b-a3b-thinking-2507` | Any OpenAI-compatible chat-completions model |
 | `RESEARCH_LLM_TEMPERATURE` | `0.85` | |
 | `RESEARCH_LLM_TOP_P` | `0.95` | |
 | `RESEARCH_LLM_MAX_TOKENS` | `16384` | |
@@ -110,7 +110,7 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 | `RESEARCH_LLM_API_KEY` missing on startup | env var not set | Set in `.env` or MCP `env` block |
 | 401 from OpenRouter on every call | Invalid or expired key | Regenerate at https://openrouter.ai/keys |
 | Empty results from `discover` / `synthesize` | SearXNG host unreachable | `curl $RESEARCH_SEARXNG_HOST/healthz` — should return 200 |
-| `Tongyi-DeepResearch 30B not found` from OpenRouter | Model slug typo | Use exactly `alibaba/tongyi-deepresearch-30b-a3b` |
+| `Qwen3-30B-A3B-Thinking not found` from OpenRouter | Model slug typo | Use exactly `qwen/qwen3-30b-a3b-thinking-2507` |
 | MCP server boots but Claude Code shows no tools | stdio path / venv mismatch | Confirm `command` in `~/.claude.json` points at the venv's Python (not system Python) |
 | 429 rate limit from OpenRouter | Quota exceeded | Reduce `RESEARCH_DEFAULT_TOP_K`; consider local-inference branch |
 | Latency > 30 s on `synthesize` | Quality gate enabled with many sources | Lower `RESEARCH_DEFAULT_TOP_K` to 5; switch preset to `fast` |

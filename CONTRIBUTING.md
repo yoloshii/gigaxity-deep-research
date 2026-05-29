@@ -1,6 +1,6 @@
 # Contributing to Gigaxity Deep Research
 
-Gigaxity Deep Research is an MCP server (and REST API) that wraps Alibaba's Tongyi DeepResearch 30B model on OpenRouter, exposing `discover`, `synthesize`, `reason`, and `ask` primitives to Claude Code and other MCP-compatible agents. Thanks for your interest in contributing.
+Gigaxity Deep Research is an MCP server (and REST API) that wraps Alibaba's Qwen3-30B-A3B-Thinking model on OpenRouter, exposing `discover`, `synthesize`, `reason`, and `ask` primitives to Claude Code and other MCP-compatible agents. Thanks for your interest in contributing.
 
 ## Prerequisites
 

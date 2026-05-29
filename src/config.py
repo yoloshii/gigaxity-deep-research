@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     # OpenRouter LLM Configuration
     llm_api_base: str = Field(default="https://openrouter.ai/api/v1", description="LLM API base URL")
     llm_api_key: str = Field(default="", description="OpenRouter API key")
-    llm_model: str = Field(default="alibaba/tongyi-deepresearch-30b-a3b", description="DeepResearch model")
+    llm_model: str = Field(default="qwen/qwen3-30b-a3b-thinking-2507", description="DeepResearch model")
     llm_temperature: float = Field(default=0.85, description="Generation temperature")
     llm_top_p: float = Field(default=0.95, description="Top-p sampling")
     llm_max_tokens: int = Field(default=16384, description="Max output tokens")

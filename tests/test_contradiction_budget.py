@@ -20,7 +20,7 @@ from src.synthesis.contradictions import (
     ContradictionDetectionResult,
 )
 
-_REASONING_MODEL = "alibaba/tongyi-deepresearch-30b-a3b"
+_REASONING_MODEL = "qwen/qwen3-30b-a3b-thinking-2507"
 _PLAIN_MODEL = "openai/gpt-4o-mini"
 
 

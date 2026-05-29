@@ -186,8 +186,8 @@ async def research(
     Perform full research: search + synthesis with citations.
 
     Multi-source search → CRAG-style quality gate → outline-guided synthesis →
-    citation-aware response, all driven by the configured LLM (Tongyi DeepResearch
-    by default, OpenAI-compatible endpoints supported).
+    citation-aware response, all driven by the configured LLM (Qwen3-30B-A3B-Thinking
+    by default, any OpenAI-compatible endpoint supported).
 
     P1 Enhancements (when preset or focus_mode is specified):
     - preset: Use P1 synthesis with quality gate, RCS, contradictions

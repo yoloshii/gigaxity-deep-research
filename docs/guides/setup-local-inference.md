@@ -1,10 +1,10 @@
-# Setting up local inference (self-hosted Tongyi DeepResearch)
+# Setting up local inference (self-hosted Qwen3-30B-A3B-Thinking)
 
 > **Status: env-override path is fully working today on either branch; code-level swap pending (Roadmap → :construction: Local inference branch).** The `local-inference` branch exists as a placeholder and currently mirrors `main` byte-for-byte. The hosting steps below work today against any OpenAI-compatible endpoint by setting `RESEARCH_LLM_API_BASE` on either branch — that path is the supported way to run local inference right now. The dedicated branch with default-config-aware swaps (less env wiring, local-first defaults baked into `src/llm_client.py`) is still in development. Track progress in the [Roadmap section of README.md](../../README.md#roadmap).
 
-The default setup calls Tongyi DeepResearch 30B on OpenRouter — fastest path, no GPU needed, pay-per-call. Once the planned `local-inference` divergence lands, that branch will swap the OpenRouter client for a generic OpenAI-compatible client so the env wiring below collapses to defaults.
+The default setup calls Qwen3-30B-A3B-Thinking on OpenRouter — fastest path, no GPU needed, pay-per-call. Once the planned `local-inference` divergence lands, that branch will swap the OpenRouter client for a generic OpenAI-compatible client so the env wiring below collapses to defaults.
 
-This guide covers when to choose local inference, how to host Tongyi 30B (or another reasoning model), and how to wire it back to the synthesis pipeline.
+This guide covers when to choose local inference, how to host Qwen3-30B-A3B-Thinking (or another reasoning model), and how to wire it back to the synthesis pipeline.
 
 ## When to use local inference
 
@@ -12,13 +12,13 @@ This guide covers when to choose local inference, how to host Tongyi 30B (or ano
 - **Cost predictability** — your usage volume makes per-call pricing more expensive than amortized GPU hosting
 - **Latency floor** — round-trip to OpenRouter adds 100–500 ms; local hosting can drop that to single-digit ms
 - **GPU you already have** — repurposing existing infra
-- **Custom fine-tune** — running your own variant of Tongyi/DeepSeek/Qwen
+- **Custom fine-tune** — running your own variant of Qwen3/DeepSeek/Llama
 
 Otherwise, default OpenRouter mode is simpler.
 
 ## Hardware requirements
 
-Tongyi DeepResearch 30B (A3B variant) needs:
+Qwen3-30B-A3B-Thinking needs:
 
 - ~60 GB VRAM at FP16
 - ~30 GB VRAM at INT8
@@ -34,7 +34,7 @@ Multi-GPU:
 - 2× A100 40 GB (FP16, tensor-parallel)
 - 4× RTX 3090 24 GB (FP16, tensor-parallel)
 
-If you have less, drop down a model tier (Tongyi 7B, DeepSeek-R1-Distill-Qwen-14B, Qwen-QwQ-32B at INT4) — the synthesis pipeline is model-agnostic.
+If you have less, drop down a model tier (DeepSeek-R1-Distill-Qwen-14B, Qwen3-14B, Qwen-QwQ-32B at INT4) — the synthesis pipeline is model-agnostic.
 
 ## The `local-inference` branch (placeholder today, code swap planned)
 
@@ -51,7 +51,7 @@ Right now the branch is a packaging placeholder — it mirrors `main` byte-for-b
 ```bash
 RESEARCH_LLM_API_BASE=http://localhost:8000/v1 \
 RESEARCH_LLM_API_KEY=local-anything \
-RESEARCH_LLM_MODEL=alibaba/Tongyi-DeepResearch-30B-A3B \
+RESEARCH_LLM_MODEL=Qwen/Qwen3-30B-A3B-Thinking-2507 \
 python run_mcp.py
 ```
 
@@ -66,21 +66,21 @@ pip install vllm
 
 # Single-GPU FP16
 python -m vllm.entrypoints.openai.api_server \
-  --model Alibaba-NLP/Tongyi-DeepResearch-30B-A3B \
+  --model Qwen/Qwen3-30B-A3B-Thinking-2507 \
   --host 0.0.0.0 \
   --port 8000 \
   --max-model-len 32768
 
 # Multi-GPU tensor-parallel
 python -m vllm.entrypoints.openai.api_server \
-  --model Alibaba-NLP/Tongyi-DeepResearch-30B-A3B \
+  --model Qwen/Qwen3-30B-A3B-Thinking-2507 \
   --tensor-parallel-size 2 \
   --host 0.0.0.0 \
   --port 8000
 
 # Quantized (INT4)
 python -m vllm.entrypoints.openai.api_server \
-  --model Alibaba-NLP/Tongyi-DeepResearch-30B-A3B-AWQ \
+  --model Qwen/Qwen3-30B-A3B-Thinking-2507-AWQ \
   --quantization awq \
   --host 0.0.0.0 \
   --port 8000
@@ -96,14 +96,14 @@ SGLang is faster for multi-turn / structured generation workloads and has built-
 pip install "sglang[all]"
 
 python -m sglang.launch_server \
-  --model-path Alibaba-NLP/Tongyi-DeepResearch-30B-A3B \
+  --model-path Qwen/Qwen3-30B-A3B-Thinking-2507 \
   --host 0.0.0.0 \
   --port 8000
 ```
 
 ## Lower hardware bar (24 GB consumer GPU or Apple Silicon)
 
-For modest GPUs (24 GB) or Apple Silicon, pull a quantized GGUF build from [`mradermacher/Tongyi-DeepResearch-30B-A3B-GGUF`](https://huggingface.co/mradermacher/Tongyi-DeepResearch-30B-A3B-GGUF) — the most reliable static quant ladder for this model (Q2_K through Q8_0; Q4_K_M ≈ 18.7 GB, flagged "fast, recommended" by the quanter). Imatrix variants are at [`mradermacher/Tongyi-DeepResearch-30B-A3B-i1-GGUF`](https://huggingface.co/mradermacher/Tongyi-DeepResearch-30B-A3B-i1-GGUF). Serve the GGUF with any runtime that loads it (llama.cpp's `llama-server`, vLLM with `--quantization gguf`, LM Studio, or Jan) — each exposes an OpenAI-compatible endpoint that the orchestrator can talk to.
+For modest GPUs (24 GB) or Apple Silicon, pull a quantized GGUF build of `Qwen/Qwen3-30B-A3B-Thinking-2507` from a community quanter — [browse the available GGUF quants on HuggingFace](https://huggingface.co/models?other=base_model:quantized:Qwen/Qwen3-30B-A3B-Thinking-2507) and pick a repo that publishes the full static ladder (Q2_K through Q8_0; Q4_K_M ≈ 18.7 GB for this 30B-A3B architecture). Serve the GGUF with any runtime that loads it (llama.cpp's `llama-server`, vLLM with `--quantization gguf`, LM Studio, or Jan) — each exposes an OpenAI-compatible endpoint that the orchestrator can talk to.
 
 ## Configure the orchestrator
 
@@ -113,7 +113,7 @@ In `.env`:
 # vLLM / SGLang / llama.cpp / any OpenAI-compatible GGUF runtime
 RESEARCH_LLM_API_BASE=http://localhost:8000/v1
 RESEARCH_LLM_API_KEY=local-anything   # placeholder string — see note below
-RESEARCH_LLM_MODEL=Alibaba-NLP/Tongyi-DeepResearch-30B-A3B
+RESEARCH_LLM_MODEL=Qwen/Qwen3-30B-A3B-Thinking-2507
 ```
 
 `RESEARCH_LLM_API_KEY` must be **non-empty** because every entrypoint calls `settings.require_llm_key()` and fails fast on an empty key — this is the OpenRouter-mode safety check that prevents the server from coming up without a configured key. For local servers that do not enforce auth, set the variable to any placeholder string (`local-anything`, `na`, etc.). If your model server uses bearer tokens, set this to the actual token value.
@@ -124,7 +124,7 @@ RESEARCH_LLM_MODEL=Alibaba-NLP/Tongyi-DeepResearch-30B-A3B
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B",
+    "model": "Qwen/Qwen3-30B-A3B-Thinking-2507",
     "messages": [{"role":"user","content":"hello"}],
     "max_tokens": 64
   }'
@@ -158,7 +158,7 @@ If crossing a public network, terminate TLS on the model server and use a bearer
 
 ## Switching models on the fly
 
-`RESEARCH_LLM_MODEL` is read at request time, not startup. To switch from Tongyi to DeepSeek-R1, change the env var and restart the orchestrator. The model server has to be hosting the requested model, of course.
+`RESEARCH_LLM_MODEL` is read at request time, not startup. To switch from one model to another (say to DeepSeek-R1), change the env var and restart the orchestrator. The model server has to be hosting the requested model, of course.
 
 For multi-model serving, run multiple model servers on different ports and have multiple orchestrator instances pointed at different `RESEARCH_LLM_API_BASE` values, registered under different MCP aliases.
 

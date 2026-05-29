@@ -1,6 +1,6 @@
 # Quickstart for Gigaxity Deep Research MCP
 
-A five-minute install that gets the six MCP tools (`search`, `research`, `ask`, `discover`, `synthesize`, `reason`) registered with Claude Code, calling Tongyi DeepResearch 30B on OpenRouter, and resolving real queries.
+A five-minute install that gets the six MCP tools (`search`, `research`, `ask`, `discover`, `synthesize`, `reason`) registered with Claude Code, calling Qwen3-30B-A3B-Thinking on OpenRouter, and resolving real queries.
 
 ## Prerequisites
 
@@ -56,7 +56,7 @@ Open `~/.claude.json`, find the `mcpServers` object, and add:
   "env": {
     "RESEARCH_LLM_API_BASE": "https://openrouter.ai/api/v1",
     "RESEARCH_LLM_API_KEY": "YOUR_OPENROUTER_API_KEY",
-    "RESEARCH_LLM_MODEL": "alibaba/tongyi-deepresearch-30b-a3b"
+    "RESEARCH_LLM_MODEL": "qwen/qwen3-30b-a3b-thinking-2507"
   }
 }
 ```

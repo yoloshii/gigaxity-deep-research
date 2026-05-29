@@ -1,6 +1,6 @@
 ---
 name: gigaxity-deep-research
-description: Deep research MCP server wrapping Tongyi DeepResearch 30B via OpenRouter. Use when an agent needs cross-source synthesis with citations, exploratory expansion of an unfamiliar topic, chain-of-thought reasoning over evidence, or fast conversational lookups grounded in live web search. Exposes six MCP tools — two primitives (search, research) plus four deep-research tools (discover, synthesize, reason, ask) — with matching REST endpoints for each.
+description: Deep research MCP server wrapping Qwen3-30B-A3B-Thinking via OpenRouter. Use when an agent needs cross-source synthesis with citations, exploratory expansion of an unfamiliar topic, chain-of-thought reasoning over evidence, or fast conversational lookups grounded in live web search. Exposes six MCP tools — two primitives (search, research) plus four deep-research tools (discover, synthesize, reason, ask) — with matching REST endpoints for each.
 version: 1.0.0
 ---
 

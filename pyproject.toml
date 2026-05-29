@@ -1,7 +1,7 @@
 [project]
 name = "gigaxity-deep-research"
-version = "0.3.5"
-description = "Deep research MCP server bringing Tongyi DeepResearch 30B to Claude Code via OpenRouter — discover, synthesize, and reason over the web."
+version = "0.3.6"
+description = "Deep research MCP server for Claude Code and MCP-compatible agents — multi-source web search, citation-aware synthesis, and chain-of-thought reasoning over any OpenAI-compatible model."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -21,7 +21,7 @@ keywords = [
     "research-synthesis",
     "agentic-search",
     "openrouter",
-    "tongyi-deepresearch",
+    "qwen3",
     "searxng",
     "tavily",
     "gpt-researcher",

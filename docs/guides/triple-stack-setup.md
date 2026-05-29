@@ -12,7 +12,7 @@ This guide assumes you've already set up `gigaxity-deep-research` per [setup-mcp
 | `exa` | Code-context search, advanced web, crawling | Paid; generous free trial credits ([exa.ai](https://exa.ai)). Trial credits reset per signup, so a fresh Google account allocation buys another round if you exhaust them. |
 | `exa-answer` | 1–2 s factual lookups (uses Exa `/answer`) | Same key as `exa` |
 | `jina` | Free-tier web/arxiv/ssrn search, parallel reads | Paid; generous free 10M trial tier ([jina.ai](https://jina.ai)) — enough for hundreds of full pipeline sessions before key rotation |
-| `gigaxity-deep-research` | Multi-source synthesis with Tongyi 30B | Pay-per-call against your OpenRouter key (or zero ongoing cost on the `local-inference` branch) |
+| `gigaxity-deep-research` | Multi-source synthesis with Qwen3-30B-A3B-Thinking | Pay-per-call against your OpenRouter key (or zero ongoing cost on the `local-inference` branch) |
 | `brightdata_fallback` | Last-resort scraper for blocked URLs | Monthly free-tier limit, then paid ([brightdata.com](https://brightdata.com) Web Unlocker); only fires on ~5–15% of URL fetches |
 | `gptr-mcp` | Social-first research via Reddit, X, YouTube — MCP shim around [GPT Researcher](https://github.com/assafelovic/gpt-researcher) (the underlying agentic-research library) | Pay-per-call OpenAI + free-tier Tavily |
 

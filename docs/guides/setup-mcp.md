@@ -68,7 +68,7 @@ Open `~/.claude.json` (or wherever your global Claude Code config lives). Find t
   "env": {
     "RESEARCH_LLM_API_BASE": "https://openrouter.ai/api/v1",
     "RESEARCH_LLM_API_KEY": "YOUR_OPENROUTER_API_KEY",
-    "RESEARCH_LLM_MODEL": "alibaba/tongyi-deepresearch-30b-a3b",
+    "RESEARCH_LLM_MODEL": "qwen/qwen3-30b-a3b-thinking-2507",
     "RESEARCH_SEARXNG_HOST": "http://localhost:8888"
   }
 }
@@ -95,7 +95,7 @@ Symlinking lets you edit the skill in the repo and have changes picked up withou
 
 Ask Claude Code something outside its training cutoff or something requiring fresh sources:
 
-- "What's the current latency profile of OpenRouter's `alibaba/tongyi-deepresearch-30b-a3b` model?"
+- "What's the current latency profile of OpenRouter's `qwen/qwen3-30b-a3b-thinking-2507` model?"
 - "Compare the 2026 versions of FastAPI and Litestar."
 - "What's the latest CVE on `httpx`?"
 

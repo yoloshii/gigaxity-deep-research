@@ -72,7 +72,7 @@ def test_parse_bare_int_score_with_enumerator():
 # --- A2a: reasoning-aware budget ------------------------------------------
 
 def test_reasoning_model_gets_scoring_headroom():
-    gate = SourceQualityGate(llm_client=object(), model="alibaba/tongyi-deepresearch-30b-a3b")
+    gate = SourceQualityGate(llm_client=object(), model="qwen/qwen3-30b-a3b-thinking-2507")
     gate._call_llm = AsyncMock(return_value=SimpleNamespace(text="0.8\n0.7"))
     asyncio.run(gate.evaluate("topic terms here", [_src("A", "alpha"), _src("B", "beta")]))
     expected = min(500 + settings.llm_scoring_headroom, settings.llm_max_tokens)
@@ -99,7 +99,7 @@ def test_clean_first_attempt_no_retry():
 
 def test_empty_first_then_json_retry_recovers():
     """Reasoning-only first attempt (content empty) → strict-format retry lands JSON scores."""
-    gate = SourceQualityGate(llm_client=object(), model="alibaba/tongyi-deepresearch-30b-a3b")
+    gate = SourceQualityGate(llm_client=object(), model="qwen/qwen3-30b-a3b-thinking-2507")
     gate._call_llm = AsyncMock(side_effect=[
         SimpleNamespace(text=""),            # reasoning-only first attempt
         SimpleNamespace(text="[0.9, 0.6]"),  # strict-format retry
