@@ -102,7 +102,7 @@ Use this when your front-end already collects user keys for whichever LLM endpoi
 
 ## Distributed compute pattern
 
-When the LLM server lives on a different machine than the orchestrator (e.g. a GPU box with vLLM/SGLang serving Tongyi 30B locally and a CPU-only edge node running everything else):
+When the LLM server lives on a different machine than the orchestrator (e.g. a GPU box with vLLM/SGLang serving Qwen3-30B-A3B-Thinking locally and a CPU-only edge node running everything else):
 
 ```
 Orchestrator (this server, CPU)  ──HTTP──▶  Model server (GPU, vLLM/SGLang OpenAI-compat)
@@ -119,7 +119,7 @@ Example for vLLM:
 ```bash
 RESEARCH_LLM_API_BASE=http://192.0.2.50:8000/v1
 RESEARCH_LLM_API_KEY=local-anything   # placeholder — see note above
-RESEARCH_LLM_MODEL=Alibaba-NLP/Tongyi-DeepResearch-30B-A3B
+RESEARCH_LLM_MODEL=Qwen/Qwen3-30B-A3B-Thinking-2507
 ```
 
 See [setup-local-inference.md](setup-local-inference.md) for the model-server side.
@@ -159,6 +159,6 @@ Stripping the per-request LLM key from access logs is important if you accept mu
 
 ## What's next
 
-- [Local inference setup](setup-local-inference.md) — host Tongyi 30B yourself
+- [Local inference setup](setup-local-inference.md) — host Qwen3-30B-A3B-Thinking yourself
 - [Triple Stack setup](triple-stack-setup.md) — wire the full deep research stack
 - [REST API reference](../reference/rest-api.md) — full request/response schemas

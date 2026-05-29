@@ -1,4 +1,4 @@
-"""Synthesis engine using Tongyi DeepResearch via OpenAI-compatible API."""
+"""Synthesis engine for any OpenAI-compatible chat-completions model."""
 
 from openai import AsyncOpenAI
 from ..connectors.base import Source

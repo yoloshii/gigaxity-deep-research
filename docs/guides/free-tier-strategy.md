@@ -2,7 +2,7 @@
 
 Each of the search MCPs in the stack — Jina, Exa, and Ref — exposes a free or trial tier with specific usage limits. This guide documents what each tier covers, where the boundaries are, and how the bundled `research-workflow` routing avoids unnecessary spend by sending each query to the cheapest tool that can answer it.
 
-It also covers OpenRouter's pay-as-you-go pricing for Tongyi DeepResearch 30B and the local-inference fallback for users who want to run the synthesis model on their own hardware.
+It also covers OpenRouter's pay-as-you-go pricing for Qwen3-30B-A3B-Thinking and the local-inference fallback for users who want to run the synthesis model on their own hardware.
 
 ## Jina AI — free reader plus token-budgeted search
 
@@ -47,9 +47,9 @@ The recommended setup includes Ref. If you genuinely want a strict $0/month setu
 
 If you skip Brightdata entirely, the routing skill degrades gracefully — URLs that would have routed to Brightdata just propagate their original error. SYNTHESIS workflows tolerate this because they pull from many sources; single-URL queries on blocked sites will simply fail. For a stack that treats blocked URLs as recoverable, register Brightdata and let the free tier handle most months.
 
-## Tongyi DeepResearch 30B via OpenRouter — pay-as-you-go
+## Qwen3-30B-A3B-Thinking via OpenRouter — pay-as-you-go
 
-The synthesis stage runs against [Tongyi DeepResearch 30B](https://huggingface.co/Alibaba-NLP/Tongyi-DeepResearch-30B-A3B) — a reasoning-tuned 30B-parameter model purpose-built for agentic multi-hop research. [OpenRouter](https://openrouter.ai/) hosts it on pay-as-you-go billing. Current rates are at `https://openrouter.ai/alibaba/tongyi-deepresearch-30b-a3b`.
+The synthesis stage runs against [Qwen3-30B-A3B-Thinking](https://huggingface.co/Qwen/Qwen3-30B-A3B-Thinking-2507) — a reasoning-tuned 30B-A3B MoE model (~3B active params). [OpenRouter](https://openrouter.ai/) hosts it on pay-as-you-go billing. Current rates are at `https://openrouter.ai/qwen/qwen3-30b-a3b-thinking-2507`.
 
 A typical multi-source synthesis runs 5,000–10,000 input tokens (the gathered source content) plus 2,000–4,000 output tokens (the synthesized answer with citations). The `fast` preset is a single LLM call; `comprehensive` runs 2–3 calls and costs proportionally more.
 
@@ -59,7 +59,7 @@ Both the MCP and REST surfaces accept a per-request `api_key` parameter (or `X-L
 
 ## Local inference — zero ongoing inference cost
 
-For users with GPU capacity, the `local-inference` branch swaps OpenRouter for any OpenAI-compatible inference server (vLLM, SGLang, or llama.cpp). Tongyi DeepResearch 30B at 4-bit quantization fits in roughly 24 GB of VRAM, so a single RTX 3090 / 4090 / 5090 or an Apple Silicon machine with 32 GB+ unified memory can run it locally. Smaller variants (DeepSeek-R1 distilled, Qwen3, Llama 3.3) work too — anything OpenAI-compatible plugs in.
+For users with GPU capacity, the `local-inference` branch swaps OpenRouter for any OpenAI-compatible inference server (vLLM, SGLang, or llama.cpp). Qwen3-30B-A3B-Thinking at 4-bit quantization fits in roughly 24 GB of VRAM, so a single RTX 3090 / 4090 / 5090 or an Apple Silicon machine with 32 GB+ unified memory can run it locally. Smaller variants (DeepSeek-R1 distilled, Qwen3, Llama 3.3) work too — anything OpenAI-compatible plugs in.
 
 See [`docs/guides/setup-local-inference.md`](setup-local-inference.md) for the branch swap and inference-server setup.
 

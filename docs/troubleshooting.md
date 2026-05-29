@@ -68,7 +68,7 @@ Symptom-fix lookup table for common boot and runtime errors. Find your symptom i
 | `discover` slow | Multiple search engines + decomposition | Disable LinkUp/Tavily by clearing their keys; reduce engine list in `RESEARCH_SEARXNG_ENGINES` |
 | First call after long idle is slow | LLM endpoint cold-start (model unload, hosted-provider routing) | Send a warmup `ask` call before traffic; for vLLM/SGLang, keep the server warm |
 | High RAM usage | Large source content + RCS off | Enable RCS via `/synthesize/p1` endpoint |
-| Per-request latency uneven (hosted endpoints) | Provider routing across multiple backends | Pin a specific provider via the provider's model-path syntax (e.g. `alibaba/tongyi-deepresearch-30b-a3b:openrouter/auto` on OpenRouter) |
+| Per-request latency uneven (hosted endpoints) | Provider routing across multiple backends | Pin a specific provider via the provider's model-path syntax (e.g. `qwen/qwen3-30b-a3b-thinking-2507:openrouter/auto` on OpenRouter) |
 | First `synthesize` call after upgrade is slow | `SYNTH_CACHE_VERSION` was bumped (cache key now includes the effective output budget plus source order), invalidating prior entries. | One-time cost; subsequent calls re-cache. No action required. |
 
 ## Local inference (default on this branch)
@@ -79,7 +79,7 @@ Symptom-fix lookup table for common boot and runtime errors. Find your symptom i
 | `Unauthorized` from model server | Bearer token mismatch | Set `RESEARCH_LLM_API_KEY` to whatever your model server expects; non-empty placeholder for open endpoints |
 | OOM at model-server startup | Model larger than VRAM | Switch to a quantized variant (AWQ, INT4) or smaller model |
 | Slow first request after model load | Prompt-eval cold-start | Send a warmup request after the model server reports loaded |
-| Inconsistent output quality | Wrong template applied to reasoning model | For Tongyi/DeepSeek-R1, ensure the model server uses the chat template that exposes `<thinking>...</thinking>` tags |
+| Inconsistent output quality | Wrong template applied to reasoning model | For Qwen3-Thinking/DeepSeek-R1, ensure the model server uses the chat template that exposes `<thinking>...</thinking>` tags |
 
 ## Multi-tenant edge cases
 

@@ -1,6 +1,6 @@
 # Gigaxity Deep Research — Agent Reference
 
-This is the agent reference for Gigaxity Deep Research, an open-source deep research MCP server for Claude Code, Hermes, Cursor, and other MCP-compatible agents — `local-inference` branch. Tongyi DeepResearch 30B (or any OpenAI-compatible chat-completions model) runs on a self-hosted server (vLLM, SGLang, or llama.cpp). The Triple Stack search MCPs (Ref, Exa, Jina) handle web/docs/code retrieval, and the bundled `research-workflow` skill routes queries to the right tool per query class.
+This is the agent reference for Gigaxity Deep Research, an open-source deep research MCP server for Claude Code, Hermes, Cursor, and other MCP-compatible agents — `local-inference` branch. Qwen3-30B-A3B-Thinking (or any OpenAI-compatible chat-completions model) runs on a self-hosted server (vLLM, SGLang, or llama.cpp). The Triple Stack search MCPs (Ref, Exa, Jina) handle web/docs/code retrieval, and the bundled `research-workflow` skill routes queries to the right tool per query class.
 
 This file is loaded by Claude Code (`CLAUDE.md`) and other MCP-compatible agents (`AGENTS.md` is byte-identical). It documents how to operate the six MCP tools this server exposes (two primitives plus four deep-research tools) and how to plug them into the broader deep research stack.
 
@@ -61,7 +61,7 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 |---|---|---|
 | `RESEARCH_LLM_API_BASE` | `http://localhost:8000/v1` | LLM endpoint. For llama.cpp's `llama-server` set `http://localhost:8080/v1`; for hosted services point at their `/v1` URL. |
 | `RESEARCH_LLM_API_KEY` | *(empty — required, set any non-empty placeholder for local servers without auth)* | LLM API key |
-| `RESEARCH_LLM_MODEL` | `Alibaba-NLP/Tongyi-DeepResearch-30B-A3B` | Any OpenAI-compatible chat-completions model |
+| `RESEARCH_LLM_MODEL` | `Qwen/Qwen3-30B-A3B-Thinking-2507` | Any OpenAI-compatible chat-completions model |
 | `RESEARCH_LLM_TEMPERATURE` | `0.85` | |
 | `RESEARCH_LLM_TOP_P` | `0.95` | |
 | `RESEARCH_LLM_MAX_TOKENS` | `16384` | |

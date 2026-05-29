@@ -2,7 +2,7 @@
 
 > **You are reading this on the `local-inference` branch.** The default LLM endpoint is a self-hosted OpenAI-compatible server (vLLM, SGLang, or llama.cpp). The hosted-OpenRouter framing in the rest of this page applies on `main`; this branch swaps the default to local inference but the synthesis pipeline is identical.
 
-Gigaxity Deep Research is an MCP server that gives any MCP-compatible agent (Claude Code, Codex, Cursor, Hermes, and others) a deep research capability — multi-source search, citation-aware synthesis, contradiction detection, and chain-of-thought reasoning — backed by [Tongyi DeepResearch 30B](https://huggingface.co/Alibaba-NLP/Tongyi-DeepResearch-30B-A3B) running locally on this branch (or hosted on [OpenRouter](https://openrouter.ai/) when configured for that). It exposes six tools — two primitives (`search`, `research`) plus four deep-research tools (`ask`, `discover`, `synthesize`, `reason`) — over both an MCP stdio surface and a FastAPI REST API. Standalone agents that take a system prompt instead of MCP can use the REST API for the same capability set.
+Gigaxity Deep Research is an MCP server that gives any MCP-compatible agent (Claude Code, Codex, Cursor, Hermes, and others) a deep research capability — multi-source search, citation-aware synthesis, contradiction detection, and chain-of-thought reasoning — backed by [Qwen3-30B-A3B-Thinking](https://huggingface.co/Qwen/Qwen3-30B-A3B-Thinking-2507) running locally on this branch (or hosted on [OpenRouter](https://openrouter.ai/) when configured for that). It exposes six tools — two primitives (`search`, `research`) plus four deep-research tools (`ask`, `discover`, `synthesize`, `reason`) — over both an MCP stdio surface and a FastAPI REST API. Standalone agents that take a system prompt instead of MCP can use the REST API for the same capability set.
 
 This page covers what the project is, the problems it solves, and where it sits in the broader seven-MCP deep research stack.
 
@@ -22,7 +22,7 @@ Query → Discovery layer (route, expand, decompose, focus)
       → Search aggregator (SearXNG required; Tavily, LinkUp optional — all configured connectors run in parallel)
       → RRF fusion (rank-merge across providers)
       → Synthesis layer (CRAG quality gate, contradiction detection, outline-guided generation)
-      → OpenAI-compatible LLM (Tongyi 30B by default)
+      → OpenAI-compatible LLM (Qwen3-30B-A3B-Thinking by default)
       → Citation-bound answer
 ```
 
@@ -38,7 +38,7 @@ This server is one of seven MCPs in the **deep research stack** — a configurat
 | `exa` | Code-context search, advanced web (Triple Stack) | Used in parallel with this server's discovery layer for cross-validation |
 | `jina` | Free-tier web/arxiv/ssrn search (Triple Stack) | Provides the URL-reading layer that feeds this server's `synthesize` |
 | `exa-answer` | Speed-critical 1–2 s factual lookups | Substitutes for `ask` when latency is the only thing that matters |
-| **`gigaxity-deep-research`** | This server — multi-source synthesis with Tongyi 30B | The core synthesis engine |
+| **`gigaxity-deep-research`** | This server — multi-source synthesis with Qwen3-30B-A3B-Thinking | The core synthesis engine |
 | `brightdata_fallback` | Last-resort scraper for blocked URLs | Handles the long tail of CAPTCHA/paywall/Cloudflare pages |
 | `gptr-mcp` | Social-first research — community knowledge from Reddit, X, YouTube | Surfaces lived-experience content the rest of the stack misses |
 
@@ -46,7 +46,7 @@ The bundled [`research-workflow` skill](../skills/research-workflow/SKILL.md) an
 
 ## What models does it work with?
 
-Default on this branch is `Alibaba-NLP/Tongyi-DeepResearch-30B-A3B` running on a local OpenAI-compatible server (vLLM, SGLang, or llama.cpp), chosen for its reasoning-tuned multi-hop research behavior. The synthesis pipeline is model-agnostic, so any OpenAI-compatible chat-completions model works:
+Default on this branch is `Qwen/Qwen3-30B-A3B-Thinking-2507` running on a local OpenAI-compatible server (vLLM, SGLang, or llama.cpp), chosen for its reasoning-tuned multi-hop research behavior. The synthesis pipeline is model-agnostic, so any OpenAI-compatible chat-completions model works:
 
 - DeepSeek-R1 (and any reasoning variant)
 - Qwen-QwQ

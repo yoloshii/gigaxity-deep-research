@@ -121,7 +121,7 @@ HTTP transport with bearer token. Fully hosted — no install. Sign up at https:
   "env": {
     "RESEARCH_LLM_API_BASE": "http://localhost:8000/v1",
     "RESEARCH_LLM_API_KEY": "local-anything",
-    "RESEARCH_LLM_MODEL": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B",
+    "RESEARCH_LLM_MODEL": "Qwen/Qwen3-30B-A3B-Thinking-2507",
     "RESEARCH_SEARXNG_HOST": "http://localhost:8888"
   }
 }
@@ -129,7 +129,7 @@ HTTP transport with bearer token. Fully hosted — no install. Sign up at https:
 
 **Tools exposed:** `ask`, `discover`, `synthesize`, `reason`.
 
-**Use for:** the full multi-source synthesis pipeline against Tongyi DeepResearch 30B. See [mcp-tools.md](mcp-tools.md) for input/output schemas.
+**Use for:** the full multi-source synthesis pipeline against Qwen3-30B-A3B-Thinking. See [mcp-tools.md](mcp-tools.md) for input/output schemas.
 
 **Critical rule:** `synthesize` does NOT re-search the web. Pass it pre-gathered sources (from `discover` or from your own URL reads). Pairing `synthesize` with a fresh search-and-read is the caller's job.
 
@@ -190,7 +190,7 @@ Bundled in this repo at [`companions/gptr-mcp/`](../../companions/gptr-mcp/). In
 | Ref | https://ref.tools | Free credits, then ~$9/mo Basic |
 | Exa (one key for both `exa` and `exa-answer`) | https://exa.ai | Paid; generous free trial credits. A fresh Google account allocation buys another round of free credits if you exhaust the first. |
 | Jina | https://jina.ai | Paid; generous free 10M trial tier — hundreds of full pipeline sessions before key rotation |
-| Self-hosted LLM (for `gigaxity-deep-research`) | vLLM, SGLang, llama.cpp | Hardware cost only — zero ongoing usage charges. Tongyi 30B fits in ~24-60 GB VRAM at INT4-FP16. |
+| Self-hosted LLM (for `gigaxity-deep-research`) | vLLM, SGLang, llama.cpp | Hardware cost only — zero ongoing usage charges. Qwen3-30B-A3B-Thinking fits in ~24-60 GB VRAM at INT4-FP16. |
 | Brightdata Web Unlocker | [brightdata.com](https://brightdata.com) | Monthly free-tier limit, then paid; only fires on ~5–15% of URL fetches |
 | OpenAI (for `gptr-mcp`) | https://platform.openai.com/api-keys | Pay-per-call |
 | Tavily (free tier — for `gptr-mcp` fallback) | https://tavily.com | Free tier |

@@ -10,7 +10,7 @@ Variables can be set in `.env` (read at startup), in the MCP `env` block of `~/.
 |---|---|---|---|
 | `RESEARCH_LLM_API_BASE` | `http://localhost:8000/v1` | No | Any OpenAI-compatible base URL. Defaults match a local vLLM/SGLang server; for llama.cpp's `llama-server` set `http://localhost:8080/v1`; for hosted services set the provider's `/v1` URL. |
 | `RESEARCH_LLM_API_KEY` | *(empty)* | **Yes** | Bearer token for the LLM endpoint. For local servers without auth, set any non-empty placeholder. |
-| `RESEARCH_LLM_MODEL` | `Alibaba-NLP/Tongyi-DeepResearch-30B-A3B` | No | Any model the endpoint serves |
+| `RESEARCH_LLM_MODEL` | `Qwen/Qwen3-30B-A3B-Thinking-2507` | No | Any model the endpoint serves |
 | `RESEARCH_LLM_TEMPERATURE` | `0.85` | No | 0.0–1.0; lower = more deterministic |
 | `RESEARCH_LLM_TOP_P` | `0.95` | No | Nucleus sampling parameter |
 | `RESEARCH_LLM_MAX_TOKENS` | `16384` | No | Max output length per call |
@@ -19,10 +19,10 @@ Variables can be set in `.env` (read at startup), in the MCP `env` block of `~/.
 ### Common model values
 
 vLLM / SGLang / llama.cpp (local — default on this branch):
-- `Alibaba-NLP/Tongyi-DeepResearch-30B-A3B` (HF model ID; `llama-server` exposes whatever alias it derives from the GGUF)
+- `Qwen/Qwen3-30B-A3B-Thinking-2507` (HF model ID; `llama-server` exposes whatever alias it derives from the GGUF)
 
 Hosted endpoints (OpenRouter and similar):
-- `alibaba/tongyi-deepresearch-30b-a3b` — OpenRouter slug, reasoning-tuned for research
+- `qwen/qwen3-30b-a3b-thinking-2507` — OpenRouter slug, reasoning-tuned for research
 - `deepseek/deepseek-r1` — reasoning model, similar capability profile
 - `qwen/qwen-qwq-32b-preview` — Qwen reasoning variant
 - `anthropic/claude-3.5-sonnet` — non-reasoning, but very strong synthesis
@@ -88,7 +88,7 @@ RESEARCH_SEARXNG_HOST=http://localhost:8888
 ```bash
 RESEARCH_LLM_API_BASE=http://localhost:8080/v1
 RESEARCH_LLM_API_KEY=local-anything
-RESEARCH_LLM_MODEL=Tongyi-DeepResearch-30B-A3B   # alias llama-server reports
+RESEARCH_LLM_MODEL=Qwen3-30B-A3B-Thinking-2507   # alias llama-server reports
 RESEARCH_SEARXNG_HOST=http://localhost:8888
 ```
 
@@ -97,7 +97,7 @@ RESEARCH_SEARXNG_HOST=http://localhost:8888
 ```bash
 RESEARCH_LLM_API_BASE=http://192.0.2.50:8000/v1   # example LAN IP (RFC 5737 TEST-NET-1)
 RESEARCH_LLM_API_KEY=local-anything
-RESEARCH_LLM_MODEL=Alibaba-NLP/Tongyi-DeepResearch-30B-A3B
+RESEARCH_LLM_MODEL=Qwen/Qwen3-30B-A3B-Thinking-2507
 RESEARCH_SEARXNG_HOST=http://192.0.2.10:8888   # example SearXNG on yet another machine (RFC 5737)
 RESEARCH_HOST=127.0.0.1
 RESEARCH_PORT=8001    # if running the orchestrator's REST mode on the same host
@@ -108,7 +108,7 @@ RESEARCH_PORT=8001    # if running the orchestrator's REST mode on the same host
 ```bash
 RESEARCH_LLM_API_BASE=https://openrouter.ai/api/v1
 RESEARCH_LLM_API_KEY=sk-or-v1-your-key-placeholder
-RESEARCH_LLM_MODEL=alibaba/tongyi-deepresearch-30b-a3b
+RESEARCH_LLM_MODEL=qwen/qwen3-30b-a3b-thinking-2507
 RESEARCH_SEARXNG_HOST=http://localhost:8888
 ```
 
@@ -117,7 +117,7 @@ RESEARCH_SEARXNG_HOST=http://localhost:8888
 ```bash
 RESEARCH_LLM_API_BASE=https://openrouter.ai/api/v1
 RESEARCH_LLM_API_KEY=sk-or-v1-your-key-placeholder
-RESEARCH_LLM_MODEL=alibaba/tongyi-deepresearch-30b-a3b
+RESEARCH_LLM_MODEL=qwen/qwen3-30b-a3b-thinking-2507
 RESEARCH_SEARXNG_HOST=http://localhost:8888    # required even if unreachable; aggregator handles failure
 RESEARCH_TAVILY_API_KEY=tvly-your-key-placeholder
 ```

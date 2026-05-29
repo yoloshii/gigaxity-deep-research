@@ -1,6 +1,6 @@
 # Setting up Gigaxity Deep Research as an MCP server for Claude Code
 
-> **You are reading this on the `local-inference` branch.** The example config below shows the branch default — a self-hosted OpenAI-compatible LLM server. For LLM-server setup walkthroughs (vLLM, SGLang, llama.cpp) and the recommended Q4_K_M GGUF quant on 24 GB consumer GPUs from [`mradermacher/Tongyi-DeepResearch-30B-A3B-GGUF`](https://huggingface.co/mradermacher/Tongyi-DeepResearch-30B-A3B-GGUF), see [`setup-local-inference.md`](setup-local-inference.md). To use OpenRouter (or another hosted endpoint) instead, override the `env` block per the OpenRouter callout below the MCP block.
+> **You are reading this on the `local-inference` branch.** The example config below shows the branch default — a self-hosted OpenAI-compatible LLM server. For LLM-server setup walkthroughs (vLLM, SGLang, llama.cpp) and the recommended Q4_K_M GGUF quant on 24 GB consumer GPUs (browse community [GGUF builds](https://huggingface.co/models?other=base_model:quantized:Qwen/Qwen3-30B-A3B-Thinking-2507)), see [`setup-local-inference.md`](setup-local-inference.md). To use OpenRouter (or another hosted endpoint) instead, override the `env` block per the OpenRouter callout below the MCP block.
 
 This guide walks through registering the server with Claude Code as an MCP stdio server, the recommended setup for individual developers.
 
@@ -48,7 +48,7 @@ RESEARCH_LLM_API_KEY=local-anything           # any non-empty placeholder works 
 RESEARCH_SEARXNG_HOST=http://localhost:8888
 ```
 
-That's the minimum. The rest of the variables have working defaults — including `RESEARCH_LLM_API_BASE=http://localhost:8000/v1` and `RESEARCH_LLM_MODEL=Alibaba-NLP/Tongyi-DeepResearch-30B-A3B`.
+That's the minimum. The rest of the variables have working defaults — including `RESEARCH_LLM_API_BASE=http://localhost:8000/v1` and `RESEARCH_LLM_MODEL=Qwen/Qwen3-30B-A3B-Thinking-2507`.
 
 ## Smoke test
 
@@ -70,7 +70,7 @@ Open `~/.claude.json` (or wherever your global Claude Code config lives). Find t
   "env": {
     "RESEARCH_LLM_API_BASE": "http://localhost:8000/v1",
     "RESEARCH_LLM_API_KEY": "local-anything",
-    "RESEARCH_LLM_MODEL": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B",
+    "RESEARCH_LLM_MODEL": "Qwen/Qwen3-30B-A3B-Thinking-2507",
     "RESEARCH_SEARXNG_HOST": "http://localhost:8888"
   }
 }
@@ -83,10 +83,10 @@ Use **absolute paths**. For local servers without auth, `local-anything` (or any
 ```json
 "RESEARCH_LLM_API_BASE": "https://openrouter.ai/api/v1",
 "RESEARCH_LLM_API_KEY": "sk-or-v1-your-real-key",
-"RESEARCH_LLM_MODEL": "alibaba/tongyi-deepresearch-30b-a3b"
+"RESEARCH_LLM_MODEL": "qwen/qwen3-30b-a3b-thinking-2507"
 ```
 
-For llama.cpp's `llama-server`, use `http://localhost:8080/v1` and the alias `llama-server` reports for the loaded GGUF (typically the model name from the `.gguf` filename or HF repo, e.g. `Tongyi-DeepResearch-30B-A3B`).
+For llama.cpp's `llama-server`, use `http://localhost:8080/v1` and the alias `llama-server` reports for the loaded GGUF (typically the model name from the `.gguf` filename or HF repo, e.g. `Qwen3-30B-A3B-Thinking-2507`).
 
 ## Restart Claude Code
 

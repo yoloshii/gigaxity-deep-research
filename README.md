@@ -1,8 +1,8 @@
 # Gigaxity Deep Research — Open-source deep research MCP server for Claude Code, Codex, Cursor, Hermes, and any MCP-capable agent
 
-**Open-source deep research MCP server for Claude Code, Hermes, Cursor, and any MCP-compatible agent — local-inference branch.** [Tongyi DeepResearch 30B](https://huggingface.co/Alibaba-NLP/Tongyi-DeepResearch-30B-A3B) (or any OpenAI-compatible chat-completions model) running on your own hardware via [vLLM](https://github.com/vllm-project/vllm), [SGLang](https://github.com/sgl-project/sglang), or [llama.cpp](https://github.com/ggerganov/llama.cpp), plus multi-source web synthesis with citations.
+**Open-source deep research MCP server for Claude Code, Hermes, Cursor, and any MCP-compatible agent — local-inference branch.** [Qwen3-30B-A3B-Thinking](https://huggingface.co/Qwen/Qwen3-30B-A3B-Thinking-2507) (or any OpenAI-compatible chat-completions model) running on your own hardware via [vLLM](https://github.com/vllm-project/vllm), [SGLang](https://github.com/sgl-project/sglang), or [llama.cpp](https://github.com/ggerganov/llama.cpp), plus multi-source web synthesis with citations.
 
-Gigaxity Deep Research is a multi-source synthesis pipeline — six MCP tools (two primitives `search`/`research` plus four deep-research tools `ask`/`discover`/`synthesize`/`reason`) with a matching FastAPI REST surface, fronting parallel multi-source search, RRF fusion, citation binding, and contradiction detection. The synthesis stage runs against any OpenAI-compatible chat-completions model; the recommended default is [Alibaba's Tongyi DeepResearch 30B](https://huggingface.co/Alibaba-NLP/Tongyi-DeepResearch-30B-A3B), a reasoning-tuned model purpose-built for agentic research, but DeepSeek-R1, Qwen-QwQ, Llama 3.x, and hosted-aggregator endpoints (OpenRouter and the like) all work — pick any model your endpoint serves. The search layer pulls from a "Triple Stack" of complementary MCPs ([Ref](https://ref.tools), [Exa](https://exa.ai), [Jina](https://jina.ai)) alongside [SearXNG](https://github.com/searxng/searxng), [Tavily](https://tavily.com), and [LinkUp](https://linkup.so) connectors. A bundled [`gptr-mcp`](https://github.com/assafelovic/gptr-mcp) companion — the MCP shim around [GPT Researcher](https://github.com/assafelovic/gpt-researcher) — adds Reddit, X, and YouTube as social-first sources.
+Gigaxity Deep Research is a multi-source synthesis pipeline — six MCP tools (two primitives `search`/`research` plus four deep-research tools `ask`/`discover`/`synthesize`/`reason`) with a matching FastAPI REST surface, fronting parallel multi-source search, RRF fusion, citation binding, and contradiction detection. The synthesis stage runs against any OpenAI-compatible chat-completions model; the recommended default is [Alibaba's Qwen3-30B-A3B-Thinking](https://huggingface.co/Qwen/Qwen3-30B-A3B-Thinking-2507), a reasoning-tuned 30B-A3B MoE model, but DeepSeek-R1, Qwen-QwQ, Llama 3.x, and hosted-aggregator endpoints (OpenRouter and the like) all work — pick any model your endpoint serves. The search layer pulls from a "Triple Stack" of complementary MCPs ([Ref](https://ref.tools), [Exa](https://exa.ai), [Jina](https://jina.ai)) alongside [SearXNG](https://github.com/searxng/searxng), [Tavily](https://tavily.com), and [LinkUp](https://linkup.so) connectors. A bundled [`gptr-mcp`](https://github.com/assafelovic/gptr-mcp) companion — the MCP shim around [GPT Researcher](https://github.com/assafelovic/gpt-researcher) — adds Reddit, X, and YouTube as social-first sources.
 
 This branch defaults to a local OpenAI-compatible inference server on `http://localhost:8000/v1`. If you'd rather use a hosted model (OpenRouter and friends), check out the [`main` branch](https://github.com/yoloshii/gigaxity-deep-research/tree/main) — it ships with OpenRouter as the default and is the simpler path when you don't have GPU capacity. The search-MCP layer is priced separately by each provider. See [`docs/guides/free-tier-strategy.md`](docs/guides/free-tier-strategy.md) for what their free tiers cover and how to wire them up.
 
@@ -16,7 +16,7 @@ Python on FastAPI. MIT License. Runs as an MCP stdio server, FastAPI REST API, o
 
 ## What it does
 
-Gigaxity Deep Research wires a multi-source search layer (SearXNG, Tavily, LinkUp) to an RRF fusion stage and a synthesis engine with citation binding, then exposes the whole pipeline as six MCP tools — two primitives (`search`, `research`) plus four deep-research tools (`ask`, `discover`, `synthesize`, `reason`) — that Claude Code or any MCP-compatible agent can call. The synthesis stage runs against any OpenAI-compatible chat-completions model; the recommended default is Tongyi DeepResearch 30B, a reasoning-tuned model Alibaba designed for multi-hop web research.
+Gigaxity Deep Research wires a multi-source search layer (SearXNG, Tavily, LinkUp) to an RRF fusion stage and a synthesis engine with citation binding, then exposes the whole pipeline as six MCP tools — two primitives (`search`, `research`) plus four deep-research tools (`ask`, `discover`, `synthesize`, `reason`) — that Claude Code or any MCP-compatible agent can call. The synthesis stage runs against any OpenAI-compatible chat-completions model; the recommended default is Qwen3-30B-A3B-Thinking, a reasoning-tuned MoE model from Alibaba.
 
 So when an agent hits a question outside its training cutoff, it doesn't hallucinate or shell out to a generic search tool. It calls `discover` to widen the source set, reads the top hits, and calls `synthesize` to fold the evidence into a citation-backed answer. Round-trip is typically 5–15 seconds against a hosted reasoning model.
 
@@ -58,7 +58,7 @@ The MCP server exposes **two primitives** plus **four deep-research tools** — 
 
 ### Compatibility
 
-- **Reasoning models**: works with Tongyi DeepResearch, DeepSeek-R1, Qwen-QwQ, and any other OpenAI-compatible chat-completions model.
+- **Reasoning models**: works with Qwen3-Thinking, DeepSeek-R1, Qwen-QwQ, and any other OpenAI-compatible chat-completions model.
 - **Multi-tenant**: accepts a per-request `X-LLM-Api-Key` header so multiple users can share one server instance and bring their own LLM endpoint keys.
 - **MCP and REST**: the same orchestration logic powers both surfaces.
 
@@ -102,11 +102,11 @@ Stand up a local model server. The fastest GPU-friendly path is vLLM:
 # In a separate terminal (needs ~24-60 GB VRAM at INT4-FP16)
 pip install vllm
 python -m vllm.entrypoints.openai.api_server \
-  --model Alibaba-NLP/Tongyi-DeepResearch-30B-A3B \
+  --model Qwen/Qwen3-30B-A3B-Thinking-2507 \
   --host 0.0.0.0 --port 8000
 ```
 
-For lighter setups, run a Q4_K_M GGUF quant via llama.cpp's `llama-server` on a 24 GB consumer GPU — pull from [`mradermacher/Tongyi-DeepResearch-30B-A3B-GGUF`](https://huggingface.co/mradermacher/Tongyi-DeepResearch-30B-A3B-GGUF). See [`docs/guides/setup-local-inference.md`](docs/guides/setup-local-inference.md) for hardware tradeoffs and per-server commands.
+For lighter setups, run a Q4_K_M GGUF quant via llama.cpp's `llama-server` on a 24 GB consumer GPU — pull a community GGUF build ([browse on HuggingFace](https://huggingface.co/models?other=base_model:quantized:Qwen/Qwen3-30B-A3B-Thinking-2507)). See [`docs/guides/setup-local-inference.md`](docs/guides/setup-local-inference.md) for hardware tradeoffs and per-server commands.
 
 Add to `~/.claude.json` under `mcpServers`:
 
@@ -118,7 +118,7 @@ Add to `~/.claude.json` under `mcpServers`:
   "env": {
     "RESEARCH_LLM_API_BASE": "http://localhost:8000/v1",
     "RESEARCH_LLM_API_KEY": "local-anything",
-    "RESEARCH_LLM_MODEL": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B"
+    "RESEARCH_LLM_MODEL": "Qwen/Qwen3-30B-A3B-Thinking-2507"
   }
 }
 ```
@@ -129,7 +129,7 @@ The MCP alone gives you raw access to the six tools. Most of the deep research v
 
 ## Quick start: REST API for distributed compute
 
-When the model lives on a different machine from the orchestrator (e.g. you self-host Tongyi on a GPU box and want the rest of the pipeline on a CPU-only edge node), run it as a REST API.
+When the model lives on a different machine from the orchestrator (e.g. you self-host the model on a GPU box and want the rest of the pipeline on a CPU-only edge node), run it as a REST API.
 
 ```bash
 docker compose up -d
@@ -196,8 +196,8 @@ If a query routes somewhere unexpected, the most common cause is the global inst
 
 | Mode | Branch | LLM backend | When to use |
 |---|---|---|---|
-| **OpenRouter (hosted)** | [`main`](https://github.com/yoloshii/gigaxity-deep-research/tree/main) | Hosted Tongyi DeepResearch 30B via OpenRouter | Single-machine setup, no GPU, fastest path to working |
-| **Local inference (default on this branch)** | `local-inference` | Self-hosted Tongyi/DeepSeek/Qwen via vLLM, SGLang, or llama.cpp | On-prem requirement, GPU available, no usage-based cost |
+| **OpenRouter (hosted)** | [`main`](https://github.com/yoloshii/gigaxity-deep-research/tree/main) | Hosted Qwen3-30B-A3B-Thinking via OpenRouter | Single-machine setup, no GPU, fastest path to working |
+| **Local inference (default on this branch)** | `local-inference` | Self-hosted Qwen3/DeepSeek/Llama via vLLM, SGLang, or llama.cpp | On-prem requirement, GPU available, no usage-based cost |
 | **REST API (any backend)** | both | Either, plus optional remote model server | Distributed compute — orchestrator and model on different machines |
 
 This branch ships with `RESEARCH_LLM_API_BASE` defaulted to `http://localhost:8000/v1` and a generic OpenAI-compatible LLM client. Search, fusion, synthesis, and citations behave identically across both branches; the only divergence is which inference endpoint the synthesis layer talks to by default. To run against a hosted model from this branch, just override the env vars (or check out `main` for a config that's already wired for OpenRouter).
@@ -234,7 +234,7 @@ This branch ships with `RESEARCH_LLM_API_BASE` defaulted to `http://localhost:80
 │      (+ contradictions, outline when preset enables)               │
 │                                                                    │
 │  Shared dependency: OpenAI-compatible LLM                          │
-│  (OpenRouter or local; Tongyi 30B et al.)                          │
+│  (OpenRouter or local; Qwen3 30B et al.)                           │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -250,7 +250,7 @@ Gigaxity Deep Research is the synthesis MCP in a seven-MCP deep research stack �
 | **Exa** | Code-context search, advanced web search, crawling |
 | **Exa Answer** | Speed-critical factual lookups (1–2 s) |
 | **Jina** | Free-tier web/arxiv/ssrn search, parallel reads, screenshots |
-| **gigaxity-deep-research** *(this repo)* | Multi-source search + synthesis with Tongyi 30B |
+| **gigaxity-deep-research** *(this repo)* | Multi-source search + synthesis with Qwen3-30B-A3B-Thinking |
 | **Brightdata fallback** | Last-resort scraper for blocked URLs (CAPTCHA, paywall, Cloudflare) |
 | **gptr-mcp** | Social-first research — community knowledge from Reddit, X/Twitter, YouTube |
 
@@ -266,7 +266,7 @@ The bundled [`research-workflow`](skills/research-workflow/) skill plus the inst
 - [Concepts: fallback chains](docs/concepts/fallback-chains.md): how Brightdata, Jina, and the rest chain on URL/search/synthesis failures
 - [Guide: MCP setup (Claude Code walkthrough — same MCP block adapts to any MCP-capable harness)](docs/guides/setup-mcp.md)
 - [Guide: REST API setup for distributed compute](docs/guides/setup-rest.md)
-- [Guide: Local inference (Tongyi self-host)](docs/guides/setup-local-inference.md)
+- [Guide: Local inference (Qwen3 self-host)](docs/guides/setup-local-inference.md)
 - [Guide: Bundled companions setup (SearXNG, Exa Answer, Brightdata)](docs/guides/setup-companions.md)
 - [Guide: Triple Stack — full deep research setup](docs/guides/triple-stack-setup.md)
 - [Guide: Free-tier strategy](docs/guides/free-tier-strategy.md): configuring the search MCPs against each provider's free tier
@@ -297,7 +297,7 @@ The pipeline implements techniques from the recent literature:
 | :white_check_mark: | MCP + REST surfaces | Both stable, share orchestration logic |
 | :white_check_mark: | search · research · ask · discover · synthesize · reason | All six tools wired and tested |
 | :white_check_mark: | Multi-tenant via per-request key | `X-LLM-Api-Key` header passthrough |
-| :white_check_mark: | Self-hosted Tongyi guide | vLLM, SGLang, and llama.cpp walkthroughs plus Q4_K_M GGUF quant recommendation (linked to [`mradermacher/Tongyi-DeepResearch-30B-A3B-GGUF`](https://huggingface.co/mradermacher/Tongyi-DeepResearch-30B-A3B-GGUF)), threshold table, and quant-format-per-server matrix in [setup-local-inference.md](docs/guides/setup-local-inference.md) |
+| :white_check_mark: | Self-hosted model guide | vLLM, SGLang, and llama.cpp walkthroughs plus Q4_K_M GGUF quant recommendation (browse community [GGUF builds on HuggingFace](https://huggingface.co/models?other=base_model:quantized:Qwen/Qwen3-30B-A3B-Thinking-2507)), threshold table, and quant-format-per-server matrix in [setup-local-inference.md](docs/guides/setup-local-inference.md) |
 | :memo: | Streaming responses | SSE for `synthesize` / `reason` long-running calls |
 | :memo: | Pluggable rerankers | Optional Jina or Cohere rerank stage between fusion and synthesis |
 
@@ -307,7 +307,7 @@ The pipeline implements techniques from the recent literature:
 
 - Python 3.11+
 - A local OpenAI-compatible inference server: vLLM, SGLang, or llama.cpp (or override `RESEARCH_LLM_API_BASE` to point at a hosted endpoint such as OpenRouter)
-- A GPU sized for your chosen model — Tongyi DeepResearch 30B fits in a 24 GB consumer GPU (RTX 3090 / 4090 / 5090) at the **Q4_K_M GGUF** quant (~18.5 GB on disk, ~18.9 GB VRAM at runtime; loads on llama.cpp or vLLM — SGLang doesn't load GGUF as of May 2026, use an AWQ or GPTQ build instead). See [`setup-local-inference.md`](docs/guides/setup-local-inference.md#quant-format-support-per-server) for the per-server format matrix and recommended quants. Smaller models (Qwen, Llama 3.x, DeepSeek-R1 distilled) run on lighter hardware.
+- A GPU sized for your chosen model — Qwen3-30B-A3B-Thinking fits in a 24 GB consumer GPU (RTX 3090 / 4090 / 5090) at the **Q4_K_M GGUF** quant (~18.5 GB on disk, ~18.9 GB VRAM at runtime; loads on llama.cpp or vLLM — SGLang doesn't load GGUF as of May 2026, use an AWQ or GPTQ build instead). See [`setup-local-inference.md`](docs/guides/setup-local-inference.md#quant-format-support-per-server) for the per-server format matrix and recommended quants. Smaller models (Qwen, Llama 3.x, DeepSeek-R1 distilled) run on lighter hardware.
 - A SearXNG instance, self-hosted (https://docs.searxng.org/) or third-party, as the required search connector
 - Optional: Tavily API key and/or LinkUp API key — each runs in parallel with SearXNG and contributes to RRF fusion when configured
 - Optional: Docker + Docker Compose for REST mode

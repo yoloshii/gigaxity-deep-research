@@ -1,6 +1,6 @@
 """LLM utility functions.
 
-Handles compatibility with reasoning models (DeepSeek-R1, Tongyi-DeepResearch)
+Handles compatibility with reasoning models (DeepSeek-R1, Qwen3-Thinking)
 that output to `reasoning_content` or `reasoning` instead of `content`.
 
 OpenRouter returns reasoning in the `reasoning` field (not `reasoning_content`
@@ -83,10 +83,10 @@ DEFAULT_CONTEXT_WINDOW = 32768
 MODEL_CONTEXT_WINDOWS: dict[str, int] = {
     # Same model, two id spellings across deployment targets: the OpenRouter
     # slug (main branch) and the HuggingFace path that vLLM/SGLang load by
-    # default (local-inference branch). Both are Tongyi-DeepResearch-30B-A3B,
+    # default (local-inference branch). Both are Qwen3-30B-A3B-Thinking-2507,
     # 131072-token window.
-    "alibaba/tongyi-deepresearch-30b-a3b": 131072,
-    "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B": 131072,
+    "qwen/qwen3-30b-a3b-thinking-2507": 131072,
+    "Qwen/Qwen3-30B-A3B-Thinking-2507": 131072,
 }
 
 

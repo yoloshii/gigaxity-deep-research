@@ -90,7 +90,7 @@ Combined search + synthesis. The server fetches sources internally — caller do
   ],
   "sources": [{"id": "...", "title": "...", "url": "...", "content": "...", "score": 0.9, "connector": "searxng"}],
   "connectors_used": ["searxng", "tavily"],
-  "model": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B",
+  "model": "Qwen/Qwen3-30B-A3B-Thinking-2507",
   "usage": {"prompt_tokens": 1234, "completion_tokens": 567},
   "preset_used": "fast",
   "focus_mode_used": null,
@@ -126,7 +126,7 @@ Quick conversational answer. **Direct LLM call, no search hop.** Mirrors the std
   "content": "...the LLM's answer...",
   "citations": [],
   "sources": [],
-  "model": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B"
+  "model": "Qwen/Qwen3-30B-A3B-Thinking-2507"
 }
 ```
 
@@ -204,7 +204,7 @@ Citation-aware synthesis over caller-provided sources. Does not search.
   "confidence": 0.83,
   "style_used": "comprehensive",
   "word_count": 612,
-  "model": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B",
+  "model": "Qwen/Qwen3-30B-A3B-Thinking-2507",
   "usage": {"prompt_tokens": 1500, "completion_tokens": 612}
 }
 ```
@@ -258,7 +258,7 @@ Deep reasoning over pre-gathered sources with a fixed chain-of-thought prompt. T
   "source_attribution": [{"origin": "ref", "contribution": 0.5}],
   "confidence": 0.81,
   "word_count": 920,
-  "model": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B"
+  "model": "Qwen/Qwen3-30B-A3B-Thinking-2507"
 }
 ```
 

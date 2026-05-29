@@ -1,8 +1,8 @@
 # Quickstart for Gigaxity Deep Research MCP
 
-> **You are reading this on the `local-inference` branch.** This quickstart shows the branch default — a self-hosted OpenAI-compatible LLM server. Need OpenRouter (or any other hosted endpoint) instead? Either check out the [`main` branch](https://github.com/yoloshii/gigaxity-deep-research/tree/main) for an OpenRouter-default config, or stay here and use the OpenRouter override block at the bottom of [step 4](#4-register-with-claude-code). For LLM-server setup (vLLM, SGLang, llama.cpp) and the recommended Q4_K_M GGUF quant on 24 GB consumer GPUs from [`mradermacher/Tongyi-DeepResearch-30B-A3B-GGUF`](https://huggingface.co/mradermacher/Tongyi-DeepResearch-30B-A3B-GGUF), see [`setup-local-inference.md`](guides/setup-local-inference.md).
+> **You are reading this on the `local-inference` branch.** This quickstart shows the branch default — a self-hosted OpenAI-compatible LLM server. Need OpenRouter (or any other hosted endpoint) instead? Either check out the [`main` branch](https://github.com/yoloshii/gigaxity-deep-research/tree/main) for an OpenRouter-default config, or stay here and use the OpenRouter override block at the bottom of [step 4](#4-register-with-claude-code). For LLM-server setup (vLLM, SGLang, llama.cpp) and the recommended Q4_K_M GGUF quant on 24 GB consumer GPUs (browse community [GGUF builds](https://huggingface.co/models?other=base_model:quantized:Qwen/Qwen3-30B-A3B-Thinking-2507)), see [`setup-local-inference.md`](guides/setup-local-inference.md).
 
-A five-minute install that gets the six MCP tools (`search`, `research`, `ask`, `discover`, `synthesize`, `reason`) registered with Claude Code, calling Tongyi DeepResearch 30B on a self-hosted OpenAI-compatible server, and resolving real queries.
+A five-minute install that gets the six MCP tools (`search`, `research`, `ask`, `discover`, `synthesize`, `reason`) registered with Claude Code, calling Qwen3-30B-A3B-Thinking on a self-hosted OpenAI-compatible server, and resolving real queries.
 
 ## Prerequisites
 
@@ -58,7 +58,7 @@ Open `~/.claude.json`, find the `mcpServers` object, and add:
   "env": {
     "RESEARCH_LLM_API_BASE": "http://localhost:8000/v1",
     "RESEARCH_LLM_API_KEY": "local-anything",
-    "RESEARCH_LLM_MODEL": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B"
+    "RESEARCH_LLM_MODEL": "Qwen/Qwen3-30B-A3B-Thinking-2507"
   }
 }
 ```
@@ -70,7 +70,7 @@ Use **absolute paths**. For local servers without auth, `local-anything` (or any
 ```json
 "RESEARCH_LLM_API_BASE": "https://openrouter.ai/api/v1",
 "RESEARCH_LLM_API_KEY": "sk-or-v1-your-real-key",
-"RESEARCH_LLM_MODEL": "alibaba/tongyi-deepresearch-30b-a3b"
+"RESEARCH_LLM_MODEL": "qwen/qwen3-30b-a3b-thinking-2507"
 ```
 
 ## 5. Restart Claude Code
