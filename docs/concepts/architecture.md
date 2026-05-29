@@ -79,7 +79,7 @@ The LLM is OpenAI-compatible only — no streaming-tool-call gymnastics. This ke
 
 ### Stage 7 — citation binding
 
-After the LLM returns text, `src/synthesis/citations.py` (VeriCite-style) walks the output and binds inline citation markers (`[1]`, `[2]`, …) to the source URLs they came from. The bound mapping ships in the response payload alongside the prose answer.
+After the LLM returns text, `src/synthesis/output_cleanup.py::extract_delimited_answer` first unwraps the `<answer>…</answer>` envelope the synthesis prompts ask for, dropping any self-narrated changelog the model appended after the closing tag (non-destructive — when the tags are absent the full text is kept). Then `src/synthesis/citations.py` (VeriCite-style) walks the unwrapped output and binds inline citation markers (`[1]`, `[2]`, …) to the source URLs they came from. The bound mapping ships in the response payload alongside the prose answer.
 
 ### Stage 8 — response
 
