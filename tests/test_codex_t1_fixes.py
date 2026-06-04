@@ -79,11 +79,12 @@ def test_verifier_all_entities_covered_passes():
     assert verdict.passed
 
 
-def test_verifier_some_entities_uncovered_hard_fails_post_turn2():
-    """Turn 2 F1 hardened H3: 'some uncovered' is no longer a soft warn.
-    Now hard-fails any uncovered entity unless the synthesis explicitly
-    frames the gap (see gap-framing tests below). This test asserts the
-    new default behavior — replaces the obsolete Turn 1 soft-warn default."""
+def test_verifier_uncited_uncovered_soft_warns_iss20260604():
+    """ISS-20260604-001 (user-approved reversal of Turn 2 F1): an UNCITED claim
+    about an uncovered entity downgrades from hard-fail to a soft warning. The
+    `[1]` here is in a separate sentence from LinkUp, so LinkUp is uncited ->
+    soft. Cited-uncovered still hard-fails (see the entity-precision suite's
+    test_cited_uncovered_entity_hardfails_fabricated_attribution)."""
     verdict = verify_synthesis_output(
         content="Tavily is documented. LinkUp pricing is €5/1K. Cites [1].",
         llm_output=None,
@@ -92,12 +93,14 @@ def test_verifier_some_entities_uncovered_hard_fails_post_turn2():
         query_entities=["Tavily", "LinkUp"],
         sources_text="tavily docs only without other vendor data",
     )
-    assert not verdict.passed
-    assert any("LinkUp" in f for f in verdict.hard_failures)
+    assert verdict.passed
+    assert not verdict.hard_failures
+    assert any("LinkUp" in w for w in verdict.soft_warnings)
 
 
-def test_verifier_all_discussed_entities_uncovered_hard_fails():
-    """Synthesis discusses ONLY entities absent from sources → hard fail."""
+def test_verifier_all_discussed_entities_uncited_uncovered_soft_warns():
+    """ISS-20260604-001: synthesis discusses ONLY uncovered entities, all
+    uncited (the `[1]` is in its own sentence) -> soft warning, not hard fail."""
     verdict = verify_synthesis_output(
         content="LinkUp is €5/1K. Serper is $0.30/1K. Cites [1].",
         llm_output=None,
@@ -106,8 +109,8 @@ def test_verifier_all_discussed_entities_uncovered_hard_fails():
         query_entities=["Tavily", "LinkUp", "Serper"],
         sources_text="tavily docs only, no other vendor info",
     )
-    assert not verdict.passed
-    assert any("LinkUp" in f or "Serper" in f for f in verdict.hard_failures)
+    assert verdict.passed
+    assert any("LinkUp" in w or "Serper" in w for w in verdict.soft_warnings)
 
 
 def test_verifier_zero_cited_still_hard_fails():
@@ -302,8 +305,9 @@ def test_entity_balanced_does_not_override_reject():
 
 # ---------- Turn 2 F1: H3 hardened with gap-framing escape ----------
 
-def test_verifier_partial_uncovered_hard_fails_without_framing():
-    """Turn 2 F1: any uncovered entity → hard fail when no gap framing."""
+def test_verifier_partial_uncited_uncovered_soft_warns_without_framing():
+    """ISS-20260604-001 (reversal of Turn 2 F1): an uncovered entity with no
+    in-sentence citation and no gap framing -> soft warning, not hard fail."""
     verdict = verify_synthesis_output(
         content="Tavily is documented. LinkUp pricing is €5/1K. Cites [1].",
         llm_output=None,
@@ -312,8 +316,8 @@ def test_verifier_partial_uncovered_hard_fails_without_framing():
         query_entities=["Tavily", "LinkUp"],
         sources_text="tavily docs only without other vendor data",
     )
-    assert not verdict.passed
-    assert any("LinkUp" in f for f in verdict.hard_failures)
+    assert verdict.passed
+    assert any("LinkUp" in w for w in verdict.soft_warnings)
 
 
 def test_verifier_partial_uncovered_soft_warns_with_gap_framing():
@@ -335,11 +339,17 @@ def test_verifier_partial_uncovered_soft_warns_with_gap_framing():
 
 
 def test_verifier_gap_framing_must_cover_every_uncovered_entity():
-    """If only SOME uncovered entities are gap-framed → still hard fail."""
+    """Partial gap framing does not grant a blanket escape: when only SOME
+    uncovered entities are framed, _output_acknowledges_gap denies the
+    framing-soft path and each remaining entity is judged on its own. Here
+    LinkUp is gap-framed (uncited) but Serper is un-framed AND carries an
+    in-sentence citation [2] -> Serper is a cited-uncovered fabrication ->
+    hard fail (ISS-20260604-001: the cited arm of the citation-adjacency split
+    preserves this guard)."""
     verdict = verify_synthesis_output(
         content=(
             "Tavily is documented [1]. We have no source available for LinkUp. "
-            "Serper costs $0.30/1K queries."
+            "Serper costs $0.30/1K queries [2]."
         ),
         llm_output=None,
         cited_count=1,
@@ -347,8 +357,33 @@ def test_verifier_gap_framing_must_cover_every_uncovered_entity():
         query_entities=["Tavily", "LinkUp", "Serper"],
         sources_text="tavily docs only",
     )
-    # LinkUp is gap-framed, Serper is not → still hard fail
     assert not verdict.passed
+    assert any("Serper" in f for f in verdict.hard_failures)
+
+
+def test_verifier_framed_entity_with_citation_stays_soft_codex_t2():
+    """codex T2 regression: per-entity gap framing must run BEFORE the
+    citation-adjacency split. LinkUp is explicitly gap-framed AND its framing
+    sentence carries a citation [1]; Serper is un-framed and cited [2]. The
+    framed LinkUp must stay OUT of hard_failures (soft), while the un-framed
+    cited Serper hard-fails. Pre-fix, LinkUp was wrongly hard-failed on the
+    `[1]` in its own gap sentence (all-or-nothing framing fell through to the
+    citation partition)."""
+    verdict = verify_synthesis_output(
+        content=(
+            "Tavily is documented [1]. We have no source available for "
+            "LinkUp [1]. Serper costs $0.30/1K queries [2]."
+        ),
+        llm_output=None,
+        cited_count=1,
+        source_count=1,
+        query_entities=["Tavily", "LinkUp", "Serper"],
+        sources_text="tavily docs only",
+    )
+    assert not verdict.passed
+    assert any("Serper" in f for f in verdict.hard_failures)
+    assert not any("LinkUp" in f for f in verdict.hard_failures)
+    assert any("LinkUp" in w for w in verdict.soft_warnings)
 
 
 # ---------- Turn 2 F3: apply_overrides preserves new fields ----------

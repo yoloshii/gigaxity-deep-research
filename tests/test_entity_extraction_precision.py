@@ -370,6 +370,88 @@ def test_verifier_passes_when_entities_covered():
 
 
 # ============================================================
+# Citation-adjacency policy (ISS-20260604-001, codex design session
+# 019e721b): a discussed-but-uncovered query entity hard-fails ONLY when it
+# carries an in-sentence `[N]` citation (fabricated source attribution).
+# An uncovered entity mentioned WITHOUT an in-sentence citation downgrades to
+# a soft warning — fixes the coined/internal-label false-positive.
+# ============================================================
+
+def test_coined_labels_uncited_uncovered_downgraded_to_soft():
+    # The reported production false-positive: an agentic-decision query framed
+    # around internal/coined labels. The model reasons ABOUT them in
+    # citation-free prose; the cited claim is about the sourced material, not
+    # the labels. No retained source can contain the labels (a project
+    # codename, a decision-option label, a real lib the search missed), so they
+    # are uncovered -> soft warning, NOT a hard fail.
+    entities = ["SufiSR", "build-FastMCP-wrapper", "FastMCP"]
+    content = (
+        "We should build-FastMCP-wrapper for SufiSR rather than adopt FastMCP "
+        "wholesale. The MCP wrapper pattern keeps the adapter surface small "
+        "and testable [1]."
+    )
+    sources_text = (
+        "model context protocol server design patterns and wrapper tradeoffs. "
+        "integration surface considerations for mcp adapters [1]."
+    )
+    verdict = _verify(content, entities, sources_text)
+    assert verdict.passed
+    assert not verdict.hard_failures
+    assert any("SufiSR" in w for w in verdict.soft_warnings)
+
+
+def test_cited_uncovered_entity_hardfails_fabricated_attribution():
+    # An uncovered entity carrying an IN-SENTENCE citation = the synthesis binds
+    # source evidence to an entity no source covers -> hard fail (preserves the
+    # ISS-20260514 "Prisma is SSPL [3]" catch).
+    entities = ["SufiSR"]
+    content = "SufiSR ships native multi-tenant isolation out of the box [1]."
+    sources_text = "fastmcp wrapper patterns and mcp adapter tradeoffs."
+    verdict = _verify(content, entities, sources_text)
+    assert not verdict.passed
+    assert any("SufiSR" in f for f in verdict.hard_failures)
+
+
+def test_mixed_sentence_cited_uncovered_still_hardfails():
+    # codex T1 F2: a joint cited claim "A and B both ... [1]" with B uncovered
+    # still hard-fails — the citation is NOT re-attributed to the covered
+    # co-entity. FastMCP covered, SufiSR uncovered, shared [1].
+    entities = ["FastMCP", "SufiSR"]
+    content = "FastMCP and SufiSR both expose a streaming transport [1]."
+    sources_text = "fastmcp streaming transport and server api reference [1]."
+    verdict = _verify(content, entities, sources_text)
+    assert not verdict.passed
+    assert any("SufiSR" in f for f in verdict.hard_failures)
+
+
+def test_uncited_uncovered_factual_claim_downgraded_to_soft():
+    # POLICY LOCK (ISS-20260604-001): an UNCITED factual claim about an
+    # uncovered REAL entity is a deliberate recall trade — it downgrades from
+    # hard fail to soft warning, because it is structurally indistinguishable
+    # from coined-label framing and carries no fabricated source attribution.
+    # Pins the policy so a future change flips it deliberately, not by accident.
+    # Contrast test_verifier_still_hardfails_genuine_uncovered_entity (CITED).
+    entities = ["Nova-3"]
+    content = "Nova-3 leads on diarization accuracy."  # note: no [N] marker
+    sources_text = "assemblyai and deepgram batch pricing per hour, no model names."
+    verdict = _verify(content, entities, sources_text)
+    assert verdict.passed
+    assert not verdict.hard_failures
+    assert any("Nova-3" in w for w in verdict.soft_warnings)
+
+
+def test_entity_has_adjacent_citation_is_sentence_scoped():
+    # The citation must co-occur with the entity IN THE SAME SENTENCE. A
+    # citation in a different sentence does not make the entity "cited".
+    from src.synthesis.output_verifier import _entity_has_adjacent_citation
+
+    same = "Nova-3 wins on accuracy [1]."
+    assert _entity_has_adjacent_citation(same.lower(), "nova-3")
+    cross = "Nova-3 wins on accuracy. AssemblyAI is cheaper [1]."
+    assert not _entity_has_adjacent_citation(cross.lower(), "nova-3")
+
+
+# ============================================================
 # Promotion integration (entity-balanced safety net consumer)
 # ============================================================
 
