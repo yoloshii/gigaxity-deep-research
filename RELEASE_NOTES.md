@@ -1,5 +1,15 @@
 # Release notes
 
+## v0.3.8 (2026-06-05)
+
+Fixes a false-positive in the post-synthesis entity-coverage verifier: queries framed around coined or internal labels (a project codename, a decision-option label, or a real name the search missed) were hard-failing otherwise-sound syntheses. No API, configuration, or pipeline-contract change. Cleared by codex GPT-5.5 high adversarial review across design, implementation, and port turns; the unit suite passes on both `main` and `local-inference`.
+
+### Entity-coverage citation adjacency
+
+The entity-coverage check only ever inspects entities drawn from the query, so a discussed-but-uncovered entity is one of two things: a fabricated source attribution (the synthesis binds a `[N]` citation to an entity no retained source covers) or query-framing vocabulary the corpus cannot contain. Only the first is treated as a hard failure. An uncovered entity that appears without an in-sentence citation now downgrades to a soft warning instead of hard-failing the whole synthesis. Gap-framing ("no source for X") is classified per entity, so an entity the synthesis explicitly frames as a gap stays a soft warning even when a different uncovered entity is not framed.
+
+The trade is deliberate: an uncited factual claim about an uncovered entity is soft-flagged rather than blocked, because no offline signal separates it from legitimate framing vocabulary. A citation bound to an uncovered entity still hard-fails, so the fabricated-source-attribution case the verifier was built to catch is preserved.
+
 ## v0.3.7 (2026-05-29)
 
 Fixes a cosmetic leak in `synthesize` output and restores FastMCP 3.3.1 test compatibility. The synthesis fix is a behavior change in the free-form synthesis path only — no API, configuration, or pipeline-contract change. Cleared by codex GPT-5.5 high review session `019e721b` ("Zero remaining findings — ship as is.") after nine review turns; the full unit suite passes on both `main` and `local-inference`.

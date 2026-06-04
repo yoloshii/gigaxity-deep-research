@@ -289,10 +289,11 @@ def test_no_overlap_between_safe_and_contextual_allowlists():
 
 # ---- Shape 5: verifier integration ----
 
-def test_verifier_hard_fails_uncovered_bun_npm():
-    """The canonical Item 7 scenario: 'compare bun vs npm' extracts
-    both as entities; if the verifier sees `npm` discussed in the
-    synthesis but absent from sources, it must hard-fail."""
+def test_item7_uncovered_bun_npm_extracts_then_soft_warns():
+    """Item 7 extraction is unchanged ('compare bun vs npm' -> ['bun', 'npm']).
+    The verifier outcome changed under ISS-20260604-001: `npm` is discussed but
+    uncovered AND uncited (the `[1]` is in a separate sentence), so it now
+    soft-warns instead of hard-failing."""
     entities = extract_query_entities("compare bun vs npm")
     assert entities == ["bun", "npm"]
     verdict = verify_synthesis_output(
@@ -303,8 +304,8 @@ def test_verifier_hard_fails_uncovered_bun_npm():
         query_entities=entities,
         sources_text="bun documentation describes startup benchmarks",
     )
-    assert not verdict.passed
-    assert any("npm" in f for f in verdict.hard_failures)
+    assert verdict.passed
+    assert any("npm" in w for w in verdict.soft_warnings)
 
 
 def test_verifier_passes_when_both_covered():
@@ -490,41 +491,49 @@ def test_item6_false_fail_eliminated_mr_smith_bun():
 # ---- Verifier integration: false-pass guards (Q18 risk regression) ----
 
 def test_item6_false_pass_guard_us_then_uncovered_npm():
-    """Codex Q6 false-pass case 1: gap-framed abbreviation sentence
-    followed by an uncovered entity sentence — must STILL hard-fail.
-    This guards against over-merging sentences (the main Item 6 risk
-    per Q18)."""
+    """Codex Q6 false-pass case 1 (abbreviation-splitter guard), re-pinned for
+    ISS-20260604-001: the uncovered entity now carries an in-sentence citation
+    so the HARD path still exercises the splitter. Correct split -> `npm` is
+    un-framed and cited -> cited-uncovered hard fail. A wrong merge on `u.s.`
+    would leak the `no source` framing onto `npm` -> framing soft-warn -> this
+    assertion fails, catching the over-merge regression."""
     verdict = _verify_with_entities(
-        content="no source covers u.s. market size. npm adoption is 80%.",
+        content="no source covers u.s. market size. npm adoption is 80% [1].",
         entities=["npm"],
         # sources_text must NOT contain "npm" as a token; describe other tools.
         sources_text="generic documentation for cargo and yarn package managers",
     )
-    assert not verdict.passed, "Uncovered npm in second sentence must hard-fail"
+    assert not verdict.passed, "Uncovered cited npm in second sentence must hard-fail"
     assert any("npm" in f for f in verdict.hard_failures)
 
 
 def test_item6_false_pass_guard_eg_then_uncovered_bun():
-    """Codex Q6 false-pass case 2: e.g. abbreviation in framed sentence,
-    bun in a different uncovered sentence."""
+    """Codex Q6 false-pass case 2 (e.g. splitter guard), re-pinned for
+    ISS-20260604-001: `bun` carries an in-sentence citation so the hard path
+    still exercises the splitter. Correct split -> bun un-framed + cited ->
+    hard fail; wrong merge on `e.g.` -> `no source` frames bun -> soft -> the
+    assertion fails, catching the over-merge."""
     verdict = _verify_with_entities(
-        content="no source covers e.g. package managers. bun is faster.",
+        content="no source covers e.g. package managers. bun is faster [1].",
         entities=["bun"],
         sources_text="generic documentation for npm and pnpm and yarn",
     )
-    assert not verdict.passed, "Uncovered bun in second sentence must hard-fail"
+    assert not verdict.passed, "Uncovered cited bun in second sentence must hard-fail"
     assert any("bun" in f for f in verdict.hard_failures)
 
 
 def test_item6_false_pass_guard_dr_then_uncovered_deno():
-    """Codex Q6 false-pass case 3: honorific in framed sentence, deno
-    in a different uncovered sentence."""
+    """Codex Q6 false-pass case 3 (honorific splitter guard), re-pinned for
+    ISS-20260604-001: `deno` carries an in-sentence citation so the hard path
+    still exercises the splitter. Correct split -> deno un-framed + cited ->
+    hard fail; wrong merge on `dr.` -> `no documentation` frames deno -> soft
+    -> the assertion fails, catching the over-merge."""
     verdict = _verify_with_entities(
-        content="no documentation is available for dr. smith. deno supports permissions.",
+        content="no documentation is available for dr. smith. deno supports permissions [1].",
         entities=["deno"],
         sources_text="generic documentation for node and bun runtimes",
     )
-    assert not verdict.passed, "Uncovered deno in second sentence must hard-fail"
+    assert not verdict.passed, "Uncovered cited deno in second sentence must hard-fail"
     assert any("deno" in f for f in verdict.hard_failures)
 
 

@@ -144,3 +144,13 @@ def detect_mixed_markers(content: str) -> bool:
     has_numeric = bool(_NUMERIC_CITATION_PATTERN.search(content))
     has_legacy = bool(_LEGACY_CITATION_PATTERN.search(content))
     return has_numeric and has_legacy
+
+
+def has_numeric_citation_marker(text: str) -> bool:
+    """True when `text` contains at least one numeric citation marker (`[N]`).
+
+    Shares `_NUMERIC_CITATION_PATTERN` with `extract_numeric_citations` so
+    callers (the post-synthesis verifier's citation-adjacency check) can test
+    for a `[N]` marker without importing the private pattern symbol.
+    """
+    return bool(_NUMERIC_CITATION_PATTERN.search(text))

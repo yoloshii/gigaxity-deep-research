@@ -15,7 +15,11 @@ from dataclasses import dataclass, field
 from typing import Literal, Optional
 
 from ..llm_utils import LLMOutput
-from .citations import detect_legacy_markers, detect_mixed_markers
+from .citations import (
+    detect_legacy_markers,
+    detect_mixed_markers,
+    has_numeric_citation_marker,
+)
 from .contradictions import ContradictionDetectionResult
 from .quality_gate import _entity_in_text
 from .sentence_utils import split_sentences
@@ -156,16 +160,13 @@ class SynthesisVerdict:
         return not self.hard_failures
 
 
-def _output_acknowledges_gap(content_lower: str, uncovered_entities: list[str]) -> bool:
-    """True if the synthesis explicitly frames every uncovered entity as a gap.
+def _entity_acknowledges_gap(content_lower: str, entity_lower: str) -> bool:
+    """True if some sentence frames THIS entity as a source gap.
 
-    Sentence-level: each uncovered entity must appear in at least one
-    sentence that also contains a gap-framing phrase. Requires EVERY
-    uncovered entity to be gap-framed for the check to return True — a
-    single un-framed entity still triggers the hard-fail path. This is
-    deliberately strict: the escape hatch should only fire when the
-    synthesis is internally consistent about what it does and doesn't have
-    source evidence for.
+    Sentence-level: the entity must appear in at least one sentence that also
+    contains a gap-framing phrase. Boundary-safe entity match (Turn 3 codex
+    T3F1): otherwise a sentence mentioning "example" would falsely frame an
+    "Exa" entity that's never actually discussed in it.
 
     Sentence-level vs window-level (Turn 2 fix-iteration): an earlier
     window-based check (40 chars before/after entity) leaked framing across
@@ -173,22 +174,41 @@ def _output_acknowledges_gap(content_lower: str, uncovered_entities: list[str]) 
     incorrectly framed Serper. Splitting at sentence delimiters scopes the
     framing to the entity it actually qualifies.
     """
-    sentences = split_sentences(content_lower)
-    for entity in uncovered_entities:
-        entity_lower = entity.lower()
-        framed = False
-        for sentence in sentences:
-            # Boundary-safe entity match (Turn 3 codex T3F1): otherwise
-            # a sentence mentioning "example" would falsely frame an "Exa"
-            # entity that's never actually discussed in that sentence.
-            if _entity_in_text(sentence, entity_lower) and any(
-                phrase in sentence for phrase in _GAP_FRAMING_PHRASES
-            ):
-                framed = True
-                break
-        if not framed:
-            return False
-    return True
+    for sentence in split_sentences(content_lower):
+        if _entity_in_text(sentence, entity_lower) and any(
+            phrase in sentence for phrase in _GAP_FRAMING_PHRASES
+        ):
+            return True
+    return False
+
+
+def _output_acknowledges_gap(content_lower: str, uncovered_entities: list[str]) -> bool:
+    """True if the synthesis explicitly frames EVERY uncovered entity as a gap.
+
+    Thin all-or-nothing wrapper over `_entity_acknowledges_gap` (codex T2). The
+    verifier now classifies framing PER ENTITY (a framed entity is soft-warned
+    even when others are un-framed); this aggregate predicate is retained for
+    callers that want the original "all framed" semantics.
+    """
+    return all(
+        _entity_acknowledges_gap(content_lower, e.lower()) for e in uncovered_entities
+    )
+
+
+def _entity_has_adjacent_citation(content_lower: str, entity_lower: str) -> bool:
+    """True if some sentence mentions the entity AND carries a `[N]` citation.
+
+    Sentence-level, mirroring `_output_acknowledges_gap`: the numeric citation
+    marker must co-occur with the entity in the same sentence (delimited by
+    `.`, `!`, `?`) for the synthesis to count as binding a source to that
+    entity. Used to split a discussed-but-uncovered entity into cited (a
+    fabricated source attribution -> hard fail) vs uncited (query-framing /
+    coined-label vocabulary -> soft warning). ISS-20260604-001.
+    """
+    for sentence in split_sentences(content_lower):
+        if _entity_in_text(sentence, entity_lower) and has_numeric_citation_marker(sentence):
+            return True
+    return False
 
 
 def verify_synthesis_output(
@@ -275,20 +295,69 @@ def verify_synthesis_output(
         if discussed:
             uncovered = [e for e in discussed if not _entity_in_text(sources_text, e.lower())]
             if uncovered:
-                if _output_acknowledges_gap(content_lower, uncovered):
+                # Per-entity gap framing FIRST (codex T2). An entity the
+                # synthesis explicitly frames as a source gap ("no source for
+                # X") is a grounded acknowledgement, not a hallucination - even
+                # when its framing sentence happens to carry a citation marker.
+                # Classifying framing per entity (not all-or-nothing) keeps a
+                # framed entity OUT of the citation-adjacency check below, which
+                # would otherwise hard-fail it on the marker in its own gap
+                # sentence when SOME other uncovered entity is un-framed.
+                framed_uncovered = [
+                    e for e in uncovered
+                    if _entity_acknowledges_gap(content_lower, e.lower())
+                ]
+                remaining = [e for e in uncovered if e not in framed_uncovered]
+                if framed_uncovered:
                     verdict.soft_warnings.append(
-                        f"synthesis discusses {uncovered} without source "
+                        f"synthesis discusses {framed_uncovered} without source "
                         "evidence but explicitly frames the gap - operator "
                         "should still verify the framing is accurate"
                     )
-                else:
-                    verdict.hard_failures.append(
-                        f"synthesis discusses entities {uncovered} but those "
-                        "entities are absent from every retained source AND "
-                        "the synthesis does not explicitly frame the gap - "
-                        "likely uncited hallucination from prior model "
-                        "knowledge"
-                    )
+                if remaining:
+                    # Citation-adjacency split (ISS-20260604-001) over the
+                    # UN-framed remainder. The entity-coverage check only ever
+                    # sees QUERY entities, so a discussed-but-uncovered, un-framed
+                    # entity is either (a) a fabricated source attribution - the
+                    # synthesis binds a `[N]` citation to an entity no retained
+                    # source covers (the ISS-20260514 "Prisma is SSPL [3]" shape)
+                    # - or (b) query-framing vocabulary the corpus cannot contain
+                    # (an internal project codename, a decision-option label, or a
+                    # real name the search simply missed) that the model mentions
+                    # WITHOUT binding a source to it. Only (a) is a hard
+                    # fabrication; (b) is a coverage/coinage gap -> soft warning.
+                    # The discriminator: does some sentence mention the entity AND
+                    # carry a `[N]` marker.
+                    #
+                    # Mixed sentences are intentionally NOT exempted (codex T1
+                    # F2): "AssemblyAI and SufiSR both support X [1]" with SufiSR
+                    # uncovered is a JOINT cited claim about SufiSR, so it still
+                    # hard-fails - the citation is not re-attributed to the
+                    # covered co-entity. Tighten to clause/proximity later behind
+                    # fixtures if this proves noisy.
+                    cited_uncovered = [
+                        e for e in remaining
+                        if _entity_has_adjacent_citation(content_lower, e.lower())
+                    ]
+                    uncited_uncovered = [
+                        e for e in remaining if e not in cited_uncovered
+                    ]
+                    if cited_uncovered:
+                        verdict.hard_failures.append(
+                            f"synthesis binds source citations to entities "
+                            f"{cited_uncovered} that are absent from every "
+                            "retained source - a source-backed claim is "
+                            "attributed to an uncovered entity (likely "
+                            "fabricated source support)"
+                        )
+                    if uncited_uncovered:
+                        verdict.soft_warnings.append(
+                            f"synthesis discusses {uncited_uncovered} with no "
+                            "in-sentence citation and no retained source covers "
+                            "them - verify these are query-framing labels and "
+                            "not ungrounded claims; gather more sources if they "
+                            "should be source-grounded"
+                        )
 
     # --- soft annotations: usable, but flag for the caller ---
     if has_content and source_count > 0 and 0 < cited_count < source_count:
