@@ -1,5 +1,18 @@
 # Release notes
 
+## v0.3.9 (2026-06-06)
+
+Fixes a residual of the v0.3.8 entity-coverage false-positive: descriptive query vocabulary was still over-extracted as groundable entities, so a correct, well-cited synthesis whose query carried an evaluative adjective ("Optimal hosting...") or an acronym-prefixed compound ("AI-served sites") could still hard-fail the coverage check. Extraction-only change — no API, configuration, or pipeline-contract change, and the post-synthesis verdict logic is untouched. Cleared by codex GPT-5.5 high adversarial review (session `019e721b`) across design, implementation, and port turns with verbatim "Zero remaining findings — ship as is."; the entity-extraction precision suite passes and this change introduces no new unit-test failures on either `main` or `local-inference` (the full-suite baseline is unchanged).
+
+### Descriptive query vocabulary precision
+
+The v0.3.8 citation-adjacency split decides a discussed-but-uncovered query entity by whether it carries an in-sentence `[N]` citation, which separates a fabricated source attribution from coined-label framing. A common descriptive word breaks that signal: an evaluative adjective like "optimal" pervades a synthesis about optimal hosting and lands next to a citation by sheer frequency, so the split misreads it as a fabricated attribution and hard-fails. The fix is upstream, in query-entity extraction, where these words should never have become candidate entities in the first place:
+
+- Evaluative and superlative adjectives ("Optimal", "Best", "Fastest", "Cheapest", "Scalable", ...) are dropped, but only as standalone single-word candidates. A multi-word entity that merely opens with one ("Scalable Capital", "Optimal Dynamics", "Best Buy") is preserved whole.
+- Acronym-prefixed descriptive compounds ("AI-served", "ML-based", "LLM-driven", "API-first") are dropped via a curated descriptive-tail set. Real hyphenated identifiers whose tail is a proper noun or ecosystem name ("AR-Foundation", "gRPC-Web", "AI-SDK"), or which carry a digit ("AI-2027") or a non-acronym prefix ("Web-LLM"), are preserved.
+
+The verdict logic is unchanged: any entity that is still extracted remains fully hard-fail eligible. Surface-form / alias normalization (a real entity that sources name only by a paraphrase) is a separate, harder problem and is explicitly out of scope.
+
 ## v0.3.8 (2026-06-05)
 
 Fixes a false-positive in the post-synthesis entity-coverage verifier: queries framed around coined or internal labels (a project codename, a decision-option label, or a real name the search missed) were hard-failing otherwise-sound syntheses. No API, configuration, or pipeline-contract change. Cleared by codex GPT-5.5 high adversarial review across design, implementation, and port turns; the unit suite passes on both `main` and `local-inference`.

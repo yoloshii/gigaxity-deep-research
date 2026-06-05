@@ -18,6 +18,16 @@ Fix (codex DESIGN session 019e5031: T1 lock + T2 trailing-"." correction):
 - Verifier policy UNCHANGED (Q3 confidence-tiering deferred): every entity that
   IS extracted stays hard-fail eligible for the coverage check.
 
+Precision pass 2 (ISS-20260606-001, codex session 019e721b T6): descriptive
+query vocabulary was still over-extracted — evaluative adjectives (``Optimal``)
+via Shape 1 and acronym-prefixed compounds (``AI-served``) via Shape 3. Both
+pervade a cited synthesis and trip the v0.3.8 citation-adjacency split as phantom
+"fabricated attributions". Fix is purely EXTRACTION (verdict logic unchanged):
+evaluative adjectives are filtered ONLY as STANDALONE Shape-1 tokens (so a
+multi-word "Scalable Capital" / "Optimal Dynamics" survives whole — codex T6 M1),
+and the acronym-compound guard gates on a CURATED descriptive-tail set (so real
+identifiers "AR-Foundation" / "gRPC-Web" survive — codex T6 M2).
+
 These tests assert CORRECT behavior. A failure means the source regressed — not
 that the test should be relaxed.
 """
@@ -449,6 +459,154 @@ def test_entity_has_adjacent_citation_is_sentence_scoped():
     assert _entity_has_adjacent_citation(same.lower(), "nova-3")
     cross = "Nova-3 wins on accuracy. AssemblyAI is cheaper [1]."
     assert not _entity_has_adjacent_citation(cross.lower(), "nova-3")
+
+
+# ============================================================
+# Descriptive query vocabulary precision (ISS-20260606-001): evaluative
+# adjectives ("Optimal") and acronym-prefixed compounds ("AI-served") are query
+# MODIFIERS, not entities. They are no longer extracted, so they can no longer
+# phantom-hard-fail the coverage gate by tripping the v0.3.8 citation-adjacency
+# split on spurious in-sentence citation co-occurrence. EXTRACTION fix — the
+# verifier verdict logic is unchanged.
+# ============================================================
+
+# The reported production query (leading-capital, otherwise normal case — NOT a
+# fully Title-Cased string). Reproduced the exact failing entity set against the
+# live v0.3.8 verifier: ['Optimal', 'Cloudflare Pages', 'ClaudeBot', 'AI-served'].
+_REPORTED_HOSTING_QUERY = (
+    "Optimal hosting for AI-served static sites on Cloudflare Pages and "
+    "ClaudeBot crawler access"
+)
+
+
+def test_evaluative_adjective_not_extracted():
+    # "Optimal" is the reported case; spot-check a few siblings. Each is the
+    # leading capitalized word, so Shape 1 would otherwise promote it.
+    assert "Optimal" not in extract_query_entities("Optimal hosting for static sites")
+    assert "Fastest" not in extract_query_entities("Fastest CDN for video delivery")
+    assert "Cheapest" not in extract_query_entities("Cheapest object storage tier")
+    assert "Scalable" not in extract_query_entities("Scalable queue for event streams")
+
+
+def test_descriptive_acronym_compound_not_extracted():
+    # "AI-served" is the reported case. Both casings drop (lowercase tail and
+    # Title-Case tail), plus the common sibling forms.
+    assert "AI-served" not in extract_query_entities("hosting for AI-served sites")
+    assert "AI-Served" not in extract_query_entities("Hosting for AI-Served Sites")
+    assert "ML-based" not in extract_query_entities("compare ML-based routers")
+    assert "LLM-driven" not in extract_query_entities("an LLM-driven pipeline")
+    assert "API-first" not in extract_query_entities("an API-first platform")
+
+
+def test_reported_hosting_query_yields_only_real_entities():
+    # End-to-end extraction: Optimal (evaluative) + AI-served (acronym compound)
+    # gone; the real entities survive. ("hosting"/"static"/"sites"/"crawler"/
+    # "access" are lowercase in the reported casing, so Shape 1 never sees them —
+    # a FULLY Title-Cased query that capitalizes those nouns is a broader,
+    # separate residual, out of scope for this fix.)
+    entities = extract_query_entities(_REPORTED_HOSTING_QUERY)
+    assert "Optimal" not in entities
+    assert "AI-served" not in entities
+    assert "Cloudflare Pages" in entities
+    assert "ClaudeBot" in entities
+
+
+def test_descriptive_vocab_no_phantom_hardfail_end_to_end():
+    # The headline regression: a correct, well-cited synthesis whose query
+    # carried "Optimal" + "AI-served" no longer phantom-hard-fails. Isolates the
+    # two fixed FP sources (no ClaudeBot — a real entity uncovered by exact token
+    # is a separate surface-form problem, out of scope). Pre-fix this query
+    # extracted ['Optimal', 'Cloudflare Pages', 'AI-served'] and hard-failed on
+    # Optimal + AI-served via citation adjacency.
+    query = "Optimal hosting for AI-served static sites on Cloudflare Pages"
+    entities = extract_query_entities(query)
+    assert entities == ["Cloudflare Pages"]
+    content = (
+        "The optimal hosting choice for AI-served static sites is Cloudflare "
+        "Pages [1]. Cloudflare Pages serves pre-rendered HTML at the edge [1]."
+    )
+    sources_text = (
+        "cloudflare pages is a static site host with global edge serving and "
+        "pre-rendered html output."
+    )
+    verdict = _verify(content, entities, sources_text)
+    assert verdict.passed
+    assert not verdict.hard_failures
+
+
+def test_is_hyphenated_entity_drops_descriptive_acronym_compounds():
+    # Predicate-level: both casings of the descriptive tail drop.
+    assert not _is_hyphenated_entity("AI-served")
+    assert not _is_hyphenated_entity("AI-Served")
+    assert not _is_hyphenated_entity("ML-based")
+    assert not _is_hyphenated_entity("LLM-Driven")
+    assert not _is_hyphenated_entity("GPU-accelerated")
+    assert not _is_hyphenated_entity("API-first")
+
+
+def test_is_hyphenated_entity_preserves_real_acronym_identifiers():
+    # Acronym TAIL (all-caps) -> real identifier, kept.
+    assert _is_hyphenated_entity("AI-SDK")
+    assert _is_hyphenated_entity("AI-API")
+    # Digit tail -> real identifier, kept.
+    assert _is_hyphenated_entity("AI-2027")
+    # Non-acronym prefix -> guard skipped, cap test keeps it.
+    assert _is_hyphenated_entity("Web-LLM")
+    # Pre-existing identifiers unaffected by the new guard.
+    assert _is_hyphenated_entity("gpt-4o")
+    assert _is_hyphenated_entity("claude-3-5")
+    assert _is_hyphenated_entity("scikit-learn")
+
+
+def test_multiword_entity_opening_with_evaluative_adjective_preserved():
+    # codex T6 M1: a multi-word entity that OPENS with an evaluative adjective is
+    # PRESERVED WHOLE — the adjective is filtered only as a STANDALONE token, not
+    # via the phrase splitter. Real companies must survive, not degrade to a weak
+    # generic fragment ("Capital" / "Dynamics" / "Robotics" / "Buy").
+    assert "Best Buy" in extract_query_entities("compare Best Buy returns policy")
+    assert "Scalable Capital" in extract_query_entities("Scalable Capital vs Trade Republic")
+    assert "Optimal Dynamics" in extract_query_entities("Optimal Dynamics route optimization")
+    assert "Reliable Robotics" in extract_query_entities("Reliable Robotics autonomous aircraft")
+    # The bare generic fragment is NOT emitted in place of the whole entity.
+    assert "Capital" not in extract_query_entities("Scalable Capital vs Trade Republic")
+    # "Better" stays excluded from the stoplist (so "Better Stack" is unaffected).
+    assert "Better Stack" in extract_query_entities("compare Better Stack vs Datadog")
+
+
+def test_standalone_evaluative_adjective_still_dropped():
+    # The standalone case the filter targets: a leading evaluative adjective with
+    # lowercase prose after it is dropped (not part of a capitalized phrase).
+    assert "Optimal" not in extract_query_entities("Optimal hosting for static sites")
+    assert "Scalable" not in extract_query_entities("Scalable queues for events")
+    assert "Best" not in extract_query_entities("Best vector database for RAG")
+
+
+def test_acronym_compound_with_propernoun_tail_preserved():
+    # codex T6 M2: the curated-tail gate preserves real hyphenated identifiers
+    # whose tail is a ProperNoun or ecosystem name (NOT a descriptive participle).
+    assert "AR-Foundation" in extract_query_entities("Compare AR-Foundation vs WebXR")
+    assert "AI-Horde" in extract_query_entities("Compare AI-Horde vs Web-LLM")
+    assert "gRPC-Web" in extract_query_entities("Compare gRPC-Web vs REST")
+    # Predicate-level mirror.
+    assert _is_hyphenated_entity("AR-Foundation")
+    assert _is_hyphenated_entity("AI-Horde")
+    assert _is_hyphenated_entity("gRPC-Web")
+
+
+def test_claudebot_alias_residual_is_out_of_scope_and_pinned():
+    # codex T6 M3: this slice fixes the Optimal / AI-served residual, NOT the
+    # COMPLETE reported production failure. `ClaudeBot` is a REAL entity the gate
+    # still hard-fails when the synthesis cites it but sources name it only by an
+    # alias ("Anthropic's crawler") — exact-token coverage misses the alias. That
+    # is surface-form / alias normalization, a separate and harder problem left
+    # out of scope. This PINS the residual so the boundary is explicit and a
+    # future alias fix flips it deliberately.
+    entities = ["ClaudeBot"]
+    content = "Cloudflare blocks ClaudeBot by default, so allowlist it [1]."
+    sources_text = "cloudflare waf can allow or block anthropic's web crawler via skip rules [1]."
+    verdict = _verify(content, entities, sources_text)
+    assert not verdict.passed
+    assert any("ClaudeBot" in f for f in verdict.hard_failures)
 
 
 # ============================================================
