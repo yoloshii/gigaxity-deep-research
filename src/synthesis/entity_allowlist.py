@@ -115,3 +115,43 @@ LOWERCASE_HYPHENATED_TOOL_ALLOWLIST: frozenset[str] = frozenset({
     "huggingface-hub",
     "sentence-transformers",
 })
+
+
+# Descriptive acronym prefixes for hyphenated compounds. A Shape 3 hyphenated
+# candidate is treated as a descriptive query MODIFIER (not a named entity) only
+# when its FIRST segment is one of these AND every later segment is a curated
+# participle in DESCRIPTIVE_TAILS below — `_is_hyphenated_entity` then drops it
+# ("AI-served", "AI-Served", "ML-based", "LLM-driven", "GPU-accelerated",
+# "API-first") so the coverage gate stops hard-failing it the way it hard-failed
+# "Optimal" (ISS-20260606-001). The prefix set alone is NECESSARY-NOT-SUFFICIENT:
+# a prefix match whose tail is a ProperNoun / ecosystem name is PRESERVED
+# ("AI-Horde", "AR-Foundation", "gRPC-Web"), as are an all-caps acronym tail
+# ("AI-SDK", "AI-API"), a digit tail ("AI-2027"), and a non-acronym prefix
+# ("Web-LLM"). See DESCRIPTIVE_TAILS (codex 019e721b T6 M2 — the earlier
+# "any non-all-caps tail" heuristic wrongly dropped those real identifiers).
+DESCRIPTIVE_ACRONYM_PREFIXES: frozenset[str] = frozenset({
+    "ai", "ml", "llm", "genai", "nlp",
+    "gpu", "cpu", "tpu", "npu",
+    "api", "sdk", "cli", "ui", "ux",
+    "ci", "cd", "ar", "vr", "xr", "iot",
+    "saas", "paas", "iaas",
+    "rest", "grpc",
+})
+
+
+# Descriptive participle/adjective tails for acronym-prefixed compounds. A
+# Shape 3 hyphenated candidate is descriptive only when its first segment is a
+# DESCRIPTIVE_ACRONYM_PREFIX AND every later segment is one of these
+# ("AI-served", "ML-based", "GPU-accelerated", "API-first"). Gating on a CURATED
+# tail set — rather than "any non-all-caps alpha tail" — preserves real
+# hyphenated identifiers whose tail is a ProperNoun or ecosystem name:
+# "AR-Foundation" (Unity), "AI-Horde", "gRPC-Web", "AI-SDK" all survive
+# (codex 019e721b T6 M2 — the "any tail" heuristic wrongly dropped them).
+DESCRIPTIVE_TAILS: frozenset[str] = frozenset({
+    "served", "based", "driven", "powered", "enabled", "focused",
+    "first", "native", "ready", "oriented", "centric", "aware",
+    "friendly", "agnostic", "specific", "related", "backed", "only",
+    "free", "augmented", "generated", "assisted", "integrated",
+    "accelerated", "optimized", "automated", "hosted", "managed",
+    "enhanced", "capable", "compatible", "bound", "heavy", "intensive",
+})

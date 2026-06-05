@@ -22,6 +22,8 @@ from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction, is_reas
 from .entity_allowlist import (
     CONTEXT_CUES,
     CONTEXTUAL_LOWERCASE_TOOL_ALLOWLIST,
+    DESCRIPTIVE_ACRONYM_PREFIXES,
+    DESCRIPTIVE_TAILS,
     LOWERCASE_HYPHENATED_TOOL_ALLOWLIST,
     LOWERCASE_TOOL_ALLOWLIST,
 )
@@ -53,6 +55,27 @@ _QUERY_ENTITY_STOPWORDS = {
     "BAA", "SOC", "SOC2",
     "HIPAA", "GDPR", "CCPA",
     "DPA", "PCI", "PII", "PHI", "ISO",
+}
+
+
+# Evaluative / superlative adjectives that name the value criterion an asker is
+# optimizing for ("Optimal / Best / Fastest / Cheapest X"), not an entity. These
+# are filtered ONLY as STANDALONE single-word Shape-1 candidates (codex 019e721b
+# T6 M1) — deliberately NOT merged into _QUERY_ENTITY_STOPWORDS, because the
+# phrase splitter would then mangle a multi-word entity that merely OPENS with
+# one: "Scalable Capital" -> "Capital", "Optimal Dynamics" -> "Dynamics",
+# "Reliable Robotics" -> "Robotics", "Best Buy" -> "Buy" (real companies reduced
+# to weak generic fragments that can false-pass or false-fail the coverage gate).
+# A standalone leading-capitalized "Optimal" pervades a cited synthesis and trips
+# the v0.3.8 citation-adjacency split as a phantom "fabricated attribution"
+# (ISS-20260606-001 — the cited-side twin of the ISS-20260604-001 coined-label
+# FP). Membership test is whole-string, so a multi-word phrase is never a member.
+# "Better" is EXCLUDED (collides with "Better Stack", a real devtool).
+_EVALUATIVE_ADJECTIVE_STOPWORDS = {
+    "Optimal", "Best", "Cheap", "Cheaper", "Cheapest", "Fastest", "Faster",
+    "Slower", "Slowest", "Easiest", "Simplest", "Smallest", "Largest",
+    "Biggest", "Lightest", "Lighter", "Scalable", "Lightweight", "Performant",
+    "Affordable", "Reliable", "Efficient", "Recommended", "Suitable",
 }
 
 
@@ -173,14 +196,44 @@ def _is_hyphenated_entity(candidate: str) -> bool:
     ``cost-effective`` — generic compounds that are not vendor/product/library
     names and previously tripped the verifier's entity-coverage hard-fail.
 
+    Also drops descriptive acronym-prefixed compounds (``AI-served`` /
+    ``AI-Served`` / ``ML-based`` / ``LLM-driven`` / ``GPU-accelerated`` /
+    ``API-first``): these look entity-shaped only because the acronym segment
+    carries caps, but they are query modifiers, not named entities, and the
+    coverage gate hard-fails them exactly like ``Optimal`` (ISS-20260606-001). A
+    compound is descriptive when its FIRST segment is a known acronym in
+    ``DESCRIPTIVE_ACRONYM_PREFIXES`` AND every later segment is a curated
+    descriptive participle/adjective in ``DESCRIPTIVE_TAILS``. Gating on a curated
+    tail set (codex T6 M2) preserves real hyphenated identifiers whose tail is a
+    ProperNoun or ecosystem name: ``AR-Foundation`` (Unity), ``AI-Horde``,
+    ``gRPC-Web``, plus an all-caps acronym tail (``AI-SDK`` / ``AI-API``), a digit
+    tail (``AI-2027``), and a non-acronym prefix (``Web-LLM``) — all survive.
+
+    NOTE (pre-existing, orthogonal — not introduced or fixed here): Shape 1
+    independently extracts a capitalized tail token ("Foundation" from
+    "AR-Foundation", "TypeScript" from "TypeScript-2"), so a kept hyphenated
+    entity co-exists with its bare tail. That cross-shape fragmentation predates
+    this guard.
+
     Known residual (documented, not fixed here): lowercase+digit compounds such
     as ``tier-2`` / ``soc-2`` / ``phase-1`` still pass the cap-or-digit test.
     Eliminating those cleanly needs typed entity metadata — deferred.
     """
-    return (
-        any(ch.isupper() or ch.isdigit() for ch in candidate)
-        or candidate.lower() in LOWERCASE_HYPHENATED_TOOL_ALLOWLIST
-    )
+    # Curated all-lowercase package names always pass (scikit-learn, llama-cpp).
+    if candidate.lower() in LOWERCASE_HYPHENATED_TOOL_ALLOWLIST:
+        return True
+    # Descriptive acronym-prefixed compound: acronym first segment + a curated
+    # descriptive-participle remainder -> a modifier, not an entity. The curated
+    # tail set (vs "any non-all-caps word") preserves real identifiers with a
+    # ProperNoun/ecosystem tail like AR-Foundation / gRPC-Web (codex T6 M2).
+    segments = candidate.split("-")
+    if (
+        len(segments) >= 2
+        and segments[0].lower() in DESCRIPTIVE_ACRONYM_PREFIXES
+        and all(seg.lower() in DESCRIPTIVE_TAILS for seg in segments[1:])
+    ):
+        return False
+    return any(ch.isupper() or ch.isdigit() for ch in candidate)
 
 
 def extract_query_entities(query: str) -> list[str]:
@@ -284,6 +337,12 @@ def extract_query_entities(query: str) -> list[str]:
     for c in re.findall(cap_pattern, query):
         for sub in _split_phrase_at_stopwords(c):
             if not sub or sub in seen:
+                continue
+            # Drop a STANDALONE evaluative adjective ("Optimal") but preserve a
+            # multi-word entity that merely opens with one ("Optimal Dynamics",
+            # "Scalable Capital", "Best Buy") — whole-string membership, so a
+            # multi-word `sub` is never in the single-word set (codex T6 M1).
+            if sub in _EVALUATIVE_ADJECTIVE_STOPWORDS:
                 continue
             seen.add(sub)
             result.append(sub)
