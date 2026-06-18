@@ -186,7 +186,7 @@ Citation-aware synthesis over caller-provided sources. Does not search.
 | Field | Type | Default | Notes |
 |---|---|---|---|
 | `query` | str | required | Original research query |
-| `sources` | list[PreGatheredSource] | required | Pre-fetched sources from Ref/Exa/Jina or your own reader |
+| `sources` | list[PreGatheredSource] | required | Pre-fetched sources from Context7/Exa/Jina or your own reader |
 | `style` | str | `"comprehensive"` | `comprehensive`, `concise`, `comparative`, `tutorial`, `academic` |
 | `max_tokens` | int | `3000` | Output cap (500–16384) |
 | `api_key` | str \| null | null | Per-request key override |

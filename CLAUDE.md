@@ -1,10 +1,10 @@
 # Gigaxity Deep Research — Agent Reference
 
-This is the agent reference for Gigaxity Deep Research, an open-source deep research MCP server for Claude Code, Hermes, Cursor, and other MCP-compatible agents — `local-inference` branch. Qwen3-30B-A3B-Thinking (or any OpenAI-compatible chat-completions model) runs on a self-hosted server (vLLM, SGLang, or llama.cpp). The Triple Stack search MCPs (Ref, Exa, Jina) handle web/docs/code retrieval, and the bundled `research-workflow` skill routes queries to the right tool per query class.
+This is the agent reference for Gigaxity Deep Research, an open-source deep research MCP server for Claude Code, Hermes, Cursor, and other MCP-compatible agents — `local-inference` branch. Qwen3-30B-A3B-Thinking (or any OpenAI-compatible chat-completions model) runs on a self-hosted server (vLLM, SGLang, or llama.cpp). The Triple Stack search MCPs (Context7, Exa, Jina) handle web/docs/code retrieval, and the bundled `research-workflow` skill routes queries to the right tool per query class.
 
 This file is loaded by Claude Code (`CLAUDE.md`) and other MCP-compatible agents (`AGENTS.md` is byte-identical). It documents how to operate the six MCP tools this server exposes (two primitives plus four deep-research tools) and how to plug them into the broader deep research stack.
 
-If your harness loads a global `CLAUDE.md` or `AGENTS.md` (Claude Code, Codex, Cursor, Hermes, etc.), copy the **instruction block** at the bottom of this file into that global file. For standalone agents that take a system prompt instead, paste the block directly into the system prompt. That single block makes any compatible agent automatically route research queries through this MCP plus the six companion MCPs (Ref, Exa, Exa Answer, Jina, Brightdata fallback, gptr-mcp) in the full deep research stack.
+If your harness loads a global `CLAUDE.md` or `AGENTS.md` (Claude Code, Codex, Cursor, Hermes, etc.), copy the **instruction block** at the bottom of this file into that global file. For standalone agents that take a system prompt instead, paste the block directly into the system prompt. That single block makes any compatible agent automatically route research queries through this MCP plus the six companion MCPs (Context7, Exa, Exa Answer, Jina, Brightdata fallback, gptr-mcp) in the full deep research stack.
 
 ---
 
@@ -49,7 +49,7 @@ Query class?
       → reason
 ```
 
-For the full classification tree across the **entire** Triple Stack (when to use Ref, Exa, Jina, Brightdata fallback alongside this MCP), see the bundled [`skills/research-workflow/SKILL.md`](skills/research-workflow/SKILL.md).
+For the full classification tree across the **entire** Triple Stack (when to use Context7, Exa, Jina, Brightdata fallback alongside this MCP), see the bundled [`skills/research-workflow/SKILL.md`](skills/research-workflow/SKILL.md).
 
 ---
 
@@ -135,14 +135,15 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 
 ## Companion MCPs — full deep research setup
 
-The full deep-research workflow uses seven MCPs. The middle three (`Ref` + `exa` + `jina`) form the **Triple Stack** — the search/docs/code trio. This repo ships the most complex one (`gigaxity-deep-research`); the other six each take 30 seconds to register in `~/.claude.json`.
+The full deep-research workflow uses seven MCPs. The middle three (`context7` + `exa` + `jina`) form the **Triple Stack** — the search/docs/code trio. This repo ships the most complex one (`gigaxity-deep-research`); the other six each take 30 seconds to register in `~/.claude.json`.
 
 ### Companion MCP configs
 
 ```json
-"Ref": {
-  "type": "http",
-  "url": "https://api.ref.tools/mcp?apiKey=YOUR_REF_API_KEY_PLACEHOLDER"
+"context7": {
+  "type": "stdio",
+  "command": "npx",
+  "args": ["-y", "@upstash/context7-mcp", "--api-key", "YOUR_CONTEXT7_API_KEY_PLACEHOLDER"]
 },
 "exa": {
   "type": "http",
@@ -188,7 +189,7 @@ The full deep-research workflow uses seven MCPs. The middle three (`Ref` + `exa`
 ```
 
 Sign-up links:
-- Ref: https://ref.tools
+- Context7: https://context7.com
 - Exa (one key for both `exa` and `exa-answer`): https://exa.ai
 - Jina (free 10M tier): https://jina.ai
 - Brightdata Web Unlocker (paid; optional): https://brightdata.com
@@ -276,8 +277,8 @@ Task tool:
     → Fallback: ToolSearch(query='select:mcp__exa__web_search_advanced_exa') → mcp__exa__web_search_advanced_exa with highlights
 
     **DIRECT** (specific library/API, single source sufficient):
-    → ToolSearch(query='select:mcp__Ref__ref_search_documentation,mcp__exa__get_code_context_exa')
-    → mcp__Ref__ref_search_documentation OR mcp__exa__get_code_context_exa
+    → ToolSearch(query='select:mcp__context7__resolve-library-id,mcp__context7__query-docs,mcp__exa__get_code_context_exa')
+    → mcp__context7__resolve-library-id(libraryName, query) → mcp__context7__query-docs(libraryId, query)  OR  mcp__exa__get_code_context_exa
 
     **EXPLORATORY** (general concept, cold-start, learning):
     → ToolSearch(query='select:mcp__gigaxity-deep-research__discover,mcp__jina__parallel_read_url,mcp__gigaxity-deep-research__synthesize')
@@ -287,9 +288,9 @@ Task tool:
     → mcp__gigaxity-deep-research__synthesize(query, sources, preset)
 
     **SYNTHESIS** (comparison, best practices, consensus, cross-validation):
-    → ToolSearch(query='select:mcp__Ref__ref_search_documentation,mcp__exa__get_code_context_exa,mcp__jina__parallel_search_web,mcp__jina__sort_by_relevance,mcp__jina__deduplicate_strings,mcp__gigaxity-deep-research__synthesize')
+    → ToolSearch(query='select:mcp__context7__resolve-library-id,mcp__context7__query-docs,mcp__exa__get_code_context_exa,mcp__jina__parallel_search_web,mcp__jina__sort_by_relevance,mcp__jina__deduplicate_strings,mcp__gigaxity-deep-research__synthesize')
     → Execute in parallel:
-      - mcp__Ref__ref_search_documentation(query)
+      - mcp__context7__resolve-library-id(libraryName, query) → mcp__context7__query-docs(libraryId, query)   # library/API docs (two-step)
       - mcp__exa__get_code_context_exa(query)                             # code-specific
       - mcp__jina__parallel_search_web(searches=[3-5 query variants])     # free-tier, ~107 tokens for 3 queries
     → Optional free middleware before synthesis:
@@ -306,7 +307,7 @@ Task tool:
     → On href-only returns (empty body/title from Reddit/X/YouTube), follow up with mcp__jina__read_url on the href — never cite from URL slug alone.
 
     **CRITICAL:**
-    - NEVER use native WebSearch or WebFetch — use Triple Stack (Ref + Exa + Jina). If you reach for those, you skipped ToolSearch.
+    - NEVER use native WebSearch or WebFetch — use Triple Stack (Context7 + Exa + Jina). If you reach for those, you skipped ToolSearch.
     - NEVER stop after gathering sources — ALWAYS call mcp__gigaxity-deep-research__synthesize. Do NOT freehand the synthesis in the subagent — the verifier is load-bearing.
     - ALWAYS return the COMPLETE synthesized result — do not truncate.
     - WHEN a tool output is wrapped in `<persisted-output>...</persisted-output>`, the 2KB preview is NOT evidence. MANDATORY: Read(path) on the persisted path before using the result in synthesis or citations.
@@ -341,7 +342,7 @@ If the header is absent: relay the subagent's full output as normal.
 | Need | Primary | Fallback |
 |---|---|---|
 | Quick factual answer (1-2 s) | mcp__exa-answer__exa_answer | mcp__exa__web_search_advanced_exa |
-| Library / API documentation | mcp__Ref__ref_search_documentation | mcp__exa__get_code_context_exa |
+| Library / API documentation | mcp__context7__resolve-library-id → query-docs | mcp__exa__get_code_context_exa |
 | Code examples / patterns | mcp__exa__get_code_context_exa | mcp__jina__search_web "site:github.com" |
 | General web (single query) | mcp__jina__search_web (~63 tokens) | mcp__exa__web_search_exa |
 | Parallel multi-query web (3-5 variants) | mcp__jina__parallel_search_web (~107 / 3) | sequential mcp__exa__web_search_exa |
@@ -385,7 +386,7 @@ When the user supplies a specific URL, route by URL type:
 | URL pattern | Primary | On error/block |
 |---|---|---|
 | GitHub issues / PRs / discussions | mcp__jina__read_url | mcp__brightdata_fallback__scrape_as_markdown |
-| Documentation / API references | mcp__Ref__ref_read_url | mcp__jina__read_url → Brightdata |
+| Documentation / API references | mcp__jina__read_url | mcp__brightdata_fallback__scrape_as_markdown |
 | General articles / blogs | mcp__jina__read_url | mcp__brightdata_fallback__scrape_as_markdown |
 | Paywalled / Cloudflare / CAPTCHA | mcp__brightdata_fallback__scrape_as_markdown (direct) | mcp__exa__crawling_exa |
 | PDF files | dedicated PDF reader (e.g. pdf_reader MCP if installed) | mcp__jina__extract_pdf |
@@ -424,7 +425,7 @@ Step 3:  mcp__exa__crawling_exa(url)                         (paid, last resort)
 ## CRITICAL Rules
 
 ```
-❌ Use native WebSearch tool                                ✅ Use the Triple Stack (Ref + Exa + Jina)
+❌ Use native WebSearch tool                                ✅ Use the Triple Stack (Context7 + Exa + Jina)
 ❌ Stop after gathering sources                             ✅ ALWAYS synthesize via gigaxity-deep-research
 ❌ Truncate or summarize the synthesis output               ✅ Return the COMPLETE result verbatim
 ❌ Spawn subagent without conversation context              ✅ Include prior decisions, constraints, ruled-out approaches
@@ -445,5 +446,5 @@ End of pasteable block.
 ## Notes on the pasteable block
 
 - Adjust subagent parallelism (`Max 2`) to match your model and quota tolerance.
-- The block assumes the five companion MCPs are registered under the exact aliases shown (`Ref`, `exa`, `exa-answer`, `jina`, `brightdata_fallback`). The `mcp__<alias>__<tool>` names in the block are derived from those aliases — change the block if you register them under different names.
+- The block assumes the five companion MCPs are registered under the exact aliases shown (`context7`, `exa`, `exa-answer`, `jina`, `brightdata_fallback`). The `mcp__<alias>__<tool>` names in the block are derived from those aliases — change the block if you register them under different names.
 - The bundled skill in `skills/research-workflow/` contains the deep version of the routing matrix (token costs, presets, focus modes, per-tool capabilities). The block above is the abridged trigger logic; the skill is the full reference.

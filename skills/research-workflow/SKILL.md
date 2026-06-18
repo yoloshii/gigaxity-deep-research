@@ -1,6 +1,6 @@
 ---
 name: research-workflow
-description: This skill should be used when the user asks research questions, needs information lookup, wants comparisons, asks "what is", "how does", "explain", "compare", "best practices", "latest developments", or any query requiring web search, documentation lookup, or synthesis of multiple sources. Provides optimal routing between DIRECT, EXPLORATORY, and SYNTHESIS workflows using Triple Stack (Ref, Exa, Jina) and gigaxity-deep-research tools.
+description: This skill should be used when the user asks research questions, needs information lookup, wants comparisons, asks "what is", "how does", "explain", "compare", "best practices", "latest developments", or any query requiring web search, documentation lookup, or synthesis of multiple sources. Provides optimal routing between DIRECT, EXPLORATORY, and SYNTHESIS workflows using Triple Stack (Context7, Exa, Jina) and gigaxity-deep-research tools.
 version: 1.0.0
 ---
 
@@ -9,7 +9,7 @@ version: 1.0.0
 ## Overview
 
 This skill orchestrates research queries using the optimal workflow based on query type. It integrates:
-- **Triple Stack**: Ref (docs) + Exa (code/web) + Jina (web/academic/parallel)
+- **Triple Stack**: Context7 (docs) + Exa (code/web) + Jina (web/academic/parallel)
 - **gigaxity-deep-research**: synthesis engine over any OpenAI-compatible chat-completions endpoint (self-hosted vLLM/SGLang/llama.cpp on the `local-inference` branch, OpenRouter on `main`)
 - **exa-answer**: speed-critical 1–2 s factual lookups
 - **brightdata_fallback**: blocked-URL recovery (CAPTCHA / paywall / Cloudflare)
@@ -22,7 +22,7 @@ This skill orchestrates research queries using the optimal workflow based on que
 MCP tool schemas are deferred. Bare `mcp__X__Y(...)` calls fail with `InputValidationError` because the schema isn't loaded. Load schemas first via `ToolSearch`:
 
 ```
-ToolSearch(query='select:mcp__Ref__ref_search_documentation')                # one tool
+ToolSearch(query='select:mcp__context7__resolve-library-id,mcp__context7__query-docs')   # docs (two-step)
 ToolSearch(query='select:mcp__exa__web_search_exa,mcp__jina__read_url')      # multiple
 ToolSearch(query='+exa-answer')                                              # keyword (rank by relevance)
 ```
@@ -32,9 +32,9 @@ After `ToolSearch` returns the `<function>...` block for a tool, that tool is ca
 **Why this matters:** if you skip `ToolSearch` and the bare call fails, the path of least resistance is to fall through to `WebFetch` / `WebSearch` — neither is in the Triple Stack. Using them is the strongest signal that schema loading was skipped.
 
 ```
-❌ mcp__Ref__ref_search_documentation(query="...")              # fails — schema not loaded
-✅ ToolSearch(query='select:mcp__Ref__ref_search_documentation')
-   → then mcp__Ref__ref_search_documentation(query="...")       # works
+❌ mcp__context7__query-docs(libraryId="...", query="...")      # fails — schema not loaded
+✅ ToolSearch(query='select:mcp__context7__resolve-library-id,mcp__context7__query-docs')
+   → then mcp__context7__resolve-library-id(...) → mcp__context7__query-docs(...)   # works
 
 ❌ Tool fails silently → fall back to WebFetch
 ✅ Tool fails → check whether schema was loaded → ToolSearch + retry
@@ -201,11 +201,11 @@ Single-source factual lookups. Use Triple Stack directly.
 
 **Trigger Patterns:**
 - "Read this URL" → Jina read_url
-- "Get documentation for [library]" → Ref ref_search_documentation
+- "Get documentation for [library]" → Context7 (resolve-library-id → query-docs)
 - "Find code examples for [function]" → Exa get_code_context_exa
-- "How does [specific API] work?" → Ref ref_search_documentation
-- "Explain [library feature]" → Ref ref_search_documentation
-- "What is [programming concept]?" → Ref ref_search_documentation
+- "How does [specific API] work?" → Context7 (resolve-library-id → query-docs)
+- "Explain [library feature]" → Context7 (resolve-library-id → query-docs)
+- "What is [programming concept]?" → Context7 (resolve-library-id → query-docs)
 - "Search images for..." → Jina search_images
 - Factual lookups with single source
 - Specific library/API/framework with official docs
@@ -270,7 +270,7 @@ Single-source factual lookup? (specific library/API/framework)
   NO ↓
 
 Specific library/API/framework with official docs?
-  YES → DIRECT (Ref → Exa fallback)
+  YES → DIRECT (Context7 → Exa fallback)
   NO ↓
 
 Requires cross-validation, comparison, or comprehensive coverage?
@@ -319,9 +319,9 @@ exa_answer_detailed(query="What are the system requirements for Bun?")
 
 | Query Type | Primary Tool | Fallback |
 |------------|--------------|----------|
-| API docs | `mcp__Ref__ref_search_documentation` | `mcp__exa__get_code_context_exa` |
+| API docs | `mcp__context7__resolve-library-id` → `query-docs` | `mcp__exa__get_code_context_exa` |
 | Code examples / patterns | `mcp__exa__get_code_context_exa` | `mcp__jina__search_web` with `site:github.com` |
-| URL reading | `mcp__jina__read_url` (0 tokens) | `mcp__Ref__ref_read_url`, `mcp__exa__crawling_exa` |
+| URL reading | `mcp__jina__read_url` (0 tokens) | `mcp__exa__crawling_exa` |
 | Bulk URL reading (3-5) | `mcp__jina__parallel_read_url` (content-proportional) | `mcp__exa__crawling_exa` with urls array |
 | URL subpage crawl | `mcp__exa__crawling_exa` with `subpages` + `subpageTarget` | — (Jina has no subpage mode) |
 | Academic (arXiv) | `mcp__jina__search_arxiv` / `mcp__jina__parallel_search_arxiv` | `mcp__exa__web_search_advanced_exa category="research paper"` |
@@ -353,7 +353,7 @@ exa_answer_detailed(query="What are the system requirements for Bun?")
 
 ```
 # Documentation lookup
-mcp__Ref__ref_search_documentation(query="FastAPI WebSocket API")
+mcp__context7__resolve-library-id(libraryName="FastAPI", query="FastAPI WebSocket API") → mcp__context7__query-docs(libraryId, query="FastAPI WebSocket API")
 
 # Code examples
 mcp__exa__get_code_context_exa(query="React useState patterns")
@@ -444,7 +444,7 @@ synthesis = mcp__gigaxity-deep-research__synthesize(
 
 **Flow:**
 ```
-Triple Stack (Ref + Exa + Jina parallel) → gigaxity-deep-research synthesize/reason
+Triple Stack (Context7 + Exa + Jina parallel) → gigaxity-deep-research synthesize/reason
 ```
 
 **Preset Selection:**
@@ -462,7 +462,8 @@ Triple Stack (Ref + Exa + Jina parallel) → gigaxity-deep-research synthesize/r
 # Step 1: Triple Stack parallel search
 # Execute ALL THREE in parallel for comprehensive coverage
 
-ref_results  = mcp__Ref__ref_search_documentation(query="FastAPI vs Flask production")
+ctx7_lib     = mcp__context7__resolve-library-id(libraryName="FastAPI", query="FastAPI vs Flask production")
+ctx7_results = mcp__context7__query-docs(libraryId=ctx7_lib, query="FastAPI vs Flask production")
 exa_results  = mcp__exa__get_code_context_exa(query="FastAPI Flask production patterns")
 jina_results = mcp__jina__parallel_search_web(searches=[
     {"query": "FastAPI Flask benchmarks 2026"},
@@ -492,7 +493,7 @@ deduped = mcp__jina__deduplicate_strings(            # 0 tokens (free dedup)
 synthesis = mcp__gigaxity-deep-research__synthesize(
     query="Compare FastAPI vs Flask for production APIs",
     sources=[
-        {"title": "Ref: FastAPI docs", "url": "url", "content": "ref content", "origin": "ref"},
+        {"title": "Context7: FastAPI docs", "url": "url", "content": "context7 content", "origin": "context7"},
         {"title": "Exa: Production patterns", "url": "url", "content": "exa content", "origin": "exa"},
         {"title": "Jina: Benchmarks", "url": "url", "content": "jina content", "origin": "jina"},
         # ...deep_content items appended as "origin": "jina-read"
@@ -678,9 +679,9 @@ mcp__gigaxity-deep-research__reason(
 
 ### Triple Stack Tools
 
-**Ref (Documentation):**
-- `mcp__Ref__ref_search_documentation(query)` - Search docs
-- `mcp__Ref__ref_read_url(url)` - Read URL to markdown
+**Context7 (Documentation):**
+- `mcp__context7__resolve-library-id(libraryName, query)` - Resolve a library name to a Context7 library ID
+- `mcp__context7__query-docs(libraryId, query)` - Fetch up-to-date library/API docs for the resolved ID
 
 **Exa 3.2.0 (4 active tools — 6 deprecated tools removed):**
 - `mcp__exa__web_search_exa(query, numResults, type)` — Semantic web search. `type` enum: `auto` | `fast`. **Note:** `type="deep"` was documented in prior skill revisions as a replacement for deprecated `deep_researcher_start/check` — that was wrong. The 3.2.0 MCP does not expose a `deep` type on either search tool. For deep multi-hop research, use gigaxity-deep-research `discover` → Jina `parallel_read_url` → `synthesize`.
@@ -769,7 +770,8 @@ mcp__gigaxity-deep-research__reason(
 User: "How do I use FastAPI's Depends?"
 
 # DIRECT - specific library, official docs exist
-mcp__Ref__ref_search_documentation(query="FastAPI Depends dependency injection")
+lib  = mcp__context7__resolve-library-id(libraryName="FastAPI", query="FastAPI Depends dependency injection")
+docs = mcp__context7__query-docs(libraryId=lib, query="FastAPI Depends dependency injection")
 ```
 
 ### Pattern 2: General Concept Exploration (EXPLORATORY)
@@ -798,7 +800,8 @@ mcp__gigaxity-deep-research__synthesize(
 User: "Compare React vs Vue for large applications"
 
 # SYNTHESIS - comparison, need multiple perspectives
-ref = mcp__Ref__ref_search_documentation(query="React Vue large scale")
+lib  = mcp__context7__resolve-library-id(libraryName="React", query="React Vue large scale")
+docs = mcp__context7__query-docs(libraryId=lib, query="React Vue large scale")
 exa = mcp__exa__get_code_context_exa(query="React Vue enterprise patterns")
 jina = mcp__jina__search_web(query="React vs Vue 2026 comparison", num=5)
 
@@ -816,7 +819,8 @@ mcp__gigaxity-deep-research__synthesize(
 User: "What are best practices for Python error handling?"
 
 # SYNTHESIS - need validated patterns, consensus
-ref = mcp__Ref__ref_search_documentation(query="Python error handling best practices")
+lib  = mcp__context7__resolve-library-id(libraryName="Python", query="Python error handling best practices")
+docs = mcp__context7__query-docs(libraryId=lib, query="Python error handling best practices")
 exa = mcp__exa__get_code_context_exa(query="Python exception handling patterns")
 jina = mcp__jina__search_web(query="Python error handling 2026 best practices", num=5)
 
@@ -900,7 +904,8 @@ mcp__gigaxity-deep-research__synthesize(
 User: "Should we use PostgreSQL or MongoDB for our e-commerce app?"
 
 # SYNTHESIS with deep reasoning
-ref = mcp__Ref__ref_search_documentation(query="PostgreSQL MongoDB comparison")
+lib  = mcp__context7__resolve-library-id(libraryName="PostgreSQL", query="PostgreSQL MongoDB comparison")
+docs = mcp__context7__query-docs(libraryId=lib, query="PostgreSQL MongoDB comparison")
 exa = mcp__exa__get_code_context_exa(query="e-commerce database choice")
 jina = mcp__jina__search_web(query="PostgreSQL vs MongoDB 2026 e-commerce", num=5)
 
@@ -923,14 +928,14 @@ mcp__gigaxity-deep-research__reason(
    → discover → Jina → synthesize  # Overkill
 
 ✅ User: "How do I use React's useEffect?"
-   → Ref ref_search_documentation  # DIRECT
+   → Context7 (resolve-library-id → query-docs)  # DIRECT
 ```
 
 ### 2. Don't Use DIRECT for Comparisons
 
 ```
 ❌ User: "FastAPI vs Flask?"
-   → ref_search_documentation  # Won't get comparison
+   → Context7 query-docs  # Won't get comparison
 
 ✅ User: "FastAPI vs Flask?"
    → Triple Stack → synthesize(style="comparative")  # SYNTHESIS
@@ -1056,7 +1061,7 @@ mcp__brightdata_fallback__scrape_as_markdown(url="BLOCKED_URL")
 ### Documentation Lookup
 
 ```
-mcp__Ref__ref_search_documentation(query)
+mcp__context7__resolve-library-id(libraryName, query) → mcp__context7__query-docs(libraryId, query)
   ON FAIL → mcp__exa__get_code_context_exa(query)
   ON FAIL → mcp__jina__search_web(query)
 ```
@@ -1066,17 +1071,15 @@ mcp__Ref__ref_search_documentation(query)
 ```
 mcp__jina__read_url(url)
   ON ERROR/404/BLOCK → mcp__brightdata_fallback__scrape_as_markdown(url)
-  ON FAIL → mcp__Ref__ref_read_url(url)
   ON FAIL → WebFetch(url)  # built-in
 ```
 
 ### Documentation URL Reading
 
 ```
-mcp__Ref__ref_read_url(url)
-  ON ERROR/404/BLOCK → WebFetch(url)  # built-in
-  ON FAIL → mcp__brightdata_fallback__scrape_as_markdown(url)
-  ON FAIL → mcp__jina__read_url(url)
+mcp__jina__read_url(url)
+  ON ERROR/404/BLOCK → mcp__brightdata_fallback__scrape_as_markdown(url)
+  ON FAIL → mcp__exa__crawling_exa(url)
 ```
 
 ### Code Search
@@ -1204,18 +1207,18 @@ Rationale: Jina is rotatable-for-free (10M trial tier via Camoufox key rotation)
 | Task | PRIMARY | Secondary | NEVER |
 |------|---------|-----------|-------|
 | **Mid-task factual lookup** | exa_answer (1-2s, 94% SimpleQA) | gigaxity-deep-research ask | Synthesis tools |
-| **API docs** | Ref | Exa get_code_context | — |
-| **Code examples / patterns** | Exa get_code_context | Jina search_web `site:github.com` | Ref |
-| **Repository docs** | Ref | Jina read_url | — |
+| **API docs** | Context7 | Exa get_code_context | — |
+| **Code examples / patterns** | Exa get_code_context | Jina search_web `site:github.com` | Context7 |
+| **Repository docs** | Context7 | Jina read_url | — |
 | **GitHub repo discovery** | Exa advanced (category="github") | Jina search_web `site:github.com` | — |
-| **GitHub issues/PRs** | Jina read_url | Brightdata fallback | Ref |
-| **General web (single query)** | Jina search_web (63 tokens) | Exa web_search_exa | Ref |
-| **Parallel multi-query web** | Jina parallel_search_web (107 tokens/3 queries) | Sequential Exa web_search_exa | Ref |
+| **GitHub issues/PRs** | Jina read_url | Brightdata fallback | Context7 |
+| **General web (single query)** | Jina search_web (63 tokens) | Exa web_search_exa | Context7 |
+| **Parallel multi-query web** | Jina parallel_search_web (107 tokens/3 queries) | Sequential Exa web_search_exa | Context7 |
 | **Advanced filtered web** (category / date / domain / text) | Exa web_search_advanced_exa | — | — |
-| **Company research** | Exa advanced (category="company") | Jina search_web | Ref |
-| **People / OSINT (attribute search)** | Exa advanced (category="people") | Jina search_web `site:linkedin.com` | Ref |
+| **Company research** | Exa advanced (category="company") | Jina search_web | Context7 |
+| **People / OSINT (attribute search)** | Exa advanced (category="people") | Jina search_web `site:linkedin.com` | Context7 |
 | **Financial reports (SEC, earnings)** | Exa advanced (category="financial report") | Exa advanced (category="pdf") | — |
-| **News / current events (date-bounded)** | Exa advanced (category="news" + startPublishedDate) | Jina search_web | Ref |
+| **News / current events (date-bounded)** | Exa advanced (category="news" + startPublishedDate) | Jina search_web | Context7 |
 | **Social (tweets)** | gptr-mcp quick_search (site:x.com) | Jina search_web | Exa (no tweet category) |
 | **Academic (arXiv)** | Jina search_arxiv / parallel_search_arxiv | Exa advanced (category="research paper") | — |
 | **Academic (SSRN — econ/law/finance)** | Jina search_ssrn / parallel_search_ssrn | — | — |
@@ -1515,7 +1518,7 @@ mcp__gigaxity-deep-research__synthesize(
 This skill integrates with existing global MCP configuration:
 
 **Global MCPs (Direct Access):**
-- Ref, Exa, Jina (Triple Stack)
+- Context7, Exa, Jina (Triple Stack)
 - gigaxity-deep-research (synthesis engine)
 
 **Tool Naming:**

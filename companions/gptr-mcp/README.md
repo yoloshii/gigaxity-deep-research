@@ -11,7 +11,7 @@ Web search and documentation lookup miss two patterns that AI agents need:
 1. **Lived-experience knowledge** — "What does it actually feel like to switch from X to Y?" "What unexpected gotchas hit people who deployed this?" Answers live on Reddit, X, and YouTube comments, not in docs.
 2. **Recency tied to community sentiment** — "Are people happy with the new release?" "What's the consensus on this design choice?" Search engines surface news; the actual sentiment lives on social platforms.
 
-GPT Researcher's `social_openai` retriever surfaces this kind of content, ranked by reputation signal rather than just SEO authority. Pair it with the rest of the stack and you cover docs (Ref) + code (Exa) + general web (Jina) + real-people-experiences (gptr-mcp).
+GPT Researcher's `social_openai` retriever surfaces this kind of content, ranked by reputation signal rather than just SEO authority. Pair it with the rest of the stack and you cover docs (Context7) + code (Exa) + general web (Jina) + real-people-experiences (gptr-mcp).
 
 ## Install
 
@@ -95,7 +95,7 @@ The bundled [`research-workflow` skill](../../skills/research-workflow/SKILL.md)
 | Query asks for "real user experiences" / "what people think" / "honest opinions" | `mcp__gptr-mcp__quick_search` |
 | Query asks about troubleshooting where official docs are insufficient | `mcp__gptr-mcp__quick_search` (with site filter `site:reddit.com`) |
 | Query needs cross-platform community sentiment | `mcp__gptr-mcp__deep_research` |
-| Query is generic factual/documentation/comparison | NOT gptr-mcp — use Ref / Exa / Jina / gigaxity instead |
+| Query is generic factual/documentation/comparison | NOT gptr-mcp — use Context7 / Exa / Jina / gigaxity instead |
 
 LinkedIn-specific queries don't route here (gptr-mcp's social retriever doesn't include LinkedIn). For LinkedIn, use `mcp__jina__search_web` with `site:linkedin.com`.
 

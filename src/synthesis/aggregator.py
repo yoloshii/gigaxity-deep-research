@@ -3,16 +3,16 @@ Pure Synthesis Aggregator
 
 Drives the SYNTHESIS workflow: weave pre-gathered content into a coherent,
 citation-aware narrative without re-searching the web. The agent supplies
-sources from Ref / Exa / Jina (or any other reader); this aggregator focuses
+sources from Context7 / Exa / Jina (or any other reader); this aggregator focuses
 purely on synthesis quality.
 
 Key difference from search+synthesis:
 - Does NOT perform searches
-- Takes PRE-GATHERED content from Ref/Exa/Jina
+- Takes PRE-GATHERED content from Context7/Exa/Jina
 - Weaves into coherent narrative with attribution
 
 This is the final step in the synthesis workflow:
-Triple Stack (Ref + Exa + Jina) → This Aggregator → Final Output
+Triple Stack (Context7 + Exa + Jina) → This Aggregator → Final Output
 """
 
 import re
@@ -38,8 +38,8 @@ class SynthesisStyle(str, Enum):
 
 @dataclass
 class PreGatheredSource:
-    """A source that was pre-fetched by Ref/Exa/Jina."""
-    origin: str           # "ref", "exa", "jina", or custom
+    """A source that was pre-fetched by Context7/Exa/Jina."""
+    origin: str           # "context7", "exa", "jina", or custom
     url: str
     title: str
     content: str          # Full content (already fetched)
@@ -74,7 +74,7 @@ COMPREHENSIVE_SYNTHESIS_PROMPT = f"""You are synthesizing research findings from
 Query: {{query}}
 
 Sources have been gathered from:
-- Documentation (Ref): Official docs, API references
+- Documentation (Context7): Official docs, API references
 - Code Context (Exa): Code examples, implementations
 - Web Content (Jina): Articles, discussions, tutorials
 
@@ -179,7 +179,7 @@ class SynthesisAggregator:
     Pure synthesis aggregator for pre-gathered content.
 
     Optimized for the SYNTHESIS workflow:
-    - Input: content already fetched by Ref / Exa / Jina (or any other reader)
+    - Input: content already fetched by Context7 / Exa / Jina (or any other reader)
     - Output: coherent synthesis with attribution
     - NO additional searching
     """
@@ -221,7 +221,7 @@ class SynthesisAggregator:
 
         Args:
             query: The original research query
-            sources: Pre-gathered sources from Ref/Exa/Jina
+            sources: Pre-gathered sources from Context7/Exa/Jina
             style: Synthesis style to use
             max_tokens: Answer-budget base for the synthesis call
             guidance: Optional per-source advisory summaries (aligned with

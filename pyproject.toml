@@ -1,6 +1,6 @@
 [project]
 name = "gigaxity-deep-research"
-version = "0.3.9"
+version = "0.4.0"
 description = "Deep research MCP server for Claude Code and MCP-compatible agents — multi-source web search, citation-aware synthesis, and chain-of-thought reasoning over any OpenAI-compatible model."
 readme = "README.md"
 requires-python = ">=3.11"

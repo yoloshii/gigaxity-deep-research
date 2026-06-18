@@ -8,7 +8,7 @@ This guide assumes you've already set up `gigaxity-deep-research` per [setup-mcp
 
 | MCP | Role | Cost |
 |---|---|---|
-| `Ref` | Library and API documentation lookup | Free credits, then ~$9/mo Basic ([ref.tools](https://ref.tools)) |
+| `context7` | Library and API documentation lookup | Free tier, then paid plans ([context7.com](https://context7.com)) |
 | `exa` | Code-context search, advanced web, crawling | Paid; generous free trial credits ([exa.ai](https://exa.ai)). Trial credits reset per signup, so a fresh Google account allocation buys another round if you exhaust them. |
 | `exa-answer` | 1–2 s factual lookups (uses Exa `/answer`) | Same key as `exa` |
 | `jina` | Free-tier web/arxiv/ssrn search, parallel reads | Paid; generous free 10M trial tier ([jina.ai](https://jina.ai)) — enough for hundreds of full pipeline sessions before key rotation |
@@ -16,28 +16,29 @@ This guide assumes you've already set up `gigaxity-deep-research` per [setup-mcp
 | `brightdata_fallback` | Last-resort scraper for blocked URLs | Monthly free-tier limit, then paid ([brightdata.com](https://brightdata.com) Web Unlocker); only fires on ~5–15% of URL fetches |
 | `gptr-mcp` | Social-first research via Reddit, X, YouTube — MCP shim around [GPT Researcher](https://github.com/assafelovic/gpt-researcher) (the underlying agentic-research library) | Pay-per-call OpenAI + free-tier Tavily |
 
-**Recommendation: secure all seven keys and run the full stack.** Each MCP fills a distinct niche — Ref is the cheapest source for canonical docs, Exa exposes a curated code index and category-filtered web search, Jina is the workhorse free-tier reader, gigaxity-deep-research drives synthesis, Brightdata recovers blocked URLs, and gptr-mcp surfaces community knowledge. The routing skill orchestrates them so each call lands on the cheapest tool that can answer it; replacing one with a fallback degrades quality rather than just cost.
+**Recommendation: secure all seven keys and run the full stack.** Each MCP fills a distinct niche — Context7 returns up-to-date, version-aware library/API docs by name, Exa exposes a curated code index and category-filtered web search, Jina is the workhorse free-tier reader, gigaxity-deep-research drives synthesis, Brightdata recovers blocked URLs, and gptr-mcp surfaces community knowledge. The routing skill orchestrates them so each call lands on the cheapest tool that can answer it; replacing one with a fallback degrades quality rather than just cost.
 
-The routing logic *does* degrade gracefully if an MCP isn't registered, so you can ship without one or two and add them later. But the design intent is the full seven — and most operations land on Jina (free 10M tier), Exa (free trial credits), Ref (free credits before the $9/mo tier), or Brightdata (monthly free-tier limit), so the running cost is far below what the table's "Paid" labels imply. See [free-tier-strategy.md](free-tier-strategy.md) for per-MCP free-tier mechanics and the routing logic that keeps spend predictable.
+The routing logic *does* degrade gracefully if an MCP isn't registered, so you can ship without one or two and add them later. But the design intent is the full seven — and most operations land on Jina (free 10M tier), Exa (free trial credits), Context7 (free tier), or Brightdata (monthly free-tier limit), so the running cost is far below what the table's "Paid" labels imply. See [free-tier-strategy.md](free-tier-strategy.md) for per-MCP free-tier mechanics and the routing logic that keeps spend predictable.
 
-**Alternative for docs lookup:** [Context7](https://context7.com) covers the same role as Ref — library and API documentation lookup — and ships its own MCP. The bundled `research-workflow` skill is currently wired to Ref's tool names; swapping in Context7 requires a small edit to the routing references in [`../../skills/research-workflow/SKILL.md`](../../skills/research-workflow/SKILL.md) and [`../../CLAUDE.md`](../../CLAUDE.md). Pick whichever you have a key for — the rest of the stack doesn't care.
+**Docs lookup uses Context7.** [Context7](https://context7.com) is the documentation-lookup MCP in this stack — `resolve-library-id` maps a library name to a Context7 ID, then `query-docs` returns up-to-date, version-aware docs. The bundled `research-workflow` skill is wired to Context7's tool names. To swap in a different docs MCP (e.g. [Ref](https://ref.tools)), edit the routing references in [`../../skills/research-workflow/SKILL.md`](../../skills/research-workflow/SKILL.md) and [`../../CLAUDE.md`](../../CLAUDE.md). The rest of the stack doesn't care.
 
 ## Prerequisites
 
 You'll register all five into your global `~/.claude.json` under `mcpServers`. The four paid services need API keys; sign up first.
 
-## Stack 1: Ref
+## Stack 1: Context7
 
 ```json
-"Ref": {
-  "type": "http",
-  "url": "https://api.ref.tools/mcp?apiKey=YOUR_REF_API_KEY_PLACEHOLDER"
+"context7": {
+  "type": "stdio",
+  "command": "npx",
+  "args": ["-y", "@upstash/context7-mcp", "--api-key", "YOUR_CONTEXT7_API_KEY_PLACEHOLDER"]
 }
 ```
 
-Sign up: https://ref.tools (Basic tier ~$9/mo for 2k queries).
+Sign up: https://context7.com (free tier; paid plans for higher limits).
 
-What it does: official library/API documentation search. Use as the first hop for any "how does library X work" question. Faster and more accurate than web search for this class of query.
+What it does: official library/API documentation lookup. Two-step — `resolve-library-id` maps a library name to a Context7 ID, then `query-docs` fetches up-to-date, version-aware docs. Use as the first hop for any "how does library X work" question. Faster and more accurate than web search for this class of query.
 
 ## Stack 2: Exa
 
@@ -164,7 +165,7 @@ Test each by asking a question that should route to it:
 
 | Query | Expected MCP |
 |---|---|
-| "What is the OpenAI Python SDK's `client.beta` namespace for?" | `Ref` |
+| "What is the OpenAI Python SDK's `client.beta` namespace for?" | `context7` |
 | "Show me a code example using `httpx.AsyncClient` with retries" | `exa` (`get_code_context_exa`) |
 | "What's the current Bun version?" | `exa-answer` |
 | "Find recent papers on CRAG quality gates" | `jina` (`search_arxiv`) |
@@ -178,7 +179,7 @@ If routing happens correctly, the stack is wired.
 |---|---|---|
 | Agent ignores all MCPs and uses native WebSearch | Skill not installed or not triggered | Confirm `~/.claude/skills/research-workflow/SKILL.md` exists; restart Claude Code |
 | Routing always picks the same MCP | Instruction block not in global CLAUDE.md | Paste the block per the section above |
-| `Ref` returns empty for queries that should hit official docs | Free tier exhausted | Check usage at ref.tools dashboard |
+| `context7` returns empty for queries that should hit official docs | Free tier exhausted or library not indexed | Verify the library ID via `resolve-library-id`; check usage at the context7.com dashboard |
 | Jina calls fail with 401 | Bearer token expired or wrong | Regenerate at https://jina.ai dashboard |
 | `brightdata_fallback` errors on every URL | `.env` in `cwd` missing or wrong creds | Re-check Brightdata zone setup |
 | `gigaxity-deep-research` calls work but other MCPs don't | One specific MCP misconfigured | Run `/mcp` and check the failing MCP's status |

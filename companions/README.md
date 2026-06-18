@@ -19,7 +19,7 @@ Bundled companion services that pair with the parent `gigaxity-deep-research` MC
 5. gptr-mcp          ── ./install.sh + register MCP     (~3 min, clones upstream)
 ```
 
-After all five are running, follow [`../docs/guides/triple-stack-setup.md`](../docs/guides/triple-stack-setup.md) to register the Ref and Jina MCPs (which are both fully hosted — no install) for the complete deep research stack (seven MCPs total: Ref + Exa + Exa Answer + Jina + gigaxity-deep-research + Brightdata fallback + gptr-mcp).
+After all five are running, follow [`../docs/guides/triple-stack-setup.md`](../docs/guides/triple-stack-setup.md) to register the Context7 and Jina MCPs (Context7 runs via `npx`; Jina is fully hosted — neither needs a separate install) for the complete deep research stack (seven MCPs total: Context7 + Exa + Exa Answer + Jina + gigaxity-deep-research + Brightdata fallback + gptr-mcp).
 
 ## Why companions, not separate repos?
 
@@ -33,9 +33,9 @@ If you want to pull any of them out into its own repo for separate distribution,
 
 ## Not bundled
 
-These companions are deliberately **not** bundled because they're either fully hosted (no install) or major standalone projects:
+These companions are deliberately **not** bundled because they either need no install (fully hosted, or run via `npx`) or are major standalone projects:
 
-- **Ref** — fully hosted at `https://api.ref.tools`. Sign up at https://ref.tools, paste the API key into your `~/.claude.json`, done.
+- **Context7** — runs via `npx @upstash/context7-mcp` (no separate install). Sign up at https://context7.com, paste the API key into your `~/.claude.json`, done.
 - **Exa** main MCP — fully hosted at `https://mcp.exa.ai`. Same key as `exa-answer`.
 - **Jina** — fully hosted at `https://mcp.jina.ai`. Free 10M tier signup at https://jina.ai.
 

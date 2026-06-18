@@ -83,7 +83,7 @@ Token budget: ~5000–10000. Latency: ~10–20 s.
 ```
 # Gather in parallel from multiple search providers
 results = await asyncio.gather(
-    docs_search(query),       # e.g. Ref MCP
+    docs_search(query),       # e.g. Context7 MCP
     code_search(query),       # e.g. Exa get_code_context
     web_search(query),        # e.g. Jina search_web
 )
@@ -247,7 +247,7 @@ All POST endpoints accept the optional header `X-LLM-Api-Key: <key>` to override
 This skill works alone for synthesis. For the full deep research workflow, pair with the other six MCPs in the stack:
 
 - `mcp__exa-answer__exa_answer` — quick factual lookups (1–2 s, citation-backed)
-- `mcp__Ref__ref_search_documentation` — official library/API docs
+- `mcp__context7__resolve-library-id` → `mcp__context7__query-docs` — official library/API docs
 - `mcp__exa__get_code_context_exa` — code-context examples
 - `mcp__exa__web_search_advanced_exa` — category-filtered search (`company`, `people`, `financial report`, `news`, `github`, `pdf`)
 - `mcp__jina__search_web` / `mcp__jina__parallel_read_url` — free-tier web access

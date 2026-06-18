@@ -193,7 +193,7 @@ If you skip gptr-mcp, the routing skill falls back to Jina with `site:reddit.com
 In Claude Code, type `/mcp` — confirm all seven MCPs show green:
 
 ```
-Ref                             ●  (HTTP)
+context7                        ●  (stdio, npx)
 exa                             ●  (HTTP)
 exa-answer                      ●  (stdio, companions/exa-answer)
 jina                            ●  (HTTP)
@@ -202,7 +202,7 @@ brightdata_fallback             ●  (stdio, companions/brightdata-fallback) —
 gptr-mcp                        ●  (stdio, ../gptr-mcp-source)
 ```
 
-The middle three (`Ref` + `exa` + `jina`) are the **Triple Stack** — the search/docs/code trio. The other four (`exa-answer`, `gigaxity-deep-research`, `brightdata_fallback`, `gptr-mcp`) layer on top: speed-critical lookups, synthesis, blocked-URL recovery, and social-first research.
+The middle three (`context7` + `exa` + `jina`) are the **Triple Stack** — the search/docs/code trio. The other four (`exa-answer`, `gigaxity-deep-research`, `brightdata_fallback`, `gptr-mcp`) layer on top: speed-critical lookups, synthesis, blocked-URL recovery, and social-first research.
 
 If any are red, follow the "Failure modes" table in [triple-stack-setup.md](triple-stack-setup.md).
 

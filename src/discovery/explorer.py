@@ -138,7 +138,7 @@ class Explorer:
     Exploratory discovery engine.
 
     Optimized for the specific role in exploratory workflows:
-    - Set the table for Jina/Exa/Ref deep dives
+    - Set the table for Jina/Exa/Context7 deep dives
     - Expand breadth beyond the literal query
     - Identify what the user doesn't know to ask
     - Score URLs by gap coverage, not just relevance
