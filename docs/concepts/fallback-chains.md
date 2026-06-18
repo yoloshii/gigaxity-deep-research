@@ -25,14 +25,14 @@ Step 3:  mcp__exa__crawling_exa(url)                         (paid, fallback onl
 **Special cases:**
 - **GitHub issues / PRs / discussions** — start at Jina (it handles GitHub's anti-scraping well)
 - **PDF files** — skip the chain, use a PDF-specific reader (the skill includes a `pdf_reader` reference)
-- **Documentation hosts** — try `mcp__Ref__ref_read_url` first if the URL matches a known docs domain, fall back to Jina
+- **Documentation hosts** — `mcp__jina__read_url` handles these like any other URL (Context7 looks up library docs by name, not by reading a URL)
 
 ## Chain 2 — Documentation lookup
 
 Triggers when the agent needs official library/API documentation.
 
 ```
-Step 1:  mcp__Ref__ref_search_documentation(query)
+Step 1:  mcp__context7__resolve-library-id(libraryName, query) → mcp__context7__query-docs(libraryId, query)
             │
             │ on no useful match
             ▼
@@ -43,7 +43,7 @@ Step 2:  mcp__exa__get_code_context_exa(query)
 Step 3:  mcp__jina__search_web(query, num=5)
 ```
 
-Use Ref first — it's the cheapest, fastest source for canonical library docs. Exa's `get_code_context_exa` falls in next because it indexes code-adjacent docs (GitHub READMEs, Stack Overflow). Jina's web search is the broad-net last resort.
+Use Context7 first — it resolves a library name to an ID and returns up-to-date, version-aware library docs. Exa's `get_code_context_exa` falls in next because it indexes code-adjacent docs (GitHub READMEs, Stack Overflow). Jina's web search is the broad-net last resort.
 
 ## Chain 3 — Web search
 
@@ -69,7 +69,7 @@ Triggers when the agent needs cross-source synthesis with citations and contradi
 
 ```
 Step 1:  Gather sources in parallel:
-           - mcp__Ref__ref_search_documentation(query)
+           - mcp__context7__resolve-library-id(libraryName, query) → mcp__context7__query-docs(libraryId, query)
            - mcp__exa__get_code_context_exa(query)
            - mcp__jina__parallel_search_web([variants])
             │

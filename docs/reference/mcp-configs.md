@@ -11,7 +11,7 @@ All seven entries go inside the `"mcpServers"` object of your global `~/.claude.
 ```json
 {
   "mcpServers": {
-    "Ref": { /* ... */ },
+    "context7": { /* ... */ },
     "exa": { /* ... */ },
     "exa-answer": { /* ... */ },
     "jina": { /* ... */ },
@@ -22,24 +22,25 @@ All seven entries go inside the `"mcpServers"` object of your global `~/.claude.
 }
 ```
 
-The aliases shown (`Ref`, `exa`, `exa-answer`, `jina`, `gigaxity-deep-research`, `brightdata_fallback`, `gptr-mcp`) are what the bundled `research-workflow` skill expects. Changing aliases means rewriting the `mcp__<alias>__<tool>` references in [`CLAUDE.md`](../../CLAUDE.md) and the skill itself.
+The aliases shown (`context7`, `exa`, `exa-answer`, `jina`, `gigaxity-deep-research`, `brightdata_fallback`, `gptr-mcp`) are what the bundled `research-workflow` skill expects. Changing aliases means rewriting the `mcp__<alias>__<tool>` references in [`CLAUDE.md`](../../CLAUDE.md) and the skill itself.
 
 ---
 
-## 1. Ref
+## 1. Context7
 
-HTTP transport. Fully hosted — no install. Sign up at https://ref.tools.
+stdio transport via `npx` — no separate install. Sign up at https://context7.com.
 
 ```json
-"Ref": {
-  "type": "http",
-  "url": "https://api.ref.tools/mcp?apiKey=YOUR_REF_API_KEY_PLACEHOLDER"
+"context7": {
+  "type": "stdio",
+  "command": "npx",
+  "args": ["-y", "@upstash/context7-mcp", "--api-key", "YOUR_CONTEXT7_API_KEY_PLACEHOLDER"]
 }
 ```
 
-**Tools exposed:** `ref_search_documentation`, `ref_read_url`.
+**Tools exposed:** `resolve-library-id`, `query-docs`.
 
-**Use for:** library and API documentation lookup. First hop for any "how does library X work" question.
+**Use for:** library and API documentation lookup (two-step: `resolve-library-id` maps a library name to a Context7 ID, then `query-docs` fetches the docs). First hop for any "how does library X work" question.
 
 ## 2. Exa
 
@@ -187,7 +188,7 @@ Bundled in this repo at [`companions/gptr-mcp/`](../../companions/gptr-mcp/). In
 
 | MCP | Sign up | Cost |
 |---|---|---|
-| Ref | https://ref.tools | Free credits, then ~$9/mo Basic |
+| Context7 | https://context7.com | Free tier, then paid plans |
 | Exa (one key for both `exa` and `exa-answer`) | https://exa.ai | Paid; generous free trial credits. A fresh Google account allocation buys another round of free credits if you exhaust the first. |
 | Jina | https://jina.ai | Paid; generous free 10M trial tier — hundreds of full pipeline sessions before key rotation |
 | OpenRouter (for `gigaxity-deep-research`) | https://openrouter.ai/keys | Pay-per-call (~$0.01–0.10 per synthesis, depending on preset and source count) |
@@ -195,9 +196,9 @@ Bundled in this repo at [`companions/gptr-mcp/`](../../companions/gptr-mcp/). In
 | OpenAI (for `gptr-mcp`) | https://platform.openai.com/api-keys | Pay-per-call |
 | Tavily (free tier — for `gptr-mcp` fallback) | https://tavily.com | Free tier |
 
-**Recommendation: register all seven.** The routing skill is designed around the full stack — each MCP fills a niche the others don't cover well, and most operations land on Jina's free reader, Exa's free trial credits, Ref's free credits, or Brightdata's monthly free-tier allowance, so the steady-state cost is dominated by OpenRouter synthesis calls and (once Ref's free credits are exhausted) the Ref subscription. Brightdata only fires on ~5–15% of URL fetches, so its monthly free tier covers most workloads.
+**Recommendation: register all seven.** The routing skill is designed around the full stack — each MCP fills a niche the others don't cover well, and most operations land on Jina's free reader, Exa's free trial credits, Context7's free tier, or Brightdata's monthly free-tier allowance, so the steady-state cost is dominated by OpenRouter synthesis calls. Brightdata only fires on ~5–15% of URL fetches, so its monthly free tier covers most workloads.
 
-**Alternative for docs lookup:** [Context7](https://context7.com) is a drop-in alternative for the documentation-lookup role Ref plays. Same niche (library and API docs), different MCP surface. The bundled `research-workflow` skill is wired to Ref's tool names today — swapping in Context7 means editing the routing references in `skills/research-workflow/SKILL.md` and `CLAUDE.md`. Not yet implemented in this repo.
+**Docs lookup uses Context7.** [Context7](https://context7.com) is the documentation-lookup MCP in this stack (library and API docs). The bundled `research-workflow` skill is wired to Context7's `resolve-library-id` → `query-docs` tool names. To swap in a different docs MCP (e.g. [Ref](https://ref.tools)), edit the routing references in `skills/research-workflow/SKILL.md` and `CLAUDE.md`.
 
 ## What goes where (cheat sheet)
 

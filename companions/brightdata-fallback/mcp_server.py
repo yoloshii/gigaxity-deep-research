@@ -7,7 +7,7 @@ URLs that ordinary fetchers fail on (CAPTCHA, paywall, Cloudflare challenge,
 403 responses).
 
 Use this as the last hop in a research-workflow URL-reading fallback chain:
-  Jina read_url → Ref ref_read_url → Brightdata scrape_as_markdown.
+  Jina read_url → Brightdata scrape_as_markdown.
 
 Usage:
     .venv/bin/python mcp_server.py
@@ -41,7 +41,7 @@ async def scrape_as_markdown(url: str) -> str:
     """Scrape a blocked URL as markdown using Brightdata Web Unlocker.
 
     Bypasses CAPTCHA, paywalls, and Cloudflare challenges. Use only when
-    other fetchers (Jina, Ref, WebFetch) have failed on the same URL.
+    other fetchers (Jina, WebFetch) have failed on the same URL.
 
     Args:
         url: The URL to scrape.

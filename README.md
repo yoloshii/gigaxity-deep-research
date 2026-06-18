@@ -2,7 +2,7 @@
 
 **Open-source deep research MCP server for Claude Code, Hermes, Cursor, and any MCP-compatible agent.** [Qwen3-30B-A3B-Thinking](https://huggingface.co/Qwen/Qwen3-30B-A3B-Thinking-2507) via [OpenRouter](https://openrouter.ai/) plus multi-source web synthesis with citations.
 
-Gigaxity Deep Research is a multi-source synthesis pipeline — six MCP tools (two primitives `search`/`research` plus four deep-research tools `ask`/`discover`/`synthesize`/`reason`) with a matching FastAPI REST surface, fronting parallel multi-source search, RRF fusion, citation binding, and contradiction detection. The synthesis stage runs against any OpenAI-compatible chat-completions model; the recommended default is [Alibaba's Qwen3-30B-A3B-Thinking](https://huggingface.co/Qwen/Qwen3-30B-A3B-Thinking-2507), a reasoning-tuned 30B-A3B MoE model, but DeepSeek-R1, Qwen-QwQ, Llama 3.x, and hosted-aggregator endpoints (OpenRouter and the like) all work — pick any model your endpoint serves. The search layer pulls from a "Triple Stack" of complementary MCPs ([Ref](https://ref.tools), [Exa](https://exa.ai), [Jina](https://jina.ai)) alongside [SearXNG](https://github.com/searxng/searxng), [Tavily](https://tavily.com), and [LinkUp](https://linkup.so) connectors. A bundled [`gptr-mcp`](https://github.com/assafelovic/gptr-mcp) companion — the MCP shim around [GPT Researcher](https://github.com/assafelovic/gpt-researcher) — adds Reddit, X, and YouTube as social-first sources.
+Gigaxity Deep Research is a multi-source synthesis pipeline — six MCP tools (two primitives `search`/`research` plus four deep-research tools `ask`/`discover`/`synthesize`/`reason`) with a matching FastAPI REST surface, fronting parallel multi-source search, RRF fusion, citation binding, and contradiction detection. The synthesis stage runs against any OpenAI-compatible chat-completions model; the recommended default is [Alibaba's Qwen3-30B-A3B-Thinking](https://huggingface.co/Qwen/Qwen3-30B-A3B-Thinking-2507), a reasoning-tuned 30B-A3B MoE model, but DeepSeek-R1, Qwen-QwQ, Llama 3.x, and hosted-aggregator endpoints (OpenRouter and the like) all work — pick any model your endpoint serves. The search layer pulls from a "Triple Stack" of complementary MCPs ([Context7](https://context7.com), [Exa](https://exa.ai), [Jina](https://jina.ai)) alongside [SearXNG](https://github.com/searxng/searxng), [Tavily](https://tavily.com), and [LinkUp](https://linkup.so) connectors. A bundled [`gptr-mcp`](https://github.com/assafelovic/gptr-mcp) companion — the MCP shim around [GPT Researcher](https://github.com/assafelovic/gpt-researcher) — adds Reddit, X, and YouTube as social-first sources.
 
 If you want to run the synthesis model on your own hardware, the `local-inference` branch swaps OpenRouter for any OpenAI-compatible endpoint (vLLM, SGLang, or llama.cpp). The search-MCP layer is priced separately by each provider. See [`docs/guides/free-tier-strategy.md`](docs/guides/free-tier-strategy.md) for what their free tiers cover and how to wire them up.
 
@@ -66,7 +66,7 @@ The MCP server exposes **two primitives** plus **four deep-research tools** — 
 
 The Quick Starts below cover the orchestrator MCP — one of seven in the full stack. The complete deep research workflow (automatic per-query routing across the whole stack) comprises four parts:
 
-1. **Seven MCPs.** This repo's orchestrator (`gigaxity-deep-research`) plus the **Triple Stack** (`Ref` + `exa` + `jina` — search/docs/code trio) plus three more (`exa-answer`, `brightdata_fallback`, `gptr-mcp`).
+1. **Seven MCPs.** This repo's orchestrator (`gigaxity-deep-research`) plus the **Triple Stack** (`context7` + `exa` + `jina` — search/docs/code trio) plus three more (`exa-answer`, `brightdata_fallback`, `gptr-mcp`).
 2. **Companion projects and dependencies.** [SearXNG](https://github.com/searxng/searxng) (primary search source, bundled at [`companions/searxng/`](companions/searxng/)) and [GPT Researcher](https://github.com/assafelovic/gpt-researcher) (transitive dependency of `gptr-mcp`); plus the minimal MCP wrappers bundled at [`companions/exa-answer/`](companions/exa-answer/) and [`companions/brightdata-fallback/`](companions/brightdata-fallback/).
 3. **The pasteable instruction block** in [`CLAUDE.md`](CLAUDE.md#instruction-block--paste-into-your-harnesss-global-claudemd--agentsmd-or-system-prompt) — drop into the global `CLAUDE.md` / `AGENTS.md` your harness loads (e.g. `~/.claude/CLAUDE.md` for Claude Code), or paste into a standalone agent's system prompt. The agent then fires the research workflow on external-knowledge queries and routes each query class to the right MCP.
 4. **The bundled [`research-workflow`](skills/research-workflow/SKILL.md) skill** — the deep reference for the routing classifier (token costs per tool, presets, fallback chains).
@@ -150,7 +150,7 @@ Each stage has a verify step, so you can stop at any point and know the layer be
 | 2 | Primary search source | Stand up SearXNG (bundled compose file under [`companions/searxng/`](companions/searxng/)) | `curl http://localhost:8888/healthz` returns 200 | 5 min | [setup-companions.md](docs/guides/setup-companions.md) |
 | 3 | LLM endpoint | Start a local model (vLLM / SGLang / llama.cpp) **or** point env vars at a hosted endpoint such as OpenRouter | `curl $RESEARCH_LLM_API_BASE/models` returns a model list | 5–30 min | [setup-local-inference.md](docs/guides/setup-local-inference.md) |
 | 4 | Wire gigaxity into Claude Code | `cp .env.example .env`, edit env vars, register the stdio MCP block in `~/.claude.json`, restart Claude Code | `/mcp` shows `gigaxity-deep-research` with a green dot; `mcp__gigaxity-deep-research__research` returns a synthesis with citations | 5 min | [setup-mcp.md](docs/guides/setup-mcp.md) |
-| 5 | Companion MCPs (Triple Stack) | Register Ref, Exa, Exa Answer, Jina, Brightdata fallback, and gptr-mcp in `~/.claude.json` | `/mcp` shows all seven MCPs registered with green dots | 10–15 min | [triple-stack-setup.md](docs/guides/triple-stack-setup.md) |
+| 5 | Companion MCPs (Triple Stack) | Register Context7, Exa, Exa Answer, Jina, Brightdata fallback, and gptr-mcp in `~/.claude.json` | `/mcp` shows all seven MCPs registered with green dots | 10–15 min | [triple-stack-setup.md](docs/guides/triple-stack-setup.md) |
 | 6 | Routing skill + agent instructions | Symlink [`skills/research-workflow/`](skills/research-workflow/) into your skills dir; paste the instruction block from [`CLAUDE.md`](CLAUDE.md#instruction-block--paste-into-your-harnesss-global-claudemd--agentsmd-or-system-prompt) into your harness's global `CLAUDE.md` / `AGENTS.md` (or a standalone agent's system prompt) | A research query triggers the `research-workflow` skill instead of the agent's built-in WebSearch | 3 min | [skill SKILL.md](skills/research-workflow/SKILL.md) |
 | 7 | Full-stack smoke | Run one query of each routing class and confirm the right MCP fires | See the smoke matrix below | 5 min | (below) |
 
@@ -161,7 +161,7 @@ Run each query in Claude Code (or the agent of your choice) after Stage 7 and co
 | Query | Should route to | What you should see |
 |---|---|---|
 | "What's the latest stable version of Bun?" | `exa-answer` | 1–2 s factual answer with citations |
-| "What does the OpenAI Python SDK's `client.beta` namespace cover?" | `Ref` (`ref_search_documentation`) | Library/API documentation chunks |
+| "What does the OpenAI Python SDK's `client.beta` namespace cover?" | `context7` (`resolve-library-id` → `query-docs`) | Library/API documentation chunks |
 | "Show me a code example using `httpx.AsyncClient` with retries" | `exa` (`get_code_context_exa`) | Curated code-context snippets |
 | "Find recent papers on CRAG quality gates" | `jina` (`search_arxiv`) | arXiv search hits |
 | "Compare FastAPI vs Litestar for production APIs in 2026" | `gigaxity-deep-research` (`synthesize`) | Citation-backed comparative synthesis |
@@ -230,7 +230,7 @@ Gigaxity Deep Research is the synthesis MCP in a seven-MCP deep research stack �
 
 | MCP | Role |
 |---|---|
-| **Ref** | Library and API documentation lookup |
+| **Context7** | Library and API documentation lookup |
 | **Exa** | Code-context search, advanced web search, crawling |
 | **Exa Answer** | Speed-critical factual lookups (1–2 s) |
 | **Jina** | Free-tier web/arxiv/ssrn search, parallel reads, screenshots |

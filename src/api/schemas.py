@@ -219,9 +219,9 @@ class DiscoverResponse(BaseModel):
 
 
 class PreGatheredSourceSchema(BaseModel):
-    """A source pre-fetched by Ref/Exa/Jina."""
+    """A source pre-fetched by Context7/Exa/Jina."""
 
-    origin: str = Field(..., description="ref, exa, jina, or custom")
+    origin: str = Field(..., description="context7, exa, jina, or custom")
     url: str
     title: str
     content: str = Field(..., description="Full content already fetched")
@@ -238,7 +238,7 @@ class SynthesizeRequest(BaseModel):
     query: str = Field(..., description="Original research query")
     sources: list[PreGatheredSourceSchema] = Field(
         ...,
-        description="Pre-gathered sources from Ref/Exa/Jina"
+        description="Pre-gathered sources from Context7/Exa/Jina"
     )
     style: Literal[
         "comprehensive", "concise", "comparative", "tutorial", "academic"
@@ -495,7 +495,7 @@ class SynthesizeRequestEnhanced(BaseModel):
     query: str = Field(..., description="Original research query")
     sources: list[PreGatheredSourceSchema] = Field(
         ...,
-        description="Pre-gathered sources from Ref/Exa/Jina"
+        description="Pre-gathered sources from Context7/Exa/Jina"
     )
     style: Literal[
         "comprehensive", "concise", "comparative", "tutorial", "academic"
@@ -623,7 +623,7 @@ class SynthesizeRequestP1(BaseModel):
     query: str = Field(..., description="Original research query")
     sources: list[PreGatheredSourceSchema] = Field(
         ...,
-        description="Pre-gathered sources from Ref/Exa/Jina"
+        description="Pre-gathered sources from Context7/Exa/Jina"
     )
     # P1: Preset-driven configuration
     preset: Literal[

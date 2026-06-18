@@ -1,6 +1,6 @@
 # Free-tier strategy for the deep research MCP stack
 
-Each of the search MCPs in the stack — Jina, Exa, and Ref — exposes a free or trial tier with specific usage limits. This guide documents what each tier covers, where the boundaries are, and how the bundled `research-workflow` routing avoids unnecessary spend by sending each query to the cheapest tool that can answer it.
+Each of the search MCPs in the stack — Jina, Exa, and Context7 — exposes a free or trial tier with specific usage limits. This guide documents what each tier covers, where the boundaries are, and how the bundled `research-workflow` routing avoids unnecessary spend by sending each query to the cheapest tool that can answer it.
 
 It also covers OpenRouter's pay-as-you-go pricing for Qwen3-30B-A3B-Thinking and the local-inference fallback for users who want to run the synthesis model on their own hardware.
 
@@ -33,13 +33,13 @@ The companion `exa-answer` wrapper bundled in `companions/exa-answer/` exposes a
 
 The `research-workflow` skill routes only category-filtered or code-context queries to Exa — broader queries go to Jina (free reader) first. That keeps Exa credits available for the queries Jina can't answer well.
 
-## Ref — free credits, then low per-call cost
+## Context7 — free tier for library docs
 
-[Ref](https://ref.tools) is the cheapest source for canonical library and API documentation. New accounts get a starter credit allowance; after that, paid plans start around $9–$15/month depending on tier (current pricing is on the Ref site). Per-call cost works out to roughly $0.0045 on the lower-tier plans — typically cheaper per documentation lookup than burning Exa credits or Jina tokens on lower-quality docs sources, and it returns canonical library docs that the cheaper sources don't always surface cleanly.
+[Context7](https://context7.com) is the documentation-lookup MCP for canonical library and API docs. It's a two-step tool — `resolve-library-id` maps a library name to a Context7 ID, then `query-docs` returns up-to-date, version-aware docs. The free tier covers regular documentation lookups; paid plans raise the limits (current pricing is on the Context7 site). It returns canonical library docs that broader web search doesn't always surface cleanly.
 
-The recommended setup includes Ref. If you genuinely want a strict $0/month setup once Ref's free credits run out, the fallback chain routes documentation queries to `mcp__exa__get_code_context_exa` (Exa trial) or `mcp__jina__search_web` (Jina free tier); quality drops on edge cases but the synthesis still works.
+The recommended setup includes Context7. If Context7 isn't installed (or its free tier is exhausted), the fallback chain routes documentation queries to `mcp__exa__get_code_context_exa` (Exa trial) or `mcp__jina__search_web` (Jina free tier); quality drops on edge cases but the synthesis still works.
 
-**Alternative MCP for the same role:** [Context7](https://context7.com) ships an MCP that covers the same library/API documentation niche and exposes its own free tier. The bundled `research-workflow` skill is currently wired to Ref's tool names — swapping in Context7 needs a small skill edit (and a corresponding edit to `CLAUDE.md`) to point at Context7's tool names instead. Not implemented in this repo today; pick whichever you have a key for.
+**Swapping the docs MCP:** the skill is wired to Context7's `resolve-library-id` → `query-docs` tool names. To use a different docs MCP (e.g. [Ref](https://ref.tools)), edit the routing references in `skills/research-workflow/SKILL.md` and `CLAUDE.md`.
 
 ## Brightdata Web Unlocker — monthly free-tier limit, then paid
 
@@ -68,7 +68,7 @@ See [`docs/guides/setup-local-inference.md`](setup-local-inference.md) for the b
 The `research-workflow` skill encodes the routing logic that keeps each tool used for what it's actually good at:
 
 - **Quick factual lookups (single answer, speed-critical)** → `mcp__exa-answer__exa_answer` (1–2 s, citation-backed)
-- **Library / API documentation** → `mcp__Ref__ref_search_documentation` first; fall back to `mcp__exa__get_code_context_exa` if Ref isn't installed
+- **Library / API documentation** → `mcp__context7__resolve-library-id` → `mcp__context7__query-docs` first; fall back to `mcp__exa__get_code_context_exa` if Context7 isn't installed
 - **Code examples / patterns** → `mcp__exa__get_code_context_exa` (curated code index)
 - **General web search** → `mcp__jina__search_web` (~63 tokens) before any paid alternative
 - **Multi-query parallel web** → `mcp__jina__parallel_search_web` (~107 tokens for 3 queries — better unit economics than three sequential calls)
@@ -85,7 +85,7 @@ Sanitized JSON configs for all seven MCPs in the stack are in [`docs/reference/m
 - OpenRouter: [openrouter.ai/keys](https://openrouter.ai/keys)
 - Jina: [jina.ai](https://jina.ai)
 - Exa (one key for both `exa` and `exa-answer`): [exa.ai](https://exa.ai)
-- Ref: [ref.tools](https://ref.tools)
+- Context7: [context7.com](https://context7.com)
 - Brightdata Web Unlocker (optional, blocked-URL fallback): [brightdata.com](https://brightdata.com)
 - Tavily (optional, free additional parallel connector for the built-in aggregator): [tavily.com](https://tavily.com)
 

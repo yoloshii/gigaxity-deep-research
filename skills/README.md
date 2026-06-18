@@ -4,7 +4,7 @@ This directory ships skills that pair with the Gigaxity Deep Research MCP server
 
 ## research-workflow
 
-Routes a query across the seven-MCP deep research stack (`Ref` + `exa` + `jina` — the **Triple Stack** — plus `exa-answer` + `gigaxity-deep-research` + `brightdata_fallback` + `gptr-mcp`). Classifies the query into one of five workflows — `QUICK FACTUAL`, `DIRECT`, `EXPLORATORY`, `SYNTHESIS`, `SOCIAL-FIRST` — and chains the appropriate tools.
+Routes a query across the seven-MCP deep research stack (`context7` + `exa` + `jina` — the **Triple Stack** — plus `exa-answer` + `gigaxity-deep-research` + `brightdata_fallback` + `gptr-mcp`). Classifies the query into one of five workflows — `QUICK FACTUAL`, `DIRECT`, `EXPLORATORY`, `SYNTHESIS`, `SOCIAL-FIRST` — and chains the appropriate tools.
 
 ### Install for Claude Code (per-user)
 

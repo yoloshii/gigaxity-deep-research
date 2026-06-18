@@ -1,5 +1,19 @@
 # Release notes
 
+## v0.4.0 (2026-06-19)
+
+Replaces Ref with [Context7](https://context7.com) as the Triple Stack's documentation-lookup MCP. The bundled `research-workflow` skill, the pasteable agent-instruction block in `CLAUDE.md` / `AGENTS.md`, and every setup and reference doc now route library and API documentation queries to Context7. The Triple Stack keeps its name and three-tool shape — it is now Context7 + Exa + Jina. No change to this server's API, configuration, or synthesis pipeline; the only source edits are docstrings, and the unit suite shows no new failures against the existing baseline.
+
+### Context7 as the documentation tool
+
+Context7 is a two-step lookup: `resolve-library-id` maps a library name to a Context7 ID, then `query-docs` returns up-to-date, version-aware documentation. Every routing reference that previously called `ref_search_documentation` now resolves the library and queries its docs. The companion registration changes from Ref's hosted HTTP endpoint to Context7's stdio form (`npx @upstash/context7-mcp`); the updated block is in `docs/reference/mcp-configs.md` and `docs/guides/triple-stack-setup.md`.
+
+### Ref's URL-reading role is retired, not reassigned
+
+Ref also exposed `ref_read_url` for fetching a documentation URL as markdown. Context7 looks up docs by library name, not by reading an arbitrary URL, so it cannot fill that slot — and rather than substitute a weaker tool, the URL-reading fallback chains drop the step. Documentation URLs now read through Jina's free reader (then Brightdata), like any other URL.
+
+Ref stays a drop-in alternative if you prefer it: the docs note that switching the documentation MCP back is a matter of editing the routing references in `skills/research-workflow/SKILL.md` and `CLAUDE.md`.
+
 ## v0.3.9 (2026-06-06)
 
 Fixes a residual of the v0.3.8 entity-coverage false-positive: descriptive query vocabulary was still over-extracted as groundable entities, so a correct, well-cited synthesis whose query carried an evaluative adjective ("Optimal hosting...") or an acronym-prefixed compound ("AI-served sites") could still hard-fail the coverage check. Extraction-only change — no API, configuration, or pipeline-contract change, and the post-synthesis verdict logic is untouched. Cleared by codex GPT-5.5 high adversarial review (session `019e721b`) across design, implementation, and port turns with verbatim "Zero remaining findings — ship as is."; the entity-extraction precision suite passes and this change introduces no new unit-test failures on either `main` or `local-inference` (the full-suite baseline is unchanged).

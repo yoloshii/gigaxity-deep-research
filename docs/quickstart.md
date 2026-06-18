@@ -80,7 +80,7 @@ ln -s "$(pwd)/skills/research-workflow" ~/.claude/skills/research-workflow
 
 ## What's next
 
-- [Triple Stack setup](guides/triple-stack-setup.md) — wire up the other six companion MCPs (Ref, Exa, Exa Answer, Jina, Brightdata fallback, gptr-mcp)
+- [Triple Stack setup](guides/triple-stack-setup.md) — wire up the other six companion MCPs (Context7, Exa, Exa Answer, Jina, Brightdata fallback, gptr-mcp)
 - [Free-tier strategy](guides/free-tier-strategy.md) — configuring the search MCPs against each provider's free tier
 - [Configuration reference](reference/configuration.md) — every `RESEARCH_*` env var explained
 - [Troubleshooting](troubleshooting.md) — common boot and runtime errors

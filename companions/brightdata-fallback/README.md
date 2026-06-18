@@ -57,8 +57,7 @@ The `research-workflow` skill bundled at [`../../skills/research-workflow/SKILL.
 
 ```
 1. Jina read_url (free reader tier, 0 tokens)
-2. Ref ref_read_url (for documentation URLs)
-3. Brightdata scrape_as_markdown (when 1 and 2 fail with empty/CAPTCHA/paywall/403)
+2. Brightdata scrape_as_markdown (when 1 fails with empty/CAPTCHA/paywall/403)
 ```
 
 Costs apply only when the chain reaches step 3 — Brightdata bills per Web Unlocker request. The agent only reaches this step on URLs the cheaper tools couldn't crack.

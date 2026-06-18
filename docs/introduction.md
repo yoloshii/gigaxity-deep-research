@@ -28,11 +28,11 @@ The same pipeline serves both MCP and REST surfaces. The MCP surface is what Cla
 
 ## Where does it fit?
 
-This server is one of seven MCPs in the **deep research stack** — a configuration that turns Claude Code into a deep-research-first environment. The middle three (`Ref` + `exa` + `jina`) form the **Triple Stack** — the search/docs/code trio that does most of the heavy retrieval.
+This server is one of seven MCPs in the **deep research stack** — a configuration that turns Claude Code into a deep-research-first environment. The middle three (`context7` + `exa` + `jina`) form the **Triple Stack** — the search/docs/code trio that does most of the heavy retrieval.
 
 | MCP | Role | Relationship to this server |
 |---|---|---|
-| `Ref` | Library and API documentation (Triple Stack) | Used before this server when the answer is in official docs |
+| `context7` | Library and API documentation (Triple Stack) | Used before this server when the answer is in official docs |
 | `exa` | Code-context search, advanced web (Triple Stack) | Used in parallel with this server's discovery layer for cross-validation |
 | `jina` | Free-tier web/arxiv/ssrn search (Triple Stack) | Provides the URL-reading layer that feeds this server's `synthesize` |
 | `exa-answer` | Speed-critical 1–2 s factual lookups | Substitutes for `ask` when latency is the only thing that matters |

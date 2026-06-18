@@ -664,7 +664,7 @@ async def synthesize(
     Pure synthesis of pre-gathered content.
 
     Optimized for the SYNTHESIS workflow:
-    - Takes content already fetched by Ref/Exa/Jina
+    - Takes content already fetched by Context7/Exa/Jina
     - Weaves into coherent narrative with attribution
     - NO additional searching - pure aggregation
 
