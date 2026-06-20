@@ -178,8 +178,9 @@ The full deep-research workflow uses seven MCPs. The middle three (`context7` + 
   "env": {
     "OPENAI_API_KEY": "YOUR_OPENAI_API_KEY",
     "TAVILY_API_KEY": "YOUR_TAVILY_API_KEY",
-    "RETRIEVER": "social_openai,tavily",
-    "SOCIAL_OPENAI_DOMAINS": "reddit.com,x.com,youtube.com",
+    "TWITTERAPI_IO_KEY": "YOUR_TWITTERAPI_IO_KEY",
+    "RETRIEVER": "social_openai,twitterapi,tavily",
+    "SOCIAL_OPENAI_DOMAINS": "reddit.com,youtube.com",
     "SOCIAL_OPENAI_MODEL": "gpt-4o",
     "FAST_LLM": "openai:gpt-4o-mini",
     "SMART_LLM": "openai:gpt-4o",
@@ -188,6 +189,8 @@ The full deep-research workflow uses seven MCPs. The middle three (`context7` + 
 }
 ```
 
+> The `social_openai` + `twitterapi` retrievers above are a **first-party opt-in add-on**, not part of a vanilla GPT Researcher install. Enable them once via [`companions/gptr-mcp/CUSTOM_RETRIEVERS.md`](companions/gptr-mcp/CUSTOM_RETRIEVERS.md). Until you do, use `"RETRIEVER": "tavily"` — otherwise GPT Researcher silently falls back to Tavily for the unknown names (no error, no social results). No paid X key? Drop `twitterapi` and set `SOCIAL_OPENAI_DOMAINS` to `reddit.com,x.com,youtube.com`. `social_openai`'s Reddit results come from the third-party [Arctic Shift](https://github.com/ArthurHeitmann/arctic_shift) archive (off-IP, not reddit.com) — comment text is near-real-time but engagement scores lag ~36h, so don't treat Reddit scores as current.
+
 Sign-up links:
 - Context7: https://context7.com
 - Exa (one key for both `exa` and `exa-answer`): https://exa.ai
@@ -195,6 +198,7 @@ Sign-up links:
 - Brightdata Web Unlocker (paid; optional): https://brightdata.com
 - OpenAI (for gptr-mcp): https://platform.openai.com/api-keys
 - Tavily (for gptr-mcp fallback retriever): https://tavily.com
+- TwitterAPI.io (for gptr-mcp's `twitterapi` retriever; paid, opt-in): https://twitterapi.io
 
 `gigaxity-deep-research` on this branch uses a self-hosted OpenAI-compatible endpoint (vLLM, SGLang, or llama.cpp). No external sign-up needed for the LLM unless you point `RESEARCH_LLM_API_BASE` at a hosted service (e.g. OpenRouter).
 

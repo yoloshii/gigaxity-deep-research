@@ -120,8 +120,9 @@ Bundled in this repo with an install script that clones upstream — see [`../..
   "env": {
     "OPENAI_API_KEY": "your-openai-api-key-placeholder",
     "TAVILY_API_KEY": "your-tavily-api-key-placeholder",
-    "RETRIEVER": "social_openai,tavily",
-    "SOCIAL_OPENAI_DOMAINS": "reddit.com,x.com,youtube.com",
+    "TWITTERAPI_IO_KEY": "your-twitterapi-io-key-placeholder",
+    "RETRIEVER": "social_openai,twitterapi,tavily",
+    "SOCIAL_OPENAI_DOMAINS": "reddit.com,youtube.com",
     "SOCIAL_OPENAI_MODEL": "gpt-4o",
     "FAST_LLM": "openai:gpt-4o-mini",
     "SMART_LLM": "openai:gpt-4o",
@@ -129,6 +130,8 @@ Bundled in this repo with an install script that clones upstream — see [`../..
   }
 }
 ```
+
+> **`social_openai` + `twitterapi` are opt-in** — not in a vanilla GPT Researcher install. Enable them once via [`companions/gptr-mcp/CUSTOM_RETRIEVERS.md`](../../companions/gptr-mcp/CUSTOM_RETRIEVERS.md); until then use `"RETRIEVER": "tavily"` (otherwise GPT Researcher silently falls back to Tavily — no error, no social results). No paid X key? Drop `twitterapi` and set `SOCIAL_OPENAI_DOMAINS=reddit.com,x.com,youtube.com`.
 
 What it does: surfaces real-world opinions, troubleshooting threads, and community sentiment from Reddit, X/Twitter, and YouTube — content that web search and documentation lookup miss. Routed automatically by the `research-workflow` skill when a query benefits from lived-experience knowledge.
 

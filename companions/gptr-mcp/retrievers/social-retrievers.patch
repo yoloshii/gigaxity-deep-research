@@ -1,0 +1,65 @@
+diff --git a/gpt_researcher/actions/retriever.py b/gpt_researcher/actions/retriever.py
+index e8d15011..300bf372 100644
+--- a/gpt_researcher/actions/retriever.py
++++ b/gpt_researcher/actions/retriever.py
+@@ -31,6 +31,8 @@ def get_retriever(retriever: str):
+         - custom: Custom user-defined retriever
+         - mcp: Model Context Protocol retriever
+         - xquik: Xquik X/Twitter search
++        - twitterapi: TwitterAPI.io X/Twitter native advanced_search
++        - social_openai: OpenAI web_search over social domains (off-IP reddit comments)
+     """
+     match retriever:
+         case "google":
+@@ -102,6 +104,16 @@ def get_retriever(retriever: str):
+ 
+             return OpenAlexSearch
+ 
++        case "social_openai":
++            from gpt_researcher.retrievers import SocialOpenAIRetriever
++
++            return SocialOpenAIRetriever
++
++        case "twitterapi":
++            from gpt_researcher.retrievers import TwitterAPISearch
++
++            return TwitterAPISearch
++
+         case _:
+             return None
+ 
+diff --git a/gpt_researcher/retrievers/__init__.py b/gpt_researcher/retrievers/__init__.py
+index fa50beb6..afb88546 100644
+--- a/gpt_researcher/retrievers/__init__.py
++++ b/gpt_researcher/retrievers/__init__.py
+@@ -15,6 +15,8 @@ from .mcp import MCPRetriever
+ from .bocha.bocha import BoChaSearch
+ from .xquik.xquik import XquikSearch
+ from .openalex.openalex import OpenAlexSearch
++from .social_openai.social_openai import SocialOpenAIRetriever
++from .twitterapi.twitterapi import TwitterAPISearch
+ 
+ __all__ = [
+     "TavilySearch",
+@@ -33,5 +35,7 @@ __all__ = [
+     "MCPRetriever",
+     "BoChaSearch",
+     "XquikSearch",
+-    "OpenAlexSearch"
++    "OpenAlexSearch",
++    "SocialOpenAIRetriever",
++    "TwitterAPISearch"
+ ]
+diff --git a/gpt_researcher/retrievers/utils.py b/gpt_researcher/retrievers/utils.py
+index 37e75fe8..8924345e 100644
+--- a/gpt_researcher/retrievers/utils.py
++++ b/gpt_researcher/retrievers/utils.py
+@@ -76,6 +76,8 @@ VALID_RETRIEVERS = [
+     "mcp",
+     "xquik",
+     "openalex",
++    "social_openai",
++    "twitterapi",
+     "mock"
+ ]
+ 

@@ -150,8 +150,8 @@ What `install.sh` does:
 Pin a specific upstream commit/tag with `GPTR_MCP_REF=<ref> ./install.sh`. Default is `main`.
 
 Get API keys:
-- OpenAI key — required for the underlying LLM and the `social_openai` retriever (https://platform.openai.com/api-keys)
-- Tavily key — required for the fallback web retriever (https://tavily.com)
+- OpenAI key — required for the underlying LLM, and for the `social_openai` retriever if you enable it (https://platform.openai.com/api-keys)
+- Tavily key — required for the default web retriever (https://tavily.com)
 
 Configure:
 
@@ -172,9 +172,7 @@ Register with Claude Code in `~/.claude.json`:
   "env": {
     "OPENAI_API_KEY": "your-openai-api-key-placeholder",
     "TAVILY_API_KEY": "your-tavily-api-key-placeholder",
-    "RETRIEVER": "social_openai,tavily",
-    "SOCIAL_OPENAI_DOMAINS": "reddit.com,x.com,youtube.com",
-    "SOCIAL_OPENAI_MODEL": "gpt-4o",
+    "RETRIEVER": "tavily",
     "FAST_LLM": "openai:gpt-4o-mini",
     "SMART_LLM": "openai:gpt-4o",
     "STRATEGIC_LLM": "openai:gpt-4o-mini"
@@ -184,7 +182,11 @@ Register with Claude Code in `~/.claude.json`:
 
 After Claude Code restart, four tools become callable: `mcp__gptr-mcp__quick_search`, `mcp__gptr-mcp__deep_research`, `mcp__gptr-mcp__get_research_context`, `mcp__gptr-mcp__get_research_sources`.
 
-LinkedIn isn't in `SOCIAL_OPENAI_DOMAINS` — gptr-mcp's social retriever doesn't handle LinkedIn well. For LinkedIn-specific queries, use Jina with `site:linkedin.com`.
+### Enable the social-first retrievers (opt-in)
+
+The config above runs the stock `tavily` retriever. The `social_openai` (Reddit + YouTube) and `twitterapi` (native X/Twitter) retrievers are a first-party add-on shipped in this repo — they are **not** part of a vanilla GPT Researcher install. Enable them once per **[`companions/gptr-mcp/CUSTOM_RETRIEVERS.md`](../../companions/gptr-mcp/CUSTOM_RETRIEVERS.md)** (clone the library at `v3.5.0`, drop in the two packages, apply a 3-file registry patch, install editable into the venv). Then set in the `env` block: `RETRIEVER=social_openai,twitterapi,tavily`, `SOCIAL_OPENAI_DOMAINS=reddit.com,youtube.com`, `SOCIAL_OPENAI_MODEL=gpt-4o`, plus `TWITTERAPI_IO_KEY` (paid — omit `twitterapi` from `RETRIEVER` if you don't have one).
+
+⚠️ Pointing `RETRIEVER` at `social_openai`/`twitterapi` **before** enabling them makes GPT Researcher silently fall back to Tavily — no error, no social results. Run the verify step in CUSTOM_RETRIEVERS.md. LinkedIn isn't covered by `social_openai`; for LinkedIn-specific queries use Jina with `site:linkedin.com`.
 
 If you skip gptr-mcp, the routing skill falls back to Jina with `site:reddit.com` etc. — workable but with less social-aware ranking.
 

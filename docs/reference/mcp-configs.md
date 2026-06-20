@@ -168,8 +168,9 @@ Bundled in this repo at [`companions/gptr-mcp/`](../../companions/gptr-mcp/). In
   "env": {
     "OPENAI_API_KEY": "YOUR_OPENAI_API_KEY_PLACEHOLDER",
     "TAVILY_API_KEY": "YOUR_TAVILY_API_KEY_PLACEHOLDER",
-    "RETRIEVER": "social_openai,tavily",
-    "SOCIAL_OPENAI_DOMAINS": "reddit.com,x.com,youtube.com",
+    "TWITTERAPI_IO_KEY": "YOUR_TWITTERAPI_IO_KEY_PLACEHOLDER",
+    "RETRIEVER": "social_openai,twitterapi,tavily",
+    "SOCIAL_OPENAI_DOMAINS": "reddit.com,youtube.com",
     "SOCIAL_OPENAI_MODEL": "gpt-4o",
     "FAST_LLM": "openai:gpt-4o-mini",
     "SMART_LLM": "openai:gpt-4o",
@@ -177,6 +178,8 @@ Bundled in this repo at [`companions/gptr-mcp/`](../../companions/gptr-mcp/). In
   }
 }
 ```
+
+> **`social_openai` + `twitterapi` are opt-in** — not in a vanilla GPT Researcher install. Enable once via [`companions/gptr-mcp/CUSTOM_RETRIEVERS.md`](../../companions/gptr-mcp/CUSTOM_RETRIEVERS.md); until then use `"RETRIEVER": "tavily"` (else GPT Researcher silently falls back to Tavily — no error, no social results). No paid X key? Drop `twitterapi` and set `SOCIAL_OPENAI_DOMAINS=reddit.com,x.com,youtube.com`.
 
 **Tools exposed:** `quick_search`, `deep_research`, `get_research_context`, `get_research_sources`.
 
@@ -195,6 +198,7 @@ Bundled in this repo at [`companions/gptr-mcp/`](../../companions/gptr-mcp/). In
 | Brightdata Web Unlocker | [brightdata.com](https://brightdata.com) | Monthly free-tier limit, then paid; only fires on ~5–15% of URL fetches |
 | OpenAI (for `gptr-mcp`) | https://platform.openai.com/api-keys | Pay-per-call |
 | Tavily (free tier — for `gptr-mcp` fallback) | https://tavily.com | Free tier |
+| TwitterAPI.io (for `gptr-mcp`'s opt-in `twitterapi` retriever) | https://twitterapi.io | Paid; opt-in — see [CUSTOM_RETRIEVERS.md](../../companions/gptr-mcp/CUSTOM_RETRIEVERS.md) |
 
 **Recommendation: register all seven.** The routing skill is designed around the full stack — each MCP fills a niche the others don't cover well, and most operations land on Jina's free reader, Exa's free trial credits, Context7's free tier, or Brightdata's monthly free-tier allowance. On this branch the synthesis stage runs on your own hardware (no per-call LLM charges), so the steady-state cost is dominated by whichever search tiers you exceed (Exa trial credits or Brightdata's allowance) once the free tiers run out. To run synthesis against OpenRouter instead, point `RESEARCH_LLM_API_BASE` at it (or check out the `main` branch which is wired for OpenRouter by default).
 
