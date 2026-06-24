@@ -1,5 +1,9 @@
 # Release notes
 
+## v0.4.1 (2026-06-24)
+
+Fixes a live `TypeError` on the `reason` MCP tool and the `/reason` REST route. The synthesis wrapper passed a `style` argument that `SynthesisAggregator.synthesize_with_reasoning` did not accept, so any sources-bearing reasoning call (every REST `/reason`, and `reason` in sources-aware mode) raised `synthesize_with_reasoning() got an unexpected keyword argument 'style'`. The signature now accepts `style` (default `comprehensive`) and threads it to the returned `style_used`; the fixed chain-of-thought prompt is unchanged, so `style` only labels the response. The whole suite had masked the crash by mocking the method — a non-mocked regression test now exercises the real signature. No configuration or pipeline-contract change. Cleared by codex GPT-5.5 high adversarial review (session `019ef81c`); the suite passes with no new failures on the existing baseline.
+
 ## v0.4.0 (2026-06-19)
 
 Replaces Ref with [Context7](https://context7.com) as the Triple Stack's documentation-lookup MCP. The bundled `research-workflow` skill, the pasteable agent-instruction block in `CLAUDE.md` / `AGENTS.md`, and every setup and reference doc now route library and API documentation queries to Context7. The Triple Stack keeps its name and three-tool shape — it is now Context7 + Exa + Jina. No change to this server's API, configuration, or synthesis pipeline; the only source edits are docstrings, and the unit suite shows no new failures against the existing baseline.

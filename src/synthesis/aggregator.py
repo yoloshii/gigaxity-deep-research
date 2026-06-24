@@ -312,6 +312,7 @@ class SynthesisAggregator:
         self,
         query: str,
         sources: list[PreGatheredSource],
+        style: SynthesisStyle = SynthesisStyle.COMPREHENSIVE,
         max_tokens: int = 4000,
         guidance: Optional[list[str]] = None,
         contradiction_notes: Optional[str] = None,
@@ -320,10 +321,10 @@ class SynthesisAggregator:
         Synthesize with explicit reasoning.
 
         Uses chain-of-thought to show reasoning process before the final
-        answer. Unlike `synthesize`, this method does not accept a style —
-        the chain-of-thought prompt is fixed because the reasoning shape is
-        what matters here, not the prose register. If you need style
-        variants, call `synthesize` directly. `max_tokens` is the
+        answer. The chain-of-thought prompt is fixed regardless of `style` —
+        the reasoning shape is what matters here, not the prose register — so
+        `style` only labels the returned `style_used` (for response parity with
+        `synthesize`); it does not change the prompt. `max_tokens` is the
         answer-budget base; the model-aware effective budget is derived from it.
         """
         # Budget source content against the model's context window.
@@ -361,7 +362,7 @@ class SynthesisAggregator:
                 citations=[],
                 source_attribution={},
                 confidence=0.0,
-                style_used=SynthesisStyle.COMPREHENSIVE,
+                style_used=style,
                 word_count=0,
                 llm_output=output,
             )
@@ -390,10 +391,9 @@ class SynthesisAggregator:
             citations=citations,
             source_attribution=attribution,
             confidence=self._estimate_confidence(sources, citations),
-            # `reason` does not select a style; the field is preserved on the
-            # response shape for parity with `synthesize`, set to the chain-of-
-            # thought default.
-            style_used=SynthesisStyle.COMPREHENSIVE,
+            # `style` does not change the fixed chain-of-thought prompt; it is
+            # preserved on the response shape for parity with `synthesize`.
+            style_used=style,
             word_count=len(content.split()),
             llm_output=result_output,
         )

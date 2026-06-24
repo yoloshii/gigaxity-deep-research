@@ -242,3 +242,27 @@ class TestAggregatorExtractsAnswer:
         result = await agg.synthesize_with_reasoning(query="q", sources=[_src(1)])
         assert "Corrections Made" not in result.content
         assert result.content == "The answer body [1]."
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_reasoning_synthesize_accepts_style_and_labels_it(self, monkeypatch):
+        """Regression (P0): `synthesize_with_reasoning` must accept `style` and
+        echo it as `style_used`. The wrapper (wrappers.py) passes `style=`, so a
+        missing parameter is a live TypeError on the `reason` MCP tool and the
+        `/reason` REST route. This calls the real method (only the LLM call is
+        stubbed), so it fails against the pre-fix signature."""
+        wrapped = "<synthesis>\nThe answer body [1].\n</synthesis>"
+
+        async def _fake_call(*args, **kwargs):
+            return LLMOutput(
+                text=wrapped, source_field="content", finish_reason="stop",
+                truncated=False, reasoning_only=False,
+            )
+
+        monkeypatch.setattr("src.synthesis.aggregator.call_with_extraction", _fake_call)
+        agg = SynthesisAggregator(llm_client=object(), model="test-model")
+        result = await agg.synthesize_with_reasoning(
+            query="q", sources=[_src(1)], style=SynthesisStyle.ACADEMIC,
+        )
+        assert result.style_used == SynthesisStyle.ACADEMIC
+        assert result.content == "The answer body [1]."
