@@ -338,14 +338,13 @@ def test_verifier_partial_uncovered_soft_warns_with_gap_framing():
     assert any("LinkUp" in w for w in verdict.soft_warnings)
 
 
-def test_verifier_gap_framing_must_cover_every_uncovered_entity():
-    """Partial gap framing does not grant a blanket escape: when only SOME
-    uncovered entities are framed, _output_acknowledges_gap denies the
-    framing-soft path and each remaining entity is judged on its own. Here
-    LinkUp is gap-framed (uncited) but Serper is un-framed AND carries an
-    in-sentence citation [2] -> Serper is a cited-uncovered fabrication ->
-    hard fail (ISS-20260604-001: the cited arm of the citation-adjacency split
-    preserves this guard)."""
+def test_verifier_gap_framing_per_entity_still_distinguishes_under_demotion():
+    """Per-entity gap framing still distinguishes each uncovered entity, but the
+    consequence is now the warning TEXT, not pass/fail (codex DESIGN 019e5b0f).
+    LinkUp is gap-framed (uncited) -> the 'frames the gap' soft note; Serper is
+    un-framed AND cited [2] -> the stronger 'treat as unverified' soft caveat. Both
+    soft; the synthesis ships. Framing does NOT grant Serper a blanket escape - it
+    lands in the cited caveat, not the framed one."""
     verdict = verify_synthesis_output(
         content=(
             "Tavily is documented [1]. We have no source available for LinkUp. "
@@ -357,18 +356,20 @@ def test_verifier_gap_framing_must_cover_every_uncovered_entity():
         query_entities=["Tavily", "LinkUp", "Serper"],
         sources_text="tavily docs only",
     )
-    assert not verdict.passed
-    assert any("Serper" in f for f in verdict.hard_failures)
+    assert verdict.passed
+    assert not verdict.hard_failures
+    assert any("Serper" in w and "UNVERIFIED" in w for w in verdict.soft_warnings)
+    assert not any("Serper" in w and "frames the gap" in w for w in verdict.soft_warnings)
 
 
-def test_verifier_framed_entity_with_citation_stays_soft_codex_t2():
-    """codex T2 regression: per-entity gap framing must run BEFORE the
-    citation-adjacency split. LinkUp is explicitly gap-framed AND its framing
-    sentence carries a citation [1]; Serper is un-framed and cited [2]. The
-    framed LinkUp must stay OUT of hard_failures (soft), while the un-framed
-    cited Serper hard-fails. Pre-fix, LinkUp was wrongly hard-failed on the
-    `[1]` in its own gap sentence (all-or-nothing framing fell through to the
-    citation partition)."""
+def test_verifier_framed_entity_with_citation_stays_framed_codex_t2():
+    """codex T2 regression, preserved under the demotion: per-entity gap framing
+    must run BEFORE the citation-adjacency split. LinkUp is explicitly gap-framed
+    AND its framing sentence carries a citation [1]; Serper is un-framed and cited
+    [2]. Framing-runs-first means LinkUp lands in the 'frames the gap' note, NOT the
+    cited 'unverified' caveat - even though its sentence carries [1]. Both are soft
+    now (entity-coverage no longer hard-fails), but the per-entity ORDERING still
+    routes LinkUp to the framed message and Serper to the cited one."""
     verdict = verify_synthesis_output(
         content=(
             "Tavily is documented [1]. We have no source available for "
@@ -380,10 +381,10 @@ def test_verifier_framed_entity_with_citation_stays_soft_codex_t2():
         query_entities=["Tavily", "LinkUp", "Serper"],
         sources_text="tavily docs only",
     )
-    assert not verdict.passed
-    assert any("Serper" in f for f in verdict.hard_failures)
-    assert not any("LinkUp" in f for f in verdict.hard_failures)
-    assert any("LinkUp" in w for w in verdict.soft_warnings)
+    assert verdict.passed
+    assert not verdict.hard_failures
+    assert any("LinkUp" in w and "frames the gap" in w for w in verdict.soft_warnings)
+    assert any("Serper" in w and "UNVERIFIED" in w for w in verdict.soft_warnings)
 
 
 # ---------- Turn 2 F3: apply_overrides preserves new fields ----------
@@ -699,7 +700,11 @@ def test_entity_centrality_boundary_real_match_still_works():
 
 
 def test_verifier_uses_boundary_matching():
-    """T3F1: 'Exa' in synthesis is NOT 'covered' by an 'example'-only source."""
+    """T3F1: 'Exa' in the synthesis is NOT 'covered' by an 'example'-only source.
+    The consequence is now a soft caveat (codex DESIGN 019e5b0f demoted
+    entity-coverage), but boundary matching is still what makes Exa count as
+    uncovered: a substring check would wrongly treat 'example' as covering 'Exa'
+    and emit no warning at all."""
     verdict = verify_synthesis_output(
         content="Exa is a vector search engine that I'm citing here [1].",
         llm_output=None,
@@ -708,10 +713,11 @@ def test_verifier_uses_boundary_matching():
         query_entities=["Exa"],
         sources_text="here is an example of how it works",
     )
-    # Substring-based check would say Exa is "covered" (because "example"
-    # contains "exa"). Boundary-safe check correctly flags as uncovered.
-    assert not verdict.passed
-    assert any("Exa" in f for f in verdict.hard_failures)
+    # Boundary-safe check flags Exa as uncovered -> a soft caveat (was hard).
+    # A substring check would say "covered" and emit nothing.
+    assert verdict.passed
+    assert not verdict.hard_failures
+    assert any("Exa" in w for w in verdict.soft_warnings)
 
 
 def test_verifier_gap_framing_uses_boundary_matching():

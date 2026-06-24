@@ -490,51 +490,58 @@ def test_item6_false_fail_eliminated_mr_smith_bun():
 
 # ---- Verifier integration: false-pass guards (Q18 risk regression) ----
 
-def test_item6_false_pass_guard_us_then_uncovered_npm():
-    """Codex Q6 false-pass case 1 (abbreviation-splitter guard), re-pinned for
-    ISS-20260604-001: the uncovered entity now carries an in-sentence citation
-    so the HARD path still exercises the splitter. Correct split -> `npm` is
-    un-framed and cited -> cited-uncovered hard fail. A wrong merge on `u.s.`
-    would leak the `no source` framing onto `npm` -> framing soft-warn -> this
-    assertion fails, catching the over-merge regression."""
+def test_item6_splitter_guard_us_then_uncovered_npm():
+    """Codex Q6 abbreviation-splitter guard, preserved under the entity-coverage
+    demotion (codex DESIGN 019e5b0f): the consequence is now the warning TEXT, not
+    pass/fail. Correct split -> `npm` is un-framed + cited -> the strong 'unverified'
+    cited caveat. A wrong merge on `u.s.` would leak the `no source` framing onto
+    `npm` -> the 'frames the gap' note instead -> the second assertion catches the
+    over-merge regression."""
     verdict = _verify_with_entities(
         content="no source covers u.s. market size. npm adoption is 80% [1].",
         entities=["npm"],
         # sources_text must NOT contain "npm" as a token; describe other tools.
         sources_text="generic documentation for cargo and yarn package managers",
     )
-    assert not verdict.passed, "Uncovered cited npm in second sentence must hard-fail"
-    assert any("npm" in f for f in verdict.hard_failures)
+    assert verdict.passed
+    assert any("npm" in w and "UNVERIFIED" in w for w in verdict.soft_warnings), \
+        "correct split: un-framed cited npm gets the unverified caveat"
+    assert not any("npm" in w and "frames the gap" in w for w in verdict.soft_warnings), \
+        "an over-merge on u.s. would wrongly frame npm"
 
 
-def test_item6_false_pass_guard_eg_then_uncovered_bun():
-    """Codex Q6 false-pass case 2 (e.g. splitter guard), re-pinned for
-    ISS-20260604-001: `bun` carries an in-sentence citation so the hard path
-    still exercises the splitter. Correct split -> bun un-framed + cited ->
-    hard fail; wrong merge on `e.g.` -> `no source` frames bun -> soft -> the
-    assertion fails, catching the over-merge."""
+def test_item6_splitter_guard_eg_then_uncovered_bun():
+    """Codex Q6 e.g.-splitter guard, preserved under the demotion (codex DESIGN
+    019e5b0f): consequence is warning TEXT, not pass/fail. Correct split -> bun
+    un-framed + cited -> 'unverified' caveat; a wrong merge on `e.g.` would frame bun
+    -> 'frames the gap' note -> the second assertion catches the over-merge."""
     verdict = _verify_with_entities(
         content="no source covers e.g. package managers. bun is faster [1].",
         entities=["bun"],
         sources_text="generic documentation for npm and pnpm and yarn",
     )
-    assert not verdict.passed, "Uncovered cited bun in second sentence must hard-fail"
-    assert any("bun" in f for f in verdict.hard_failures)
+    assert verdict.passed
+    assert any("bun" in w and "UNVERIFIED" in w for w in verdict.soft_warnings), \
+        "correct split: un-framed cited bun gets the unverified caveat"
+    assert not any("bun" in w and "frames the gap" in w for w in verdict.soft_warnings), \
+        "an over-merge on e.g. would wrongly frame bun"
 
 
-def test_item6_false_pass_guard_dr_then_uncovered_deno():
-    """Codex Q6 false-pass case 3 (honorific splitter guard), re-pinned for
-    ISS-20260604-001: `deno` carries an in-sentence citation so the hard path
-    still exercises the splitter. Correct split -> deno un-framed + cited ->
-    hard fail; wrong merge on `dr.` -> `no documentation` frames deno -> soft
-    -> the assertion fails, catching the over-merge."""
+def test_item6_splitter_guard_dr_then_uncovered_deno():
+    """Codex Q6 honorific-splitter guard, preserved under the demotion (codex DESIGN
+    019e5b0f): consequence is warning TEXT, not pass/fail. Correct split -> deno
+    un-framed + cited -> 'unverified' caveat; a wrong merge on `dr.` would frame deno
+    -> 'frames the gap' note -> the second assertion catches the over-merge."""
     verdict = _verify_with_entities(
         content="no documentation is available for dr. smith. deno supports permissions [1].",
         entities=["deno"],
         sources_text="generic documentation for node and bun runtimes",
     )
-    assert not verdict.passed, "Uncovered cited deno in second sentence must hard-fail"
-    assert any("deno" in f for f in verdict.hard_failures)
+    assert verdict.passed
+    assert any("deno" in w and "UNVERIFIED" in w for w in verdict.soft_warnings), \
+        "correct split: un-framed cited deno gets the unverified caveat"
+    assert not any("deno" in w and "frames the gap" in w for w in verdict.soft_warnings), \
+        "an over-merge on dr. would wrongly frame deno"
 
 
 # ---- Claim-extractor integration (verification.py:263) ----

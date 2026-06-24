@@ -360,15 +360,18 @@ def test_verifier_no_hardfail_on_generic_term_now_dropped():
     assert not verdict.hard_failures
 
 
-def test_verifier_still_hardfails_genuine_uncovered_entity():
-    # Target hallucination class preserved: a real product discussed in the
-    # synthesis but absent from every retained source still hard-fails.
+def test_verifier_softwarns_genuine_uncovered_entity():
+    # Entity-coverage is ADVISORY now (codex DESIGN 019e5b0f): a real product
+    # discussed + cited but absent from every retained source no longer hard-fails;
+    # it ships with a strong "treat as unverified" soft caveat the downstream LLM
+    # adjudicates. Structural gates stay hard; this is content grounding, not structure.
     entities = ["Nova-3"]
     content = "Nova-3 leads on diarization accuracy [1]."
     sources_text = "assemblyai and deepgram batch pricing per hour, no model names."
     verdict = _verify(content, entities, sources_text)
-    assert not verdict.passed
-    assert any("Nova-3" in f for f in verdict.hard_failures)
+    assert verdict.passed
+    assert not verdict.hard_failures
+    assert any("Nova-3" in w and "UNVERIFIED" in w for w in verdict.soft_warnings)
 
 
 def test_verifier_passes_when_entities_covered():
@@ -410,28 +413,32 @@ def test_coined_labels_uncited_uncovered_downgraded_to_soft():
     assert any("SufiSR" in w for w in verdict.soft_warnings)
 
 
-def test_cited_uncovered_entity_hardfails_fabricated_attribution():
-    # An uncovered entity carrying an IN-SENTENCE citation = the synthesis binds
-    # source evidence to an entity no source covers -> hard fail (preserves the
-    # ISS-20260514 "Prisma is SSPL [3]" catch).
+def test_cited_uncovered_entity_softwarns_was_fabricated_attribution():
+    # An uncovered entity carrying an IN-SENTENCE citation (the "Prisma is SSPL [3]"
+    # shape) is now a STRONG soft caveat, not a hard fail (codex DESIGN 019e5b0f): no
+    # discriminator catches a real fabrication without re-capturing the FP classes, so
+    # ship + flag "treat as unverified" and let the downstream LLM discount it.
     entities = ["SufiSR"]
     content = "SufiSR ships native multi-tenant isolation out of the box [1]."
     sources_text = "fastmcp wrapper patterns and mcp adapter tradeoffs."
     verdict = _verify(content, entities, sources_text)
-    assert not verdict.passed
-    assert any("SufiSR" in f for f in verdict.hard_failures)
+    assert verdict.passed
+    assert not verdict.hard_failures
+    assert any("SufiSR" in w and "UNVERIFIED" in w for w in verdict.soft_warnings)
 
 
-def test_mixed_sentence_cited_uncovered_still_hardfails():
-    # codex T1 F2: a joint cited claim "A and B both ... [1]" with B uncovered
-    # still hard-fails — the citation is NOT re-attributed to the covered
-    # co-entity. FastMCP covered, SufiSR uncovered, shared [1].
+def test_mixed_sentence_cited_uncovered_softwarns_not_reattributed():
+    # codex T1 F2 preserved under the demotion: a joint cited claim "A and B both
+    # ... [1]" with B uncovered keeps the STRONG cited caveat on B - the citation is
+    # NOT re-attributed to the covered co-entity. FastMCP covered, SufiSR uncovered,
+    # shared [1]. Soft now (not hard), but SufiSR still gets the unverified caveat.
     entities = ["FastMCP", "SufiSR"]
     content = "FastMCP and SufiSR both expose a streaming transport [1]."
     sources_text = "fastmcp streaming transport and server api reference [1]."
     verdict = _verify(content, entities, sources_text)
-    assert not verdict.passed
-    assert any("SufiSR" in f for f in verdict.hard_failures)
+    assert verdict.passed
+    assert not verdict.hard_failures
+    assert any("SufiSR" in w and "UNVERIFIED" in w for w in verdict.soft_warnings)
 
 
 def test_uncited_uncovered_factual_claim_downgraded_to_soft():
@@ -593,20 +600,19 @@ def test_acronym_compound_with_propernoun_tail_preserved():
     assert _is_hyphenated_entity("gRPC-Web")
 
 
-def test_claudebot_alias_residual_is_out_of_scope_and_pinned():
-    # codex T6 M3: this slice fixes the Optimal / AI-served residual, NOT the
-    # COMPLETE reported production failure. `ClaudeBot` is a REAL entity the gate
-    # still hard-fails when the synthesis cites it but sources name it only by an
-    # alias ("Anthropic's crawler") — exact-token coverage misses the alias. That
-    # is surface-form / alias normalization, a separate and harder problem left
-    # out of scope. This PINS the residual so the boundary is explicit and a
-    # future alias fix flips it deliberately.
+def test_claudebot_alias_residual_now_soft_under_demotion():
+    # codex T6 M3 originally PINNED this as a residual HARD fail: `ClaudeBot` cited
+    # but named in sources only by an alias ("Anthropic's web crawler") that
+    # exact-token coverage misses. The entity-coverage demotion (codex DESIGN
+    # 019e5b0f) resolves the residual wholesale - it is now a soft caveat, not a hard
+    # fail, so the alias-normalization gap can no longer break a synthesis.
     entities = ["ClaudeBot"]
     content = "Cloudflare blocks ClaudeBot by default, so allowlist it [1]."
     sources_text = "cloudflare waf can allow or block anthropic's web crawler via skip rules [1]."
     verdict = _verify(content, entities, sources_text)
-    assert not verdict.passed
-    assert any("ClaudeBot" in f for f in verdict.hard_failures)
+    assert verdict.passed
+    assert not verdict.hard_failures
+    assert any("ClaudeBot" in w for w in verdict.soft_warnings)
 
 
 # ============================================================
