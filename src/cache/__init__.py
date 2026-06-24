@@ -135,7 +135,13 @@ cache = HotCache()
 # pipeline could change output for the same inputs, or whenever the cache-key
 # fingerprint format changes - it invalidates every previously cached synthesis
 # so a stale (e.g. pre-fix) result is never served.
-SYNTH_CACHE_VERSION = "3"
+# v4: quality-gate scorer + RCS summarizer budgets unified onto
+# derive_effective_budget, so reasoning models no longer starve their CoT into
+# the heuristic fallback / empty summaries. The cache key fingerprints only the
+# visible inputs (model, max_tokens, mode, sources), not these internal budgets,
+# so v3 entries can encode the weaker behavior under the same key - bump so they
+# are not served.
+SYNTH_CACHE_VERSION = "4"
 
 
 def _source_field(source: Any, field: str) -> str:

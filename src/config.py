@@ -33,8 +33,9 @@ class Settings(BaseSettings):
     llm_top_p: float = Field(default=0.95, description="Top-p sampling")
     llm_max_tokens: int = Field(default=16384, description="Max output tokens")
     llm_reasoning_headroom: int = Field(default=8192, description="Extra output tokens added to the answer-budget base for reasoning models (chain-of-thought overhead); effective budget = base + headroom, capped at llm_max_tokens")
-    llm_scoring_headroom: int = Field(default=1536, description="Extra output tokens added to the 500-token base for the quality-gate relevance scorer on REASONING models only (CoT must complete before the scores land in content); scoring budget = min(500 + headroom, llm_max_tokens). Non-reasoning models keep the flat 500.")
+    llm_scoring_headroom: int = Field(default=1536, description="DEPRECATED (no longer read): the quality-gate relevance scorer now sizes its budget with derive_effective_budget(500, model) - the same reasoning-aware helper synthesis and RCS use (min(500 + llm_reasoning_headroom, llm_max_tokens)) - so reasoning-model scoring shares one headroom knob. Field retained to avoid breaking existing RESEARCH_LLM_SCORING_HEADROOM settings; safe to remove in a future release.")
     llm_timeout: int = Field(default=120, description="LLM request timeout in seconds")
+    rcs_concurrency: int = Field(default=4, description="Max concurrent RCS contextual-summary calls. Per-source summaries are independent LLM calls; running them serially scales as N x per-call latency over many sources. asyncio.gather preserves source order regardless of concurrency. Tune higher for endpoints that accept more parallelism. Values <1 are floored to 1 (serial).")
 
     # Search Configuration
     default_top_k: int = Field(default=10, description="Default number of results per source")

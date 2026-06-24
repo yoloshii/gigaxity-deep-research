@@ -18,7 +18,7 @@ from enum import Enum
 from typing import Optional
 
 from ..config import settings
-from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction, is_reasoning_model
+from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction, derive_effective_budget
 from .entity_allowlist import (
     CONTEXT_CUES,
     CONTEXTUAL_LOWERCASE_TOOL_ALLOWLIST,
@@ -774,11 +774,11 @@ Format: One query per line."""
         formatted = self._format_sources(sources)
         # A2a: reasoning models spend output tokens on chain-of-thought before
         # the scores land in `content`; a flat 500 gets consumed by CoT and the
-        # answer never lands (the silent-fallback root trigger). Give reasoning
-        # models a modest scoring-specific headroom; non-reasoning models keep
-        # the flat 500-token behavior (codex design 019e4569 T4-F2).
-        headroom = settings.llm_scoring_headroom if is_reasoning_model(self.model) else 0
-        budget = min(500 + headroom, settings.llm_max_tokens)
+        # answer never lands (the silent-fallback root trigger). Size the scoring
+        # budget with the same reasoning-aware helper synthesis and RCS use, so
+        # reasoning models get the shared headroom and non-reasoning models keep
+        # the flat 500 (Option-1 budget unification; codex design 019e5b0f).
+        budget = derive_effective_budget(500, self.model)
 
         try:
             scores, reason = await self._attempt_llm_scores(

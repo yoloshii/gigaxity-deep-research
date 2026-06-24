@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from src.config import settings
+from src.llm_utils import derive_effective_budget
 from src.synthesis.quality_gate import SourceQualityGate
 
 
@@ -71,12 +72,21 @@ def test_parse_bare_int_score_with_enumerator():
 
 # --- A2a: reasoning-aware budget ------------------------------------------
 
-def test_reasoning_model_gets_scoring_headroom():
+def test_reasoning_model_gets_reasoning_budget():
+    """Gate scorer sizes its budget with derive_effective_budget(500, model).
+
+    Reasoning models get the full reasoning headroom (Option-1 budget
+    unification; codex 019e5b0f). The retired llm_scoring_headroom (1536) was a
+    separate, smaller knob; the scorer now shares the same reasoning-aware
+    formula synthesis, RCS, and contradiction detection already use.
+    """
     gate = SourceQualityGate(llm_client=object(), model="qwen/qwen3-30b-a3b-thinking-2507")
     gate._call_llm = AsyncMock(return_value=SimpleNamespace(text="0.8\n0.7"))
     asyncio.run(gate.evaluate("topic terms here", [_src("A", "alpha"), _src("B", "beta")]))
-    expected = min(500 + settings.llm_scoring_headroom, settings.llm_max_tokens)
+    expected = derive_effective_budget(500, gate.model)
     assert gate._call_llm.call_args.kwargs["max_tokens"] == expected
+    # Reasoning model => budget is base + reasoning headroom, capped at llm_max_tokens.
+    assert expected == min(500 + settings.llm_reasoning_headroom, settings.llm_max_tokens)
 
 
 def test_non_reasoning_model_keeps_flat_500():
@@ -84,6 +94,7 @@ def test_non_reasoning_model_keeps_flat_500():
     gate._call_llm = AsyncMock(return_value=SimpleNamespace(text="0.8\n0.7"))
     asyncio.run(gate.evaluate("topic terms here", [_src("A", "alpha"), _src("B", "beta")]))
     assert gate._call_llm.call_args.kwargs["max_tokens"] == 500
+    assert gate._call_llm.call_args.kwargs["max_tokens"] == derive_effective_budget(500, gate.model)
 
 
 # --- A2b: single strict-format retry --------------------------------------
@@ -98,7 +109,13 @@ def test_clean_first_attempt_no_retry():
 
 
 def test_empty_first_then_json_retry_recovers():
-    """Reasoning-only first attempt (content empty) → strict-format retry lands JSON scores."""
+    """Reasoning-only first attempt (content empty) → strict-format retry lands JSON scores.
+
+    Both attempts must use the same reasoning-aware budget so the retry does not
+    re-starve at an under-sized cap (Option-1: the A2 retry shares
+    derive_effective_budget(500, model)). A recovered scorer leaves the gate NOT
+    degraded.
+    """
     gate = SourceQualityGate(llm_client=object(), model="qwen/qwen3-30b-a3b-thinking-2507")
     gate._call_llm = AsyncMock(side_effect=[
         SimpleNamespace(text=""),            # reasoning-only first attempt
@@ -107,9 +124,14 @@ def test_empty_first_then_json_retry_recovers():
     result = asyncio.run(gate.evaluate("t", [_src("A", "a"), _src("B", "b")]))
     assert gate._call_llm.call_count == 2
     assert result.scorer_path == "llm"
+    assert result.gate_degraded is False
     assert result.source_scores == [0.9, 0.6]
     retry_prompt = gate._call_llm.call_args_list[1].args[0]
     assert "JSON array of exactly 2" in retry_prompt
+    # Both the first attempt and the strict retry use the corrected budget.
+    expected = derive_effective_budget(500, gate.model)
+    assert gate._call_llm.call_args_list[0].kwargs["max_tokens"] == expected
+    assert gate._call_llm.call_args_list[1].kwargs["max_tokens"] == expected
 
 
 def test_count_mismatch_after_retry_falls_back():
