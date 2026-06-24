@@ -521,7 +521,7 @@ reasoning = mcp__gigaxity-deep-research__reason(
 
 ### Verifier Verdict Handling
 
-`synthesize` runs a post-synthesis verifier and prepends a structural header on hard-gate failure (empty content, reasoning-only trace, truncated by token limit, sub-call failure, zero citations on non-empty sources, or **any query entity discussed in the synthesis that is absent from every retained source unless the synthesis explicitly frames the gap**):
+`synthesize` runs a post-synthesis verifier and prepends a structural header ONLY on a STRUCTURAL hard-gate failure — empty content, reasoning-only trace, truncated by token limit, sub-call failure, or zero citations on non-empty sources. (As of v0.5.0, entity-coverage — a discussed query entity absent from every retained source — is **no longer a hard gate**; it is an advisory soft warning, covered in the soft-warning note below):
 
 ```
 # Synthesis verification FAILED
@@ -543,12 +543,11 @@ This output is not a reliable synthesis:
    - `truncated by token limit` → raise `RESEARCH_LLM_MAX_TOKENS` (env var on the MCP), or switch preset to `fast` (less preprocessing budget burn).
    - `reasoning trace instead of answer` → model spending budget on chain-of-thought; raise `RESEARCH_LLM_REASONING_HEADROOM` or pick a non-reasoning model.
    - `zero citations on N sources` → source content may not have reached the model; check disk-spill on the source-gathering tools (per "Tool Output Persistence" above) — agents commonly synthesize from 2KB previews and end up with sources whose content never made it to the model.
-   - `synthesis discusses entities [...] but those entities are absent from every retained source` → **entity-coverage hard-fail**. The relevance gate filtered out the only sources covering one of the named entities, but the LLM wrote about it anyway from prior knowledge. Either (a) gather more sources covering the missing entity and re-call, or (b) re-frame the synthesis to explicitly acknowledge the gap ("we have no source available for X") — the verifier downgrades to a soft warning when uncovered entities appear in the same sentence as a gap-framing phrase ("no source", "not in the gathered", "not documented", "could not find", etc.).
 3. ONE retry is permitted: re-call synthesize with a different `preset` (e.g., `contracrow` → `fast`) or fewer sources.
 4. If the retry also FAILS, fall back to main-thread synthesis from the raw sources, AND prepend the user-facing answer with: `> Note: gigaxity-deep-research synthesize failed verification on retry; this is a main-thread synthesis from raw sources without the verifier guarantees.`
 5. Hard-failed outputs are NOT cached, so the next call will re-run — do not cache-bust manually.
 
-Soft warnings append `*Verification notes: <warning>*` at the end of the output and are advisory; the synthesis is usable, but flag the gap in your final answer.
+Soft warnings append `*Verification notes: <warning>*` at the end of the output and are advisory; the synthesis is usable — relay it, but flag the caveat in your final answer. **Do NOT retry or fall back on a soft warning.** Entity-coverage caveats live here (demoted from the old hard-fail in v0.5.0): when the synthesis discusses a query entity that no retained source covers verbatim, the verifier appends a graduated note and the synthesis **STILL PASSES** — `treat those cited claims as UNVERIFIED` for a cited-adjacent uncovered entity, a lighter "frames the gap" note when the entity's sentence explicitly acknowledges the gap ("no source available for X", "not documented"), a `surface-form variant` note for a known alias/version form (a source saying `dockerd` for "Docker Engine", `wsl2` for "WSL"), and an `emphasis/framing` note for shouted ALL-CAPS query framing. Because passing outputs are the ones cached, **`passed=True` (or a cache hit) no longer implies entity-coverage is clean** — inspect `soft_warnings` / the `*Verification notes:*` line, surface the caveat, then move on; treat it as guidance, not a failure.
 
 ### Gate Early-Return (distinct from verifier hard-fail)
 
