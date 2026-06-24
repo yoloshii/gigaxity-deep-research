@@ -1,5 +1,9 @@
 # Release notes
 
+## v0.5.1 (2026-06-24)
+
+Documentation alignment for the v0.4.2 / v0.5.0 changes — no code change. `docs/reference/mcp-tools.md` still listed "any discussed entity absent from every retained source" as a hard-failure condition and described the entity-coverage check as hard-failing; both now reflect the v0.5.0 demotion (advisory soft caveat, graduated `treat as UNVERIFIED` / `surface-form variant` / `emphasis/framing`, and the note that a passed result no longer implies clean entity-coverage). `docs/reference/rest-api.md` gains the same soft-condition note. The new `RESEARCH_RCS_CONCURRENCY` knob (v0.4.2) is now documented in `docs/reference/configuration.md` and `.env.example`. `docs/troubleshooting.md` already listed only the structural hard-fail conditions and is unchanged.
+
 ## v0.5.0 (2026-06-24)
 
 Demotes the post-synthesis entity-coverage check from a hard gate to an advisory soft warning. A synthesis that discusses a query entity absent from every retained source previously hard-failed (`# Synthesis verification FAILED`, result not cached); it now PASSES with a `*Verification notes:*` caveat folded into the returned text. This removes four documented false-positive classes — ALL-CAPS query framing ("MEASUREMENT PLANE"), lexical surface variants (a source saying "dockerd" for "Docker Engine", "wsl2" for "WSL"), version-suffix forms, and legitimately-absent specific entities — that were destroying correct, well-cited syntheses. The split now only graduates caveat strength: cited-adjacent uncovered entities get a "treat as UNVERIFIED" note, surface variants get a "surface-form variant" note, and framing gets an "emphasis/framing" note. The five STRUCTURAL gates (empty / reasoning-only / truncated-at-ceiling / failed subcall / zero citations when sources were provided) remain HARD.
