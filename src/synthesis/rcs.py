@@ -9,10 +9,12 @@ Research basis: PaperQA2 library
 Key insight: Context-aware summarization > raw content.
 """
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import Optional
 
-from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction
+from ..config import settings
+from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction, derive_effective_budget
 from .aggregator import PreGatheredSource
 
 
@@ -121,14 +123,41 @@ Ranking:"""
         if not sources:
             return RCSResult(summaries=[], total_sources=0, kept_sources=0)
 
-        # Create contextual summaries (sequential - single GPU can only process one at a time)
-        summaries = []
-        for source in sources:
-            if self.llm_client:
-                summary = await self._contextual_summarize(source, query)
-            else:
-                summary = self._heuristic_summarize(source, query)
-            summaries.append(summary)
+        # Create one contextual summary per source. The per-source summaries are
+        # independent LLM calls, so running them serially made a comprehensive
+        # run scale as N x per-call latency - the dominant cost that timed out
+        # the comprehensive pipeline over many sources. Run them with BOUNDED
+        # CONCURRENCY (rcs_concurrency, default 4; tune higher for endpoints that
+        # accept more parallelism). asyncio.gather preserves INPUT ORDER in its
+        # result list, so the summaries stay aligned with the sources regardless
+        # of completion order - RCS is guidance-only and must never reorder. If
+        # any call raises, the first exception is re-raised unwrapped (type
+        # preserved) and the remaining in-flight tasks are cancelled and drained
+        # so a failed run leaks no background work.
+        if self.llm_client:
+            sem = asyncio.Semaphore(max(1, settings.rcs_concurrency))
+
+            async def _summarize_one(source: PreGatheredSource) -> ContextualSummary:
+                async with sem:
+                    return await self._contextual_summarize(source, query)
+
+            tasks = [asyncio.create_task(_summarize_one(s)) for s in sources]
+            try:
+                summaries = list(await asyncio.gather(*tasks))
+            except BaseException:
+                # gather() returns on the first exception while siblings are
+                # still in flight; cancel AND await them so their results /
+                # exceptions are retrieved (no "task exception was never
+                # retrieved" noise). The bare `raise` then re-raises the
+                # ORIGINAL unwrapped exception for the caller.
+                for t in tasks:
+                    t.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+                raise
+        else:
+            summaries = [
+                self._heuristic_summarize(source, query) for source in sources
+            ]
 
         # Guidance-only: no filter, no drop, no reorder. Every source is kept
         # and the summaries stay aligned with the input order so callers can
@@ -151,7 +180,15 @@ Ranking:"""
             content=source.content[:2000],
         )
 
-        output = await self._call_llm(prompt, max_tokens=400, mode=ExtractionMode.PARSE_REQUIRED)
+        # Reasoning models emit chain-of-thought before the SUMMARY/KEY_POINTS/
+        # RELEVANCE lines land in `content`; a flat 400-token budget is consumed
+        # by the CoT, leaving empty `content` -> empty ContextualSummary (the
+        # formatter drops it, losing the contextual guidance, though the source's
+        # verbatim evidence still reaches synthesis). Size the budget with the
+        # same reasoning-aware helper the gate and synthesis use so the summary
+        # actually lands; non-reasoning models collapse to the flat 400.
+        budget = derive_effective_budget(400, self.model)
+        output = await self._call_llm(prompt, max_tokens=budget, mode=ExtractionMode.PARSE_REQUIRED)
 
         # Parse response
         summary = ""
