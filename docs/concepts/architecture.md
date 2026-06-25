@@ -66,7 +66,7 @@ Where `rank_i(d)` is the rank of document `d` in connector `i`'s list. Documents
 
 `src/synthesis/` holds the LLM-side preprocessing:
 
-- **Quality gate** — CRAG-style scoring rejects sources below a quality threshold before they enter the LLM context. Saves tokens and improves answer reliability.
+- **Quality gate** — CRAG-style scoring rejects sources below a quality threshold before they enter the LLM context. Saves tokens and improves answer reliability. When the whole set scores below the REJECT threshold but at least one source clears the fail-open floor (`RESEARCH_FAIL_OPEN_MIN_SOURCE_SCORE`, default 0.3), the gate synthesizes over those set-aside sources with a low-relevance caveat instead of refusing; below the floor it still refuses.
 - **Contradiction detector** — pairwise checks across sources surface disagreements rather than averaging them out. Surfaced contradictions appear in the response payload as a separate field.
 - **Outline-guided generation** — for `tutorial`, `comprehensive`, and `academic` presets, the LLM first generates a structural outline, then fills it in. SciRAG-style.
 - **Recursive Context Summarization (RCS)** — when source content overflows the LLM context window, RCS summarizes per-source first and feeds the summaries instead of full text.
