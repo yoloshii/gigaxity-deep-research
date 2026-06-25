@@ -16,6 +16,7 @@ Variables can be set in `.env` (read at startup), in the MCP `env` block of `~/.
 | `RESEARCH_LLM_MAX_TOKENS` | `16384` | No | Max output length per call |
 | `RESEARCH_LLM_TIMEOUT` | `120` | No | Seconds before LLM call times out |
 | `RESEARCH_RCS_CONCURRENCY` | `4` | No | Max concurrent RCS contextual-summary calls in the synthesis pipeline. Per-source summaries are independent LLM calls; higher values cut wall-clock latency over many sources. Tune up (16–32) for hosted endpoints that accept more parallelism; values <1 are floored to 1 (serial). |
+| `RESEARCH_FAIL_OPEN_MIN_SOURCE_SCORE` | `0.3` | No | Pre-synthesis relevance-gate fail-open floor. On a REJECT (or PARTIAL-with-zero-good) decision, if at least one source scores ≥ this, `synthesize` fails open — it synthesizes over the set-aside sources, opens the answer with a `low source relevance (fail-open)` caveat, and marks the result non-cacheable, instead of returning `## Source quality insufficient`. Below the floor (no source clears it) the gate still refuses. Default `0.3` equals the REJECT threshold; raise to refuse more aggressively, lower to fail open over weaker corpora. |
 
 ### Common model values
 

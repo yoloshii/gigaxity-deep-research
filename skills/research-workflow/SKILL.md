@@ -551,7 +551,7 @@ Soft warnings append `*Verification notes: <warning>*` at the end of the output 
 
 ### Gate Early-Return (distinct from verifier hard-fail)
 
-`synthesize` can also return WITHOUT invoking the synthesizer at all — when the **pre-synthesis relevance gate** decides the input source set isn't synthesizable. Two cases:
+`synthesize` can also short-circuit at the **pre-synthesis relevance gate**, before the synthesizer runs. As of v0.6.0 a rejection only short-circuits when the source set is *entirely* below the fail-open floor (`RESEARCH_FAIL_OPEN_MIN_SOURCE_SCORE`, default 0.3 = the REJECT threshold); if even one source clears the floor the gate **fails open** instead (covered after the two refusal cases). The two refusal cases:
 
 1. **`## Source quality insufficient`** (REJECT decision) — average source relevance below the gate's `reject_threshold` (defaults 0.2 for `comprehensive`/`contracrow`, 0.3 for class default). Returned as a markdown response with a header like:
 
@@ -570,7 +570,9 @@ Soft warnings append `*Verification notes: <warning>*` at the end of the output 
 
 2. **`## Source quality insufficient (partial, zero passed)`** (PARTIAL-with-zero-good edge case) — average relevance above the reject floor but no individual source clears the `pass_threshold`. Same shape, different header.
 
-**When you see either of these:**
+**Fail-open (the common case, v0.6.0).** Both refusals above only fire when *no* source clears the fail-open floor (`RESEARCH_FAIL_OPEN_MIN_SOURCE_SCORE`, default 0.3). When the gate would REJECT or hit PARTIAL-with-zero-good but at least one source clears the floor, `synthesize` does NOT refuse — it **fails open**, synthesizing over the set-aside (rejected) sources and opening the answer with a `low source relevance (fail-open)` caveat. Treat that result as **weakly grounded**: relay it and flag the caveat, the same way you handle a soft warning — do NOT retry on it. The fail-open result is **NOT cached** (so a later call with better sources isn't shadowed), but there IS a synthesis to use.
+
+**When you see a `## Source quality insufficient` refusal (no source cleared the floor):**
 - The synthesizer was **never invoked**; there is no synthesis to retry.
 - The output is **NOT cached** — re-calling with the same sources will re-evaluate.
 - Action: gather more relevant sources (Triple Stack again, broader queries, different focus mode) and re-call. Do NOT retry with the same source set; the gate's verdict is data-driven, not flaky.
