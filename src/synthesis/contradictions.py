@@ -17,7 +17,23 @@ from enum import Enum
 from typing import Optional
 
 from ..config import settings
-from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction, derive_effective_budget
+from ..llm_utils import (
+    LLMOutput,
+    ExtractionMode,
+    call_with_extraction,
+    derive_effective_budget,
+    get_context_window,
+)
+
+# Detector input-budget sizing (D2). The per-source content slice is derived
+# from the model's context window minus the reserved answer budget, the prompt
+# overhead, and the query - divided across the sources and clamped - rather
+# than a flat cap. A flat 1500-char cap hid relative-claim qualifiers
+# ("...relative to LFM2") past the cutoff and manufactured contradictions.
+_CHARS_PER_TOKEN = 4  # codebase-wide tokenization estimate (chars/4 ~= tokens)
+_DETECTOR_PROMPT_OVERHEAD_TOKENS = 320  # DETECTION_PROMPT template + instructions
+_DETECTOR_SOURCE_CHAR_FLOOR = 1500  # small sets get >= the old cap when affordable
+_DETECTOR_SOURCE_CHAR_CEILING = 8000  # one huge source can't blow the input budget
 
 
 class ContradictionSeverity(str, Enum):
@@ -50,6 +66,26 @@ class ContradictionReport:
     has_major_contradictions: bool
 
 
+# Severities surfaced to consumers (D1). MINOR is "different wording but same
+# essential meaning" by definition (see ContradictionSeverity / the detection
+# prompt) - not a real disagreement - so it is filtered out of every
+# consumer-facing surface and kept only as internal diagnostics on the result.
+# Filtering happens exactly once, here, so every surface (synthesis
+# prompt-injection, REST/MCP contradiction blocks, the post-synthesis verifier)
+# consumes the same MODERATE+MAJOR view and none can re-introduce the
+# MINOR-as-contradiction false positive.
+SURFACED_SEVERITIES = (ContradictionSeverity.MODERATE, ContradictionSeverity.MAJOR)
+
+
+def surfaced_contradictions(contradictions: list[Contradiction]) -> list[Contradiction]:
+    """The consumer-facing contradiction view: MODERATE + MAJOR only.
+
+    Raw MINOR stays available (on ContradictionDetectionResult.contradictions)
+    for diagnostics; nothing is deleted, it is just not surfaced.
+    """
+    return [c for c in contradictions if c.severity in SURFACED_SEVERITIES]
+
+
 @dataclass
 class ContradictionDetectionResult:
     """Outcome of contradiction detection over a source set.
@@ -64,6 +100,15 @@ class ContradictionDetectionResult:
     parse_failed: bool = False    # detector output could not be parsed
     fallback_used: bool = False   # heuristic detector was used instead of the LLM
     error: Optional[str] = None   # exception text if detection raised
+
+    @property
+    def surfaced(self) -> list[Contradiction]:
+        """Canonical consumer-facing contradictions (MODERATE+MAJOR).
+
+        Every surface reads this instead of `.contradictions` so MINOR is
+        filtered exactly once. `.contradictions` remains the raw diagnostics.
+        """
+        return surfaced_contradictions(self.contradictions)
 
 
 class ContradictionDetector:
@@ -152,7 +197,7 @@ If no contradictions found, respond with: NO_CONTRADICTIONS"""
         try:
             prompt = self.DETECTION_PROMPT.format(
                 query=query,
-                sources=self._format_sources(sources),
+                sources=self._format_sources(sources, query),
             )
             # Reasoning models burn output tokens on chain-of-thought before the
             # structured blocks land in `content`; a flat 2000 starves the answer
@@ -191,12 +236,46 @@ If no contradictions found, respond with: NO_CONTRADICTIONS"""
 
         return ContradictionDetectionResult(contradictions=contradictions)
 
-    def _format_sources(self, sources: list) -> str:
-        """Format sources for detection prompt."""
+    def _format_sources(self, sources: list, query: str = "") -> str:
+        """Format sources for the detection prompt.
+
+        Size each source's content slice from the detector's INPUT budget (D2)
+        rather than a flat 1500-char cap: the model context window minus the
+        reserved answer budget, the prompt overhead, and the query, divided
+        across the sources, ceiling-capped (never let one source blow the input
+        budget) and lifted to the old flat cap only for small sets that can
+        afford it (so large sets / tiny contexts never overrun the input budget
+        - C4). A relative-claim qualifier ("...relative to LFM2") past a flat
+        cutoff was invisible to the detector and manufactured a contradiction;
+        the larger small-set budget keeps it in view.
+        """
+        n = max(1, len(sources))
+        context_tokens = get_context_window(self.model)
+        answer_tokens = derive_effective_budget(2000, self.model)
+        query_tokens = len(query) // _CHARS_PER_TOKEN
+        input_tokens = (
+            context_tokens - answer_tokens - _DETECTOR_PROMPT_OVERHEAD_TOKENS - query_tokens
+        )
+        input_chars = max(0, input_tokens) * _CHARS_PER_TOKEN
+        # Per-source fair share, ceiling-capped so one source can't dominate.
+        per_source_chars = min(_DETECTOR_SOURCE_CHAR_CEILING, input_chars // n)
+        # Small-set generosity: lift a short source list back up to the old flat
+        # cap so we never regress it - but ONLY when the whole set can afford it
+        # (n * floor fits the input budget). On large sets / tiny contexts where
+        # an unconditional floor would push the total past the budget, keep the
+        # budget-derived share so the formatted source text never exceeds the
+        # detector input budget (C4: never exceed input budget on large sets).
+        if _DETECTOR_SOURCE_CHAR_FLOOR * n <= input_chars:
+            per_source_chars = max(_DETECTOR_SOURCE_CHAR_FLOOR, per_source_chars)
+        # No lower clamp: when the input budget cannot afford even one char per
+        # source (input_chars < n), per_source_chars is 0 and the source content
+        # is suppressed rather than overrunning the budget - the C4 invariant
+        # ("never exceed input budget") binds over nonempty diagnostics.
+
         parts = []
         for i, s in enumerate(sources, 1):
             title = self._get_title(s)
-            content = self._get_content(s)[:1500]
+            content = self._get_content(s)[:per_source_chars]
             origin = getattr(s, 'origin', 'unknown')
             parts.append(f"[{i}] {title} ({origin})\n{content}...")
         return "\n\n".join(parts)
@@ -358,8 +437,12 @@ If no contradictions found, respond with: NO_CONTRADICTIONS"""
         Format contradictions for inclusion in synthesis prompt.
 
         Returns text that can be inserted into synthesis prompt
-        to ensure contradictions are surfaced in output.
+        to ensure contradictions are surfaced in output. MINOR contradictions
+        are filtered here (D1) so the synthesis prompt-injection path can never
+        carry a "same meaning, different wording" false positive, regardless of
+        what the caller passes.
         """
+        contradictions = surfaced_contradictions(contradictions)
         if not contradictions:
             return ""
 

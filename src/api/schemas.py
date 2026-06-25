@@ -430,6 +430,20 @@ class ContradictionSchema(BaseModel):
     resolution_hint: str = Field(default="")
 
 
+class RejectedSourceSchema(BaseModel):
+    """A source the relevance gate set aside (C5 never-vaporize provenance).
+
+    Surfaced so the sources dropped on the happy path (PARTIAL/PASS) are
+    recoverable, not just counted. `score` is null when the scorer path did
+    not align per-source scores with the rejected set.
+    """
+
+    title: str | None = None
+    url: str | None = None
+    score: float | None = None
+    reason: str | None = None
+
+
 class QualityGateSchema(BaseModel):
     """Result of source quality evaluation."""
 
@@ -462,6 +476,10 @@ class QualityGateSchema(BaseModel):
     gate_focus: str | None = Field(
         default=None,
         description="The caller-supplied focus the relevance gate scored sources against instead of the full query (Q2); null when no focus was applied",
+    )
+    rejected_sources: list[RejectedSourceSchema] | None = Field(
+        default=None,
+        description="Identity + score + reason for each source the gate set aside, so the dropped sources are recoverable rather than only counted (C5 never-vaporize)",
     )
 
 

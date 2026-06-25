@@ -141,7 +141,13 @@ cache = HotCache()
 # visible inputs (model, max_tokens, mode, sources), not these internal budgets,
 # so v3 entries can encode the weaker behavior under the same key - bump so they
 # are not served.
-SYNTH_CACHE_VERSION = "4"
+# v5: fail-open content gates - MINOR contradictions filtered from the synthesis
+# prompt (D1), detector source-truncation widened (D2), and the relevance gate
+# fails open over weak sources with a caveat instead of refusing (R2-C1). All
+# three can change synthesis output for the same inputs, so pre-change entries
+# must not be served. (Fail-open low-quality results are themselves non-cacheable
+# per R2-C2; this bump invalidates normal pre-v5 entries.)
+SYNTH_CACHE_VERSION = "5"
 
 
 def _source_field(source: Any, field: str) -> str:

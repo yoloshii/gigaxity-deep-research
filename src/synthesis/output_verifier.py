@@ -603,14 +603,29 @@ def verify_synthesis_output(
                 )
 
     if contradiction_result is not None:
-        if contradiction_result.parse_failed:
+        # C7/D4: a detector transport failure (fallback_used=True + error set) or a
+        # heuristic fallback otherwise vanished here - the verifier only warned on
+        # parse_failed. Surface both so "no contradictions" is never silently the
+        # product of a failed/degraded detector run.
+        if contradiction_result.error:
+            _err = (contradiction_result.error or "")[:120]
+            verdict.soft_warnings.append(
+                f"contradiction detection failed and fell back to a heuristic "
+                f"({_err}) - contradictions may exist but were not reliably checked"
+            )
+        elif contradiction_result.fallback_used:
+            verdict.soft_warnings.append(
+                "contradiction detection used the degraded heuristic detector "
+                "- contradictions may exist but were not reliably checked"
+            )
+        elif contradiction_result.parse_failed:
             verdict.soft_warnings.append(
                 "contradiction detection could not be parsed - contradictions "
                 "may exist but were not surfaced"
             )
-        elif contradiction_result.contradictions:
+        elif contradiction_result.surfaced:
             verdict.soft_warnings.append(
-                f"{len(contradiction_result.contradictions)} contradiction(s) detected "
+                f"{len(contradiction_result.surfaced)} contradiction(s) detected "
                 "- verify the synthesis surfaces them"
             )
 

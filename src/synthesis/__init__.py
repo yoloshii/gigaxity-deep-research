@@ -45,6 +45,7 @@ from .finalization import (
     FinalizedSynthesis,
     SurfaceName,
     finalize_synthesis,
+    apply_fail_open,
 )
 from .wrappers import (
     SynthesisInvocationError,
@@ -119,6 +120,7 @@ __all__ = [
     "FinalizedSynthesis",
     "SurfaceName",
     "finalize_synthesis",
+    "apply_fail_open",
     "SynthesisInvocationError",
     "run_aggregator_synthesize",
     "run_aggregator_synthesize_with_reasoning",
