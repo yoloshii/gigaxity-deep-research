@@ -94,7 +94,7 @@ Edit `src/synthesis/presets.py`. A preset is a `SynthesisPreset` dataclass with 
 - `verify_citations` / `detect_contradictions` / `use_outline` / `use_rcs` (bool)
 - `run_quality_gate` (bool) — gates `quality_gate_*` fields below
 - `temperature` / `min_sources`
-- `quality_gate_reject_threshold` (float \| None) — per-preset REJECT threshold (avg relevance below this rejects the whole set). `None` falls back to `SourceQualityGate.REJECT_THRESHOLD = 0.3`. Comparison-friendly presets (comprehensive, contracrow) use **0.2**.
+- `quality_gate_reject_threshold` (float \| None) — per-preset REJECT threshold (avg relevance below this rejects the whole set; as of v0.6.0 a REJECT then fails open over the set-aside sources with a low-relevance caveat when any source clears the fail-open floor `RESEARCH_FAIL_OPEN_MIN_SOURCE_SCORE`, default 0.3, instead of refusing). `None` falls back to `SourceQualityGate.REJECT_THRESHOLD = 0.3`. Comparison-friendly presets (comprehensive, contracrow) use **0.2**.
 - `quality_gate_pass_threshold` (float \| None) — per-preset PASS threshold (individual source must score >= this to be retained). `None` falls back to `SourceQualityGate.PASS_THRESHOLD = 0.5`. Comparison-friendly presets use **0.4**.
 - `quality_gate_entity_balanced` (bool) — when True, after the scalar gate runs, the gate promotes the highest-centrality (title > body density) rejected source per uncovered query entity. Prevents whole-vendor blackouts on multi-vendor comparison queries. Default `False`; comprehensive + contracrow set it to `True`.
 

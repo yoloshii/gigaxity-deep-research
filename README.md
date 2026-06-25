@@ -49,7 +49,7 @@ The MCP server exposes **two primitives** plus **four deep-research tools** — 
 - **Adaptive routing**: query classification picks the right combination of connectors per query.
 - **Query expansion**: HyDE-style variant generation for broader coverage.
 - **Query decomposition**: multi-aspect breakdown for complex queries.
-- **Quality gate**: CRAG-style filtering keeps low-quality sources out of synthesis.
+- **Quality gate**: CRAG-style filtering keeps low-quality sources out of synthesis, or fails open with a low-relevance caveat when only weak sources are available (rather than refusing).
 - **Contradiction detection**: PaperQA2-style disagreement surfacing flags conflicting claims rather than averaging them out.
 - **Citation binding**: VeriCite-style claim-to-evidence mapping in the final answer.
 - **Outline-guided synthesis**: SciRAG-style structured generation for tutorial and academic presets.
