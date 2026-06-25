@@ -109,9 +109,11 @@ def _normalize_engine_dict(
     """Normalize a SynthesisEngine.{synthesize,research} dict result.
 
     The engine dict carries `content, citations, sources_used, model, usage`
-    (and an `error` key on failure paths). The engine does NOT expose the
-    `LLMOutput` provenance signal — it handles truncation-retry internally
-    and consumes it. So `llm_output` is always None for engine results.
+    (and an `error` key on failure paths). As of the C6 fix the engine also
+    surfaces its final (post-truncation-retry) `LLMOutput` under `llm_output`,
+    so the verifier's structural gates (truncated-at-ceiling / finish_reason)
+    stay effective on engine output; it is None only on the error/empty paths
+    that never produced an `LLMOutput`.
 
     `source_attribution` is empty for engine results: the engine is the
     legacy connector-search path; aggregator-style origin attribution is not
@@ -135,7 +137,7 @@ def _normalize_engine_dict(
         # not reached — but the carry-through path is here for completeness so
         # a caller that opts to swallow the error sees a consistent shape.
         extras["error"] = result.get("error")
-    return content, citations, {}, 0.0, word_count, None, None, extras
+    return content, citations, {}, 0.0, word_count, None, result.get("llm_output"), extras
 
 
 def _normalize_aggregated(
@@ -316,3 +318,23 @@ def finalize_synthesis(
         surface=surface,
         extras=extras,
     )
+
+
+def apply_fail_open(finalized: FinalizedSynthesis, caveat: str) -> FinalizedSynthesis:
+    """Mark a finalized synthesis as a low-relevance fail-open result (R2-C1/C2).
+
+    The relevance gate returned REJECT (or PARTIAL with zero good sources) but at
+    least one source cleared the fail-open floor, so the pipeline synthesized over
+    the weak sources instead of refusing. Two effects, both set EXPLICITLY (never
+    derived from generic soft-warning presence, so the entity-coverage soft-pass
+    cache precedent is untouched):
+      - cache_eligible = False: a weak-source synthesis is re-evaluated each call,
+        never served from cache as if it were well grounded (R2-C2).
+      - the caveat rides as a soft warning and safe_content is re-annotated, so
+        REST surfaces (which read safe_content) carry it; MCP re-annotates the
+        full assembled output from the same verdict, so it carries it too.
+    """
+    finalized.verdict.soft_warnings.append(caveat)
+    finalized.cache_eligible = False
+    finalized.safe_content = annotate_with_verdict(finalized.raw_content, finalized.verdict)
+    return finalized

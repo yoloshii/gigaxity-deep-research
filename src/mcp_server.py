@@ -42,6 +42,7 @@ from .synthesis import (
     # metadata footer) and annotates the FULL artifact with the verdict
     # that the wrapper computed on `raw_content`.
     SynthesisInvocationError,
+    apply_fail_open,
     run_aggregator_synthesize,
     run_aggregator_synthesize_with_reasoning,
     run_engine_research,
@@ -371,6 +372,11 @@ async def synthesize(
     if preset_config:
         metadata = {"preset": preset_config.name}
         processed_sources = pre_sources
+        # Fail-open state (R2-C1): a REJECT / PARTIAL-zero-good gate decision with
+        # >=1 source above the floor synthesizes over the weak sources with a caveat
+        # instead of refusing. Consumed by apply_fail_open() after synthesis.
+        fail_open_low_quality = False
+        fail_open_caveat = None
 
         # Quality gate — per-preset thresholds + entity-balanced safety net.
         if preset_config.run_quality_gate:
@@ -386,7 +392,9 @@ async def synthesize(
             # REJECT early-return mirrors REST behavior at routes.py:848.
             # Previously REJECT silently fell through and synthesis ran over
             # ALL original sources, defeating the gate. Output is NOT cached.
-            if gate_result.decision == QualityDecision.REJECT:
+            if gate_result.decision == QualityDecision.REJECT and not gate_result.fail_open_eligible(
+                settings.fail_open_min_source_score
+            ):
                 lines = [
                     f"# Synthesis: {query}\n",
                     f"*Preset: {preset_config.name}*\n",
@@ -422,9 +430,19 @@ async def synthesize(
                     )
                 return "\n".join(lines)
 
+            # REJECT but >=1 source cleared the fail-open floor (R2-C1): fail open
+            # over the weak (rejected) sources with a caveat instead of refusing.
+            if gate_result.decision == QualityDecision.REJECT:
+                processed_sources = gate_result.rejected_sources
+                fail_open_low_quality = True
+                fail_open_caveat = gate_result.fail_open_caveat(settings.fail_open_min_source_score)
+
             # PARTIAL-with-zero-good (Turn 2 codex F6): same gate-bypass class
-            # as H2 — treat as effectively REJECT.
-            if gate_result.decision == QualityDecision.PARTIAL and not gate_result.good_sources:
+            # as H2 — treat as effectively REJECT, UNLESS a source cleared the
+            # fail-open floor (R2-C1), in which case fall through and fail open.
+            if gate_result.decision == QualityDecision.PARTIAL and not gate_result.good_sources and not gate_result.fail_open_eligible(
+                settings.fail_open_min_source_score
+            ):
                 lines = [
                     f"# Synthesis: {query}\n",
                     f"*Preset: {preset_config.name}*\n",
@@ -461,8 +479,17 @@ async def synthesize(
                     )
                 return "\n".join(lines)
 
-            if gate_result.decision in (QualityDecision.PARTIAL, QualityDecision.PROCEED):
-                # good_sources is non-empty here (PARTIAL-with-zero-good handled above).
+            # PARTIAL-zero-good but a source cleared the fail-open floor (R2-C1):
+            # fail open over the weak (rejected) sources instead of refusing.
+            if gate_result.decision == QualityDecision.PARTIAL and not gate_result.good_sources:
+                processed_sources = gate_result.rejected_sources
+                fail_open_low_quality = True
+                fail_open_caveat = gate_result.fail_open_caveat(settings.fail_open_min_source_score)
+
+            if gate_result.decision in (QualityDecision.PARTIAL, QualityDecision.PROCEED) and gate_result.good_sources:
+                # good_sources non-empty: normal PARTIAL/PROCEED filtering. A
+                # PARTIAL-zero-good fail-open already set processed_sources above,
+                # so the `and good_sources` guard stops this overwriting it with [].
                 processed_sources = gate_result.good_sources
             metadata["quality_gate"] = {
                 "passed": len(gate_result.good_sources),
@@ -470,6 +497,7 @@ async def synthesize(
                 "avg_quality": gate_result.avg_quality,
                 "gate_degraded": gate_result.gate_degraded,
                 "gate_focus": gate_result.gate_focus,
+                "rejected": gate_result.rejected_provenance(),  # C5 never-vaporize
             }
 
         # RCS preprocessing (guidance-only: the contextual summaries become
@@ -490,7 +518,7 @@ async def synthesize(
         if preset_config.detect_contradictions and processed_sources:
             detector = ContradictionDetector(client, model=settings.llm_model)
             detection = await detector.detect(query=query, sources=processed_sources)
-            contradictions = detection.contradictions
+            contradictions = detection.surfaced  # D1: MODERATE+MAJOR only; MINOR stays internal diagnostics
             metadata["contradictions_found"] = len(contradictions)
 
         # Phase 0: route through the appropriate wrapper. Both branches
@@ -527,6 +555,12 @@ async def synthesize(
                 query_entities=query_entities,
                 surface="mcp_synthesize",
             )
+
+        # Fail-open (R2-C1/C2): mark the weak-source synthesis non-cacheable and
+        # surface the low-relevance caveat. The verdict's soft_warnings carry it,
+        # so the full-artifact annotate_with_verdict below renders it.
+        if fail_open_low_quality:
+            finalized = apply_fail_open(finalized, fail_open_caveat)
 
         lines = [f"# Synthesis: {query}\n"]
         lines.append(f"*Preset: {preset_config.name}*\n")

@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     llm_timeout: int = Field(default=120, description="LLM request timeout in seconds")
     rcs_concurrency: int = Field(default=4, description="Max concurrent RCS contextual-summary calls. Per-source summaries are independent LLM calls; running them serially scales as N x per-call latency over many sources. asyncio.gather preserves source order regardless of concurrency. Tune higher for endpoints that accept more parallelism. Values <1 are floored to 1 (serial).")
 
+    # Synthesis quality gate
+    fail_open_min_source_score: float = Field(default=0.3, description="Fail-open floor for the synthesis relevance gate. On a REJECT decision the pipeline synthesizes anyway with a low-relevance caveat (instead of refusing) only when max(source_scores) >= this floor; below it there is no positive evidence to ground a synthesis, so the gate hard-refuses even when the scorer is degraded. Defaults to the reject threshold (0.3): a source at 0.30 is the first 'some evidence exists' band, 0.29 hard-refuses. Applied AFTER QualityGate.evaluate() returns REJECT, so the degraded-scorer rescue and PARTIAL/PROCEED branches are untouched.")
+
     # Search Configuration
     default_top_k: int = Field(default=10, description="Default number of results per source")
     rrf_k: int = Field(default=60, description="RRF fusion constant")

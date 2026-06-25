@@ -144,6 +144,10 @@ class SynthesisEngine:
                 "citations": citations,
                 "sources_used": sources_used,
                 "model": actual_model,
+                # C6: surface the final (post-truncation-retry) LLMOutput so the
+                # verifier's structural gates (truncated-at-ceiling, finish_reason)
+                # stay effective on engine output, not only aggregator/outline.
+                "llm_output": output,
                 "usage": {
                     "prompt_tokens": response.usage.prompt_tokens if response.usage else 0,
                     "completion_tokens": response.usage.completion_tokens if response.usage else 0,

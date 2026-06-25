@@ -363,11 +363,18 @@ def test_rest_research_reject_short_circuits_before_synthesis():
     synth_called.assert_not_called()
 
 
-def test_rest_research_partial_with_zero_good_short_circuits():
-    """v0.2.2 item 4: PARTIAL with empty good_sources must also short-circuit
-    (mirrors /synthesize/p1 fix at routes.py:1206-1228). The gate sometimes
-    returns PARTIAL when avg_quality is above the REJECT floor but no source
-    cleared the PASS threshold — synthesis over zero sources is meaningless."""
+def test_rest_research_partial_with_zero_good_fails_open():
+    """Gate-demotion R2-C1 (supersedes the v0.2.2 short-circuit for this input):
+    PARTIAL with empty good_sources but at least one source at/above the fail-open
+    floor (default 0.3 = REJECT_THRESHOLD) no longer refuses. It FAILS OPEN —
+    synthesizing over the weak (rejected) sources with a low-relevance caveat — and
+    the result is marked non-cacheable.
+
+    avg=0.42 ⇒ max(source_scores)=0.42 ≥ 0.3 ⇒ fail-open eligible. A PARTIAL's avg
+    is by definition ≥ the REJECT floor, and max ≥ avg, so PARTIAL-zero-good ALWAYS
+    fails open at the default floor; the old short-circuit branch is dead for this
+    class. The below-floor refuse path is still covered by the REJECT test above
+    (scores=[0.15]) and the boundary unit test in test_gate_fail_open.py."""
     from fastapi.testclient import TestClient
 
     app, routes = _build_research_test_app()
@@ -382,10 +389,10 @@ def test_rest_research_partial_with_zero_good_short_circuits():
     )
     fake_gate_result = QualityGateResult(
         decision=QualityDecision.PARTIAL,
-        avg_quality=0.42,  # above REJECT (0.3) but below PASS (0.5)
+        avg_quality=0.42,  # ≥ REJECT floor (0.3) by definition of PARTIAL
         good_sources=[],
         rejected_sources=[rejected],
-        source_scores=[0.42],
+        source_scores=[0.42],  # max ≥ 0.3 → fail-open eligible
         suggestion="Try more targeted queries.",
     )
     fake_gate = MagicMock()
@@ -393,12 +400,30 @@ def test_rest_research_partial_with_zero_good_short_circuits():
     fake_gate.reject_threshold = 0.3
     fake_gate.pass_threshold = 0.5
 
-    synth_called = MagicMock()
+    # Fail-open proceeds to synthesis: return a real AggregatedSynthesis so the
+    # verifier/finalization pipeline runs (the MagicMock surrogate would trip the
+    # unsupported-result-type guard / fail the await).
+    from src.synthesis import AggregatedSynthesis, SynthesisStyle as _Style
+
+    fake_synth_result = AggregatedSynthesis(
+        content="Weakly-grounded answer [1].",
+        citations=[
+            {"number": 1, "id": "1", "source_id": None, "title": "Source 1",
+             "url": "https://example.com/1", "origin": None, "source_type": None},
+        ],
+        source_attribution={},
+        confidence=0.5,
+        style_used=_Style.COMPREHENSIVE,
+        word_count=3,
+        llm_output=None,
+    )
+    fake_synth = MagicMock()
+    fake_synth.synthesize = AsyncMock(return_value=fake_synth_result)
 
     with patch.object(routes, "_get_llm_client", return_value=MagicMock()), \
          patch.object(routes, "SearchAggregator", return_value=fake_agg), \
          patch.object(routes, "SourceQualityGate", return_value=fake_gate), \
-         patch("src.synthesis.wrappers.SynthesisAggregator", side_effect=synth_called):
+         patch("src.synthesis.wrappers.SynthesisAggregator", return_value=fake_synth):
         response = client.post(
             "/api/v1/research",
             json={"query": "test", "top_k": 1, "preset": "comprehensive"},
@@ -406,12 +431,16 @@ def test_rest_research_partial_with_zero_good_short_circuits():
 
     assert response.status_code == 200, response.text
     body = response.json()
-    assert "Source quality insufficient" in body["content"]
-    assert "PARTIAL, zero passed" in body["content"]
-    assert "0.42" in body["content"]
-    assert body["citations"] == []
+    # Failed open — NOT a refusal.
+    assert "Source quality insufficient" not in body["content"]
+    assert "Weakly-grounded answer [1]." in body["content"]
+    # Low-relevance caveat surfaced (R2-C1) in the REST-visible safe_content.
+    assert "fail-open" in body["content"].lower()
+    # Synthesis ran over the set-aside (rejected) sources — never-vaporize.
+    fake_synth.synthesize.assert_awaited_once()
+    assert fake_synth.synthesize.call_args.kwargs["sources"] == [rejected]
+    # Gate decision preserved for caller observability.
     assert body["quality_gate"]["decision"] == "partial"
-    synth_called.assert_not_called()
 
 
 def test_rest_research_partial_with_good_sources_proceeds_to_synthesis():

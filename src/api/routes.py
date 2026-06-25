@@ -37,6 +37,7 @@ from .schemas import (
     # P0 Enhancement schemas
     ContradictionSchema,
     QualityGateSchema,
+    RejectedSourceSchema,
     VerifiedClaimSchema,
     DiscoverRequestEnhanced,
     SynthesizeRequestEnhanced,
@@ -76,6 +77,7 @@ from ..synthesis import (
     # across all routes regardless of branch (preset vs no-preset, outline
     # vs aggregator).
     SynthesisInvocationError,
+    apply_fail_open,
     run_aggregator_synthesize,
     run_aggregator_synthesize_with_reasoning,
     run_engine_research,
@@ -246,6 +248,11 @@ async def research(
         contradictions_list = []
         rcs_summaries_list = None
         sources_for_synthesis = pre_gathered
+        # Fail-open state (R2-C1): a REJECT / PARTIAL-zero-good gate decision with
+        # >=1 source above the floor synthesizes over the weak sources with a caveat
+        # instead of refusing. Consumed by apply_fail_open() after synthesis.
+        fail_open_low_quality = False
+        fail_open_caveat = None
 
         # Quality Gate — per-preset thresholds + entity-balanced safety net
         # match the MCP `synthesize` path (mcp_server.py).
@@ -271,6 +278,9 @@ async def research(
                 pass_threshold=quality_gate.pass_threshold,
                 gate_degraded=gate_result.gate_degraded,
                 gate_focus=gate_result.gate_focus,
+                rejected_sources=[
+                    RejectedSourceSchema(**r) for r in gate_result.rejected_provenance()
+                ] or None,
             )
 
             # REJECT and PARTIAL-with-zero-good must short-circuit before
@@ -279,7 +289,9 @@ async def research(
             # v0.2.2 this endpoint silently fell through, running synthesis
             # over the same sources the gate had just rejected. v0.2.2 codex
             # Turn 7 item 4.
-            if gate_result.decision == QualityDecision.REJECT:
+            if gate_result.decision == QualityDecision.REJECT and not gate_result.fail_open_eligible(
+                settings.fail_open_min_source_score
+            ):
                 return ResearchResponse(
                     query=request.query,
                     content=(
@@ -302,8 +314,18 @@ async def research(
                     contradictions=[],
                     rcs_summaries=None,
                 )
+
+            # REJECT but >=1 source cleared the fail-open floor (R2-C1): fail open
+            # over the weak sources with a caveat instead of refusing.
+            if gate_result.decision == QualityDecision.REJECT:
+                sources_for_synthesis = gate_result.rejected_sources
+                fail_open_low_quality = True
+                fail_open_caveat = gate_result.fail_open_caveat(settings.fail_open_min_source_score)
+
             if gate_result.decision == QualityDecision.PARTIAL:
-                if not gate_result.good_sources:
+                if not gate_result.good_sources and not gate_result.fail_open_eligible(
+                    settings.fail_open_min_source_score
+                ):
                     return ResearchResponse(
                         query=request.query,
                         content=(
@@ -329,7 +351,13 @@ async def research(
                         contradictions=[],
                         rcs_summaries=None,
                     )
-                sources_for_synthesis = gate_result.good_sources
+                if gate_result.good_sources:
+                    sources_for_synthesis = gate_result.good_sources
+                else:
+                    # PARTIAL-zero-good but a source cleared the floor (R2-C1): fail open.
+                    sources_for_synthesis = gate_result.rejected_sources
+                    fail_open_low_quality = True
+                    fail_open_caveat = gate_result.fail_open_caveat(settings.fail_open_min_source_score)
 
         # RCS Preprocessing (guidance-only: summaries become advisory guidance
         # passed alongside the full sources, never a replacement for them)
@@ -360,7 +388,7 @@ async def research(
         if preset.detect_contradictions and len(sources_for_synthesis) >= 2:
             detector = ContradictionDetector(llm_client=llm_client, model=settings.llm_model)
             detection = await detector.detect(request.query, sources_for_synthesis)
-            contradictions = detection.contradictions
+            contradictions = detection.surfaced  # D1: MODERATE+MAJOR only; MINOR stays internal diagnostics
             contradictions_list = [
                 ContradictionSchema(
                     topic=c.topic,
@@ -397,6 +425,10 @@ async def research(
             )
         except SynthesisInvocationError as e:
             raise HTTPException(status_code=500, detail=f"Synthesis error: {e}")
+
+        # Fail-open (R2-C1/C2): non-cacheable + low-relevance caveat in safe_content.
+        if fail_open_low_quality:
+            finalized = apply_fail_open(finalized, fail_open_caveat)
 
         return ResearchResponse(
             query=request.query,
@@ -901,6 +933,11 @@ async def synthesize_enhanced(
     contradictions_list = []
     verified_claims_list = []
     sources_for_synthesis = sources
+    # Fail-open state (R2-C1): a REJECT / PARTIAL-zero-good gate decision with
+    # >=1 source above the floor synthesizes over the weak sources with a caveat
+    # instead of refusing. Consumed by apply_fail_open() after synthesis.
+    fail_open_low_quality = False
+    fail_open_caveat = None
 
     # Step 1: Quality Gate (CRAG-style)
     if request.run_quality_gate:
@@ -923,9 +960,14 @@ async def synthesize_enhanced(
             pass_threshold=quality_gate.pass_threshold,
             gate_degraded=gate_result.gate_degraded,
             gate_focus=gate_result.gate_focus,
+            rejected_sources=[
+                RejectedSourceSchema(**r) for r in gate_result.rejected_provenance()
+            ] or None,
         )
 
-        if gate_result.decision == QualityDecision.REJECT:
+        if gate_result.decision == QualityDecision.REJECT and not gate_result.fail_open_eligible(
+            settings.fail_open_min_source_score
+        ):
             # Return early with rejection
             return SynthesizeResponseEnhanced(
                 query=request.query,
@@ -940,12 +982,20 @@ async def synthesize_enhanced(
                 contradictions=[],
                 verified_claims=[],
             )
+        elif gate_result.decision == QualityDecision.REJECT:
+            # eligible: >=1 source cleared the fail-open floor (R2-C1). Fail open
+            # over the weak sources with a caveat instead of refusing.
+            sources_for_synthesis = gate_result.rejected_sources
+            fail_open_low_quality = True
+            fail_open_caveat = gate_result.fail_open_caveat(settings.fail_open_min_source_score)
         elif gate_result.decision == QualityDecision.PARTIAL:
             # PARTIAL-with-zero-good (Turn 3 codex T3F2): mirror MCP F6
             # early-return. Without this, assigning empty good_sources into
             # sources_for_synthesis lets synthesis run over zero sources —
             # same gate-bypass class as REJECT-doesn't-reject.
-            if not gate_result.good_sources:
+            if not gate_result.good_sources and not gate_result.fail_open_eligible(
+                settings.fail_open_min_source_score
+            ):
                 return SynthesizeResponseEnhanced(
                     query=request.query,
                     content=(
@@ -965,8 +1015,14 @@ async def synthesize_enhanced(
                     contradictions=[],
                     verified_claims=[],
                 )
-            # Use only good sources
-            sources_for_synthesis = gate_result.good_sources
+            # Use only good sources; or fail open over weak sources if a source
+            # cleared the floor and good_sources is empty (R2-C1).
+            if gate_result.good_sources:
+                sources_for_synthesis = gate_result.good_sources
+            else:
+                sources_for_synthesis = gate_result.rejected_sources
+                fail_open_low_quality = True
+                fail_open_caveat = gate_result.fail_open_caveat(settings.fail_open_min_source_score)
 
     # Step 2: Contradiction Detection (PaperQA2-style)
     detection = None
@@ -976,7 +1032,7 @@ async def synthesize_enhanced(
             model=settings.llm_model,
         )
         detection = await detector.detect(request.query, sources_for_synthesis)
-        contradictions = detection.contradictions
+        contradictions = detection.surfaced  # D1: MODERATE+MAJOR only; MINOR stays internal diagnostics
 
         contradictions_list = [
             ContradictionSchema(
@@ -1045,6 +1101,10 @@ async def synthesize_enhanced(
                 label=verified.label,
                 confidence=verified.confidence,
             ))
+
+    # Fail-open (R2-C1/C2): non-cacheable + low-relevance caveat in safe_content.
+    if fail_open_low_quality:
+        finalized = apply_fail_open(finalized, fail_open_caveat)
 
     return SynthesizeResponseEnhanced(
         query=request.query,
@@ -1202,6 +1262,11 @@ async def synthesize_p1(
     sections_dict = None
     critique_result = None
     sources_for_synthesis = sources
+    # Fail-open state (R2-C1): a REJECT / PARTIAL-zero-good gate decision with
+    # >=1 source above the floor synthesizes over the weak sources with a caveat
+    # instead of refusing. Consumed by apply_fail_open() after synthesis.
+    fail_open_low_quality = False
+    fail_open_caveat = None
 
     # Step 1: Quality Gate (CRAG-style) — per-preset thresholds + entity-balanced
     # safety net when a preset is provided. Mirrors MCP `synthesize` path.
@@ -1232,9 +1297,14 @@ async def synthesize_p1(
             pass_threshold=quality_gate.pass_threshold,
             gate_degraded=gate_result.gate_degraded,
             gate_focus=gate_result.gate_focus,
+            rejected_sources=[
+                RejectedSourceSchema(**r) for r in gate_result.rejected_provenance()
+            ] or None,
         )
 
-        if gate_result.decision == QualityDecision.REJECT:
+        if gate_result.decision == QualityDecision.REJECT and not gate_result.fail_open_eligible(
+            settings.fail_open_min_source_score
+        ):
             return SynthesizeResponseP1(
                 query=request.query,
                 content=f"Source quality insufficient. {gate_result.suggestion or 'Try gathering more relevant sources.'}",
@@ -1247,11 +1317,19 @@ async def synthesize_p1(
                 quality_gate=quality_gate_result,
                 preset_used=preset_used,
             )
+        elif gate_result.decision == QualityDecision.REJECT:
+            # eligible: >=1 source cleared the fail-open floor (R2-C1). Fail open
+            # over the weak sources with a caveat instead of refusing.
+            sources_for_synthesis = gate_result.rejected_sources
+            fail_open_low_quality = True
+            fail_open_caveat = gate_result.fail_open_caveat(settings.fail_open_min_source_score)
         elif gate_result.decision == QualityDecision.PARTIAL:
             # PARTIAL-with-zero-good (Turn 3 codex T3F2): mirror MCP F6
             # early-return. Same gate-bypass class as REJECT-doesn't-reject
             # — synthesis must not run over zero sources.
-            if not gate_result.good_sources:
+            if not gate_result.good_sources and not gate_result.fail_open_eligible(
+                settings.fail_open_min_source_score
+            ):
                 return SynthesizeResponseP1(
                     query=request.query,
                     content=(
@@ -1270,7 +1348,12 @@ async def synthesize_p1(
                     quality_gate=quality_gate_result,
                     preset_used=preset_used,
                 )
-            sources_for_synthesis = gate_result.good_sources
+            if gate_result.good_sources:
+                sources_for_synthesis = gate_result.good_sources
+            else:
+                sources_for_synthesis = gate_result.rejected_sources
+                fail_open_low_quality = True
+                fail_open_caveat = gate_result.fail_open_caveat(settings.fail_open_min_source_score)
 
     # Step 2: RCS Contextual Summarization (PaperQA2-style)
     # Guidance-only: the contextual summaries become advisory guidance passed
@@ -1309,7 +1392,7 @@ async def synthesize_p1(
             model=settings.llm_model,
         )
         detection = await detector.detect(request.query, sources_for_synthesis)
-        contradictions = detection.contradictions
+        contradictions = detection.surfaced  # D1: MODERATE+MAJOR only; MINOR stays internal diagnostics
 
         contradictions_list = [
             ContradictionSchema(
@@ -1375,6 +1458,10 @@ async def synthesize_p1(
             confidence = finalized.confidence
     except SynthesisInvocationError as e:
         raise HTTPException(status_code=500, detail=f"P1 synthesis error: {e}")
+
+    # Fail-open (R2-C1/C2): non-cacheable + low-relevance caveat in safe_content.
+    if fail_open_low_quality:
+        finalized = apply_fail_open(finalized, fail_open_caveat)
 
     verdict = finalized.verdict
     citations = [

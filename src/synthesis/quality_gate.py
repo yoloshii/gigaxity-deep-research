@@ -448,6 +448,56 @@ class QualityGateResult:
     # observability so a caller knows sources were judged against a narrowed
     # focus, not the full query. Set on every decision branch.
     gate_focus: Optional[str] = None
+    # C5 never-vaporize: per-source scores aligned with rejected_sources, so a
+    # consumer can recover the sources the gate set aside (not just a count).
+    # None on paths that don't align per-source scores (e.g. the sync heuristic
+    # gate); rejected_provenance() then surfaces identity + reason without score.
+    rejected_scores: Optional[list[float]] = None
+
+    def fail_open_eligible(self, floor: float) -> bool:
+        """Whether a refusing decision should fail open into a caveated synthesis.
+
+        A REJECT (or a PARTIAL that filtered every source to zero good) normally
+        refuses synthesis. It fails open instead - synthesizing over the weak
+        sources with a low-relevance caveat - only when at least one source
+        scored >= floor: there is *some* positive evidence to ground a (weak)
+        answer. Below the floor nothing clears the bar, so the gate hard-refuses
+        even when degraded (R2-C1). Independent of gate_degraded by design - the
+        predicate is purely "is there positive evidence", evaluated AFTER
+        evaluate() has returned, so the degraded rescue / PARTIAL / PROCEED
+        branches are untouched.
+        """
+        return bool(self.source_scores) and max(self.source_scores) >= floor
+
+    def fail_open_caveat(self, floor: float) -> str:
+        """The low-relevance caveat surfaced on a fail-open synthesis."""
+        best = max(self.source_scores) if self.source_scores else 0.0
+        return (
+            f"low source relevance (fail-open): the relevance gate returned "
+            f"{self.decision.value} (avg {self.avg_quality:.2f}, best source "
+            f"{best:.2f}, floor {floor}); synthesized over weak sources rather "
+            f"than refusing. Treat claims as weakly grounded / exploratory and "
+            f"check them against the per-source relevance scores."
+        )
+
+    def rejected_provenance(self) -> list[dict]:
+        """Identity + score + reason for each source the gate set aside (C5).
+
+        Lets a consumer recover the sources dropped on the happy path
+        (PARTIAL/PASS) - "a gate sets aside, never vaporizes". `score` is None
+        when the scorer path did not align per-source scores with the rejected
+        set (e.g. the sync heuristic gate).
+        """
+        scores = self.rejected_scores or []
+        provenance = []
+        for i, s in enumerate(self.rejected_sources or []):
+            provenance.append({
+                "title": getattr(s, "title", None),
+                "url": getattr(s, "url", None),
+                "score": round(scores[i], 3) if i < len(scores) else None,
+                "reason": "scored below the relevance pass threshold",
+            })
+        return provenance
 
 
 class SourceQualityGate:
@@ -629,6 +679,7 @@ Format: One query per line."""
                         avg_quality=avg_quality,
                         good_sources=rescued,
                         rejected_sources=rejected,
+                        rejected_scores=[sc for s, sc in zip(sources, scores) if sc < self.pass_threshold],
                         source_scores=scores,
                         reason=(
                             f"relevance gate degraded (llm_fallback_heuristic); avg "
@@ -648,6 +699,7 @@ Format: One query per line."""
                 avg_quality=avg_quality,
                 good_sources=[],
                 rejected_sources=sources,
+                rejected_scores=scores,
                 source_scores=scores,
                 suggestion=suggestion,
                 reason=f"Average relevance {avg_quality:.2f} below threshold {self.reject_threshold}",
@@ -729,6 +781,7 @@ Format: One query per line."""
                 avg_quality=avg_quality,
                 good_sources=good_sources,
                 rejected_sources=rejected_sources,
+                rejected_scores=[sc for _, sc in rejected_with_scores],
                 source_scores=scores,
                 reason=f"Filtered {len(rejected_sources)} low-quality sources",
                 scorer_path=outcome.scorer_path,
