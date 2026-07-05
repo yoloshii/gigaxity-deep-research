@@ -256,6 +256,18 @@ Cross-source validation and comprehensive analysis. Triple Stack → gigaxity-de
 - Multiple perspectives expected
 - Consensus or best practice sought
 
+## Framing a deep-research query (EXPLORATORY / SYNTHESIS)
+
+Before you classify, shape the query string itself. The synthesis engine has **no memory of your conversation** — it acts only on the query text and the sources you pass. A vague subject starves the decomposer; a framed query steers every downstream stage (decomposition into typed sub-aspects, gap detection, contradiction surfacing). Applies to EXPLORATORY and SYNTHESIS work — QUICK FACTUAL and DIRECT lookups skip it.
+
+- **Lead with the goal and the decision it informs.** "…to decide whether to adopt X over Y" beats a bare topic — the engine ranks and prunes against intent it can see.
+- **Embed all context in the query string.** Names, dates, versions, known facts, what's already ruled out. An unstated constraint is invisible; the engine cannot ask a follow-up.
+- **State the source hierarchy when epistemics matter.** Prefer primary/authoritative sources (docs, filings, changelogs, papers); treat forum / Reddit / X / community results as **weak signal only**, never sole support for a factual claim. The `gptr` social retriever *will* surface social content — say in the query how `synthesize` should weight it.
+- **Name include/avoid constraints.** "only non-Chinese vendors", "no marketing copy", "post-2025 only" — honored if stated, not if assumed.
+- **One mission per query.** Cramming unrelated questions dilutes decomposition. Split them into separate calls.
+
+The engine already decomposes into typed sub-aspects, detects gaps, and surfaces contradictions — a well-framed query is what makes those stages fire on the right axes.
+
 ## Decision Tree
 
 ```
