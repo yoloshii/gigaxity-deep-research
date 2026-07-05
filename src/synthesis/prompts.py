@@ -8,7 +8,7 @@ listing now speak `[N]`, so the model sees one internally-consistent format.
 """
 
 from ..connectors.base import Source
-from .citations import CITATION_FORMAT_GUIDE
+from .citations import CITATION_FORMAT_GUIDE, EVIDENCE_DISCIPLINE
 
 
 RESEARCH_SYSTEM_PROMPT = f"""You are a research synthesis assistant. Your task is to analyze search results and provide comprehensive, well-cited answers.
@@ -31,8 +31,9 @@ QUALITY REQUIREMENTS:
 - Be thorough but concise.
 - Synthesize information across sources; don't just summarize each.
 - Identify agreements and disagreements between sources.
-- Note when information is limited or uncertain.
-- Prioritize recent and authoritative sources.
+- Prefer recent authoritative sources when timeliness matters.
+
+{EVIDENCE_DISCIPLINE}
 
 OUTPUT FORMAT:
 - Wrap your entire answer in <answer> and </answer> tags.

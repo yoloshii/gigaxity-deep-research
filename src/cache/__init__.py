@@ -147,7 +147,12 @@ cache = HotCache()
 # three can change synthesis output for the same inputs, so pre-change entries
 # must not be served. (Fail-open low-quality results are themselves non-cacheable
 # per R2-C2; this bump invalidates normal pre-v5 entries.)
-SYNTH_CACHE_VERSION = "5"
+# v6: EVIDENCE DISCIPLINE fragment added across the synthesis prompt surface
+# (RESEARCH_SYSTEM_PROMPT, the aggregator style prompts, and the outline
+# SECTION/REFINE prompts) - source-authority hierarchy + fact/inference/
+# uncertainty separation + single-source flagging (v0.6.3). This changes
+# synthesis prose for the same inputs, so pre-v6 entries must not be served.
+SYNTH_CACHE_VERSION = "6"
 
 
 def _source_field(source: Any, field: str) -> str:

@@ -16,7 +16,7 @@ from typing import Optional
 from ..config import settings
 from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction, combine_llm_outputs, derive_effective_budget
 from .aggregator import PreGatheredSource, SynthesisStyle
-from .citations import CITATION_FORMAT_GUIDE
+from .citations import CITATION_FORMAT_GUIDE, EVIDENCE_DISCIPLINE
 from .source_formatting import derive_input_budget, format_sources_for_synthesis
 
 
@@ -85,6 +85,8 @@ Instructions:
 
 {CITATION_FORMAT_GUIDE}
 
+{EVIDENCE_DISCIPLINE}
+
 Section content:"""
 
     CRITIQUE_PROMPT = """Critique this draft synthesis for quality issues.
@@ -103,6 +105,8 @@ Identify any issues:
 3. Unclear or confusing explanations
 4. Logical gaps or inconsistencies
 5. Sections that need more depth
+6. Claims resting on weak sources (forum/social/community) as their only support
+7. Inference or single-source assertions presented as settled fact
 
 Format: One issue per line, or respond with "NO_ISSUES" if the draft is good."""
 
@@ -118,6 +122,8 @@ Sources for reference:
 {{sources}}
 
 {CITATION_FORMAT_GUIDE}
+
+{EVIDENCE_DISCIPLINE}
 
 Provide the improved synthesis:"""
 
