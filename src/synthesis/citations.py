@@ -50,6 +50,25 @@ CITATION_FORMAT_GUIDE = """Citation format — every claim that draws on a sourc
 Use only `[N]` — never `[xx_hex]`, never `(Author 2024)`, never footnotes."""
 
 
+# Shared evidence-discipline fragment, injected into the synthesis prompt surface
+# (RESEARCH_SYSTEM_PROMPT, the aggregator style prompts, and the outline
+# SECTION/REFINE prompts) the same way CITATION_FORMAT_GUIDE is — one source of
+# truth for source-authority hierarchy + fact/inference/uncertainty separation +
+# single-source flagging. The social-authority nuance is deliberate: the gptr
+# retriever surfaces Reddit/X/YouTube, and a community-sentiment query treats
+# those AS the primary evidence, so the rule is "weak for factual claims / weight
+# as sentiment", not a blanket ban. BRIEF is the one-line form for the CONCISE
+# (fast-preset) style, which stays terse by design. Both are brace-free so they
+# survive `.format(query=, sources=)` in the aggregator/outline templates.
+EVIDENCE_DISCIPLINE = """EVIDENCE DISCIPLINE:
+- Prefer primary or authoritative sources for factual claims: official docs, filings, changelogs, peer-reviewed papers, standards, and directly responsible organizations.
+- Treat forum, social, community, and personal-blog sources as evidence of community sentiment or individual experience. Use them for product or factual claims only when corroborated by stronger sources, and label them as weak when they are the only support.
+- Separate established facts, source-backed inferences, and unresolved uncertainty. Do not present an inference, disagreement, or single-source assertion as settled consensus."""
+
+
+EVIDENCE_DISCIPLINE_BRIEF = "Weight primary/authoritative sources over forum/social/community for factual claims (treat community sources as sentiment unless corroborated), and separate fact from inference — flag single-source or uncertain claims rather than implying consensus."
+
+
 @runtime_checkable
 class CitationSource(Protocol):
     """Duck-typed source contract for citation extraction.

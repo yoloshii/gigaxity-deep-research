@@ -22,7 +22,12 @@ from typing import Optional
 
 from ..config import settings
 from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction, derive_effective_budget
-from .citations import CITATION_FORMAT_GUIDE, extract_numeric_citations
+from .citations import (
+    CITATION_FORMAT_GUIDE,
+    EVIDENCE_DISCIPLINE,
+    EVIDENCE_DISCIPLINE_BRIEF,
+    extract_numeric_citations,
+)
 from .output_cleanup import extract_delimited_answer
 from .source_formatting import derive_input_budget, format_sources_for_synthesis
 
@@ -90,6 +95,8 @@ Instructions:
 
 {CITATION_FORMAT_GUIDE}
 
+{EVIDENCE_DISCIPLINE}
+
 {_OUTPUT_DISCIPLINE}
 
 Provide a thorough synthesis:"""
@@ -105,6 +112,7 @@ Instructions:
 1. Provide a direct, concise answer (2-4 paragraphs max)
 2. Focus on the most important points
 3. Skip tangential information
+4. {EVIDENCE_DISCIPLINE_BRIEF}
 
 {CITATION_FORMAT_GUIDE}
 
@@ -127,6 +135,8 @@ Instructions:
 
 {CITATION_FORMAT_GUIDE}
 
+{EVIDENCE_DISCIPLINE}
+
 {_OUTPUT_DISCIPLINE}
 
 Comparative analysis:"""
@@ -145,6 +155,8 @@ Instructions:
 4. Structure as: Background → Analysis → Discussion → Conclusions
 
 {CITATION_FORMAT_GUIDE}
+
+{EVIDENCE_DISCIPLINE}
 
 {_OUTPUT_DISCIPLINE}
 
@@ -168,6 +180,8 @@ First, think through your approach:
 </reasoning>
 
 Now provide your synthesis based on this reasoning. {CITATION_FORMAT_GUIDE}
+
+{EVIDENCE_DISCIPLINE}
 
 <synthesis>
 [Your synthesized response]
