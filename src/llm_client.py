@@ -40,9 +40,17 @@ class LLMClient:
             timeout=settings.llm_timeout,
             connect=10.0,
         )
+        # Construct the client even when no key is configured. The OpenAI SDK
+        # raises `OpenAIError: Missing credentials` at CONSTRUCTION on an empty
+        # key, which makes every object that owns a client un-constructible —
+        # so a fresh clone with no RESEARCH_LLM_API_KEY could not even run its
+        # own unit tests (`SynthesisEngine()` raised before asserting a single
+        # attribute). Construction is not the right guard: real usage is gated
+        # by `settings.require_llm_key()` at the MCP and REST entrypoints, and
+        # a request made with this placeholder fails with a normal upstream 401.
         self._client = AsyncOpenAI(
             base_url=self.base_url,
-            api_key=self.api_key,
+            api_key=self.api_key or "not-configured",
             timeout=timeout,
         )
 
