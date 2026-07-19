@@ -217,3 +217,94 @@ def test_surfaced_contradictions_all_minor_yields_none_surfaced():
     cs = [_contradiction("a", ContradictionSeverity.MINOR),
           _contradiction("b", ContradictionSeverity.MINOR)]
     assert surfaced_contradictions(cs) == []
+
+
+# ---------------------------------------------------------------------------
+# Integration — REST /synthesize/enhanced and /synthesize/p1 fail-open
+# ---------------------------------------------------------------------------
+
+
+def _rest_app():
+    from fastapi import FastAPI
+    from src.api import routes
+    app = FastAPI()
+    app.include_router(routes.router, prefix="/api/v1")
+    return app, routes
+
+
+def _fail_open_partial_gate():
+    rejected = PreGatheredSource(origin="t", url="u", title="T", content="c", source_type="article")
+    res = _gate_result(
+        QualityDecision.PARTIAL, 0.42, [0.42],  # max 0.42 >= 0.3 → fail open
+        good=[], rejected=[rejected], rejected_scores=[0.42],
+    )
+    gate = MagicMock()
+    gate.evaluate = AsyncMock(return_value=res)
+    gate.reject_threshold = 0.3
+    gate.pass_threshold = 0.5
+    return gate, rejected
+
+
+def test_rest_synthesize_enhanced_partial_zero_good_fails_open():
+    """REST /synthesize/enhanced (block B): PARTIAL-zero-good above the floor fails
+    open instead of refusing (supersedes the v0.2.x short-circuit for this input)."""
+    from fastapi.testclient import TestClient
+
+    app, routes = _rest_app()
+    client = TestClient(app)
+    fake_gate, _ = _fail_open_partial_gate()
+
+    fake_synth = MagicMock()
+    fake_synth.synthesize = AsyncMock(return_value=_aggregated("Enhanced weak answer [1]."))
+
+    with patch.object(routes, "_get_llm_client", return_value=MagicMock()), \
+         patch.object(routes, "SourceQualityGate", return_value=fake_gate), \
+         patch("src.synthesis.wrappers.SynthesisAggregator", return_value=fake_synth):
+        response = client.post(
+            "/api/v1/synthesize/enhanced",
+            json={
+                "query": "test",
+                "sources": [{"title": "T", "content": "c", "origin": "test", "url": "", "source_type": "article", "metadata": {}}],
+                "style": "comprehensive",
+                "run_quality_gate": True,
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert "Source quality insufficient" not in body["content"]
+    assert "Enhanced weak answer [1]." in body["content"]
+    assert "fail-open" in body["content"].lower()
+    fake_synth.synthesize.assert_awaited_once()
+
+
+def test_rest_synthesize_p1_partial_zero_good_fails_open():
+    """REST /synthesize/p1 (block C): same fail-open behavior as enhanced."""
+    from fastapi.testclient import TestClient
+
+    app, routes = _rest_app()
+    client = TestClient(app)
+    fake_gate, _ = _fail_open_partial_gate()
+
+    fake_synth = MagicMock()
+    fake_synth.synthesize = AsyncMock(return_value=_aggregated("P1 weak answer [1]."))
+
+    with patch.object(routes, "_get_llm_client", return_value=MagicMock()), \
+         patch.object(routes, "SourceQualityGate", return_value=fake_gate), \
+         patch("src.synthesis.wrappers.OutlineGuidedSynthesizer", return_value=fake_synth), \
+         patch("src.synthesis.wrappers.SynthesisAggregator", return_value=fake_synth):
+        response = client.post(
+            "/api/v1/synthesize/p1",
+            json={
+                "query": "test",
+                "sources": [{"title": "T", "content": "c", "origin": "test", "url": "", "source_type": "article", "metadata": {}}],
+                "preset": "comprehensive",
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert "Source quality insufficient" not in body["content"]
+    assert "P1 weak answer [1]." in body["content"]
+    assert "fail-open" in body["content"].lower()
+    fake_synth.synthesize.assert_awaited_once()
