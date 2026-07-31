@@ -1003,6 +1003,32 @@ The URL is a CANDIDATE, not evidence. Never infer thread content from the URL sl
 
 Other tools with similar shapes: any search retriever that returns "href-only" snippets on access-controlled domains (LinkedIn, paywalled news, members-only forums). When in doubt, check both `body` and `title` — if both are empty strings, it is a candidate, not evidence.
 
+### 7. Don't Treat a 404'd Repo as Settled — or Trust Its Indexed Metadata
+
+Search indexes serve deleted, renamed, transferred and private repos. A `404` on clone means *"the index is
+stale"*, not *"the project is gone"* — and the surfaced stars/commits/dates may be a snapshot of a path that
+no longer exists.
+
+```
+❌ git clone → 404 → mark the candidate dead → move on
+✅ git clone → 404 → run Pattern 17 (account probe → same-account sweep → name search → DESCRIPTION search)
+
+❌ Search the repo NAME for a successor          # generic names collide — one search returned 37 wrong hits
+✅ Search the exact DESCRIPTION phrase           # near-unique — returned exactly 1, under a new owner
+
+❌ Owner account also 404s → "everything's deleted"
+✅ Owner account 404s → the ACCOUNT was renamed/transferred → the project is alive under a new owner
+
+❌ Recover the repo, keep the indexed "0 stars, new" metadata → tier it low
+✅ Recover the repo, RE-BASELINE from the clone → it was 191 commits / ★64 / pushed today
+
+❌ Same repo name found → assume it's the same project
+✅ Verify: README/description match + `git log --reverse` history predating the disappearance
+```
+
+Applies to any code-discovery pass, and to any delta survey over a tracked clone whose remote 404s — that
+is a rename or transfer to chase, not a dropped dependency.
+
 ---
 
 ## Workflow Selection Heuristics
@@ -1140,6 +1166,21 @@ mcp__exa__web_search_advanced_exa(query, category="github")
   ON FAIL → mcp__exa__web_search_exa(query)
   ON FAIL → mcp__jina__search_web(query + " site:github.com")
 ```
+
+**Distinct failure mode — the search succeeded but the RESULT is dead (404 on clone/fetch).** Search
+indexes carry deleted, renamed and transferred repos; a GitHub index has been observed serving entries
+that 404 within hours of being surfaced. A 404 is **not** the end of the trail — run the recovery ladder:
+
+```
+git clone / fetch → 404
+  → owner-account probe   api.github.com/users/<owner>          # 404 here = account renamed or deleted
+  → same-account sweep    api.github.com/users/<owner>/repos    # rename or successor in the same family?
+  → name search           /search/repositories?q=<name> in:name # transfer, or a fork that outlived the parent
+  → DESCRIPTION search    /search/repositories?q=<exact description phrase>   # the discriminator
+  → verify identity, then RE-BASELINE metadata (see Pattern 17)
+```
+
+Field result: **2 of 4 dead repos recovered this way, both top-tier candidates.**
 
 ### Image Search
 
@@ -1525,6 +1566,68 @@ mcp__gigaxity-deep-research__synthesize(
     preset="comprehensive"
 )
 ```
+
+### Pattern 17: Dead-Repo Recovery — fan out to superseded / renamed / forked versions
+
+```
+A repo surfaced by search 404s on clone or fetch.
+```
+
+**A surfaced repo is a CANDIDATE, not an asset, until it clones — and a 404 is not the end of the trail.**
+Search indexes lag reality by hours to months: repos get renamed, transferred to an org, made private, or
+deleted while a fork lives on. Run this before writing anything off. *(Field result: 4 dead candidates →
+**2 fully recovered, both top-tier**, 1 functionally replaced, 1 genuinely gone.)*
+
+```bash
+# 0. Confirm it is actually dead (follow redirects — a rename usually redirects, so a 404 here is real)
+curl -s -o /dev/null -w "%{http_code}" -L "https://github.com/<owner>/<repo>"
+
+# 1. Owner-account probe — the single most diagnostic step
+curl -s -o /dev/null -w "%{http_code}" "https://api.github.com/users/<owner>"
+#    404 → the ACCOUNT is renamed or deleted, not just the repo. Skip to step 3 —
+#          the project likely lives under a new owner with the SAME repo name.
+#    200 → account alive; the repo alone was deleted, transferred, or made private.
+
+# 2. Same-account sweep — a rename or successor in the same family
+curl -s "https://api.github.com/users/<owner>/repos?per_page=100&sort=updated" \
+  | python3 -c "import json,sys; [print(f\"{r['name']:<40} ★{r['stargazers_count']:<5} {str(r['pushed_at'])[:10]}  {(r['description'] or '')[:70]}\") for r in json.load(sys.stdin)]"
+
+# 3. Name search — catches transfers and forks that outlived the parent
+curl -s "https://api.github.com/search/repositories?q=<repo-name>+in:name&sort=updated"
+
+# 4. DESCRIPTION search — the real discriminator (see below)
+curl -s "https://api.github.com/search/repositories?q=<exact+description+phrase>"
+```
+
+**Why the description search is the load-bearing one.** Generic names collide massively — one dead
+`seo-forge` returned **37** same-name hits, none of them the project. The description is near-unique:
+searching the exact phrase *"The open registry of affiliate programs"* returned exactly **one** repo, under
+a completely different owner. **Match on description, confirm on name — never the reverse.**
+
+**Verify identity before declaring a recovery.** Same name ≠ same project.
+
+```bash
+head -20 <clone>/README.md                              # description + framing match?
+git -C <clone> log --reverse --format='%cs %an %s' | head -3   # does history predate the disappearance?
+```
+A first commit dated before the original went dark, under a plausible author, is strong continuity evidence.
+
+**Re-baseline the metadata — do NOT carry the index snapshot forward.** The recovered project is often far
+ahead of what the search index reported. One recovery was indexed as *"0 stars, new, 0 forks"* and was
+actually **191 commits, ★64, pushed that same day**. Stale stars have re-ranked a candidate from bottom to
+top of a tier before now.
+
+**Classify the outcome, and record all four classes** so a later pass doesn't re-survey the same ground:
+
+| Class | Meaning | Action |
+|---|---|---|
+| **RECOVERED** | same project at a new path | clone the new path; re-baseline; note the old path |
+| **REPLACED** | gone, but a different project does the same job | clone the substitute; mark it as *not* the original |
+| **DEAD** | gone, no successor, no substitute worth taking | record what it *would* have supplied, so the gap stays visible |
+| **PRIVATE** | account alive, repo 404, no successor anywhere | indistinguishable from deleted from outside — treat as DEAD, say so honestly |
+
+**Side-benefit worth harvesting:** the step-2 account sweep surfaces the owner's *other* work, which is
+often on-domain and was never in the original search. Two useful finds came out of it in one pass.
 
 ## Integration with Global CLAUDE.md
 
