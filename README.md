@@ -141,6 +141,7 @@ REST endpoints:
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/api/v1/health` | GET | Health check, lists active connectors |
+| `/api/v1/health/connectors` | GET | Liveness probes per connector (`ok` / `unreachable` / `unconfigured`) — real network checks, ~2s |
 | `/api/v1/discover` | POST | Exploratory expansion |
 | `/api/v1/synthesize` | POST | Citation-aware synthesis |
 | `/api/v1/reason` | POST | Chain-of-thought reasoning |

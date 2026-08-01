@@ -110,7 +110,7 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 | `RESEARCH_LLM_API_KEY` missing on startup | env var not set | Set in `.env` or MCP `env` block; for local servers without auth, set any non-empty placeholder |
 | `ConnectionError` / `APIConnectionError` on first call | Local LLM server not running | Start vLLM/SGLang/llama.cpp on the configured `RESEARCH_LLM_API_BASE`; `curl <base>/models` should return 200 |
 | 401 from LLM endpoint | Invalid bearer token | Match `RESEARCH_LLM_API_KEY` to what your server expects (real key for hosted; placeholder for unauthenticated local) |
-| Empty results from `discover` / `synthesize` | SearXNG host unreachable | `curl $RESEARCH_SEARXNG_HOST/healthz` — should return 200 |
+| Empty results from `discover` / `synthesize` | SearXNG host unreachable | `curl $RESEARCH_SEARXNG_HOST/healthz` — should return 200. REST mode: `GET /api/v1/health/connectors` probes every connector at once |
 | `model not found` from local server | Model not loaded | vLLM/SGLang load 30B in 30-120 s; check the model-server logs and use the exact slug they registered |
 | MCP server boots but Claude Code shows no tools | stdio path / venv mismatch | Confirm `command` in `~/.claude.json` points at the venv's Python (not system Python) |
 | Out-of-memory at model startup | Model larger than VRAM | Switch to a quantized variant (AWQ, INT4) or smaller model |
