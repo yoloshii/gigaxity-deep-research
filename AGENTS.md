@@ -109,7 +109,7 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 |---|---|---|
 | `RESEARCH_LLM_API_KEY` missing on startup | env var not set | Set in `.env` or MCP `env` block |
 | 401 from OpenRouter on every call | Invalid or expired key | Regenerate at https://openrouter.ai/keys |
-| Empty results from `discover` / `synthesize` | SearXNG host unreachable | `curl $RESEARCH_SEARXNG_HOST/healthz` — should return 200 |
+| Empty results from `discover` / `synthesize` | SearXNG host unreachable | `curl $RESEARCH_SEARXNG_HOST/healthz` — should return 200. REST mode: `GET /api/v1/health/connectors` probes every connector at once |
 | `Qwen3-30B-A3B-Thinking not found` from OpenRouter | Model slug typo | Use exactly `qwen/qwen3-30b-a3b-thinking-2507` |
 | MCP server boots but Claude Code shows no tools | stdio path / venv mismatch | Confirm `command` in `~/.claude.json` points at the venv's Python (not system Python) |
 | 429 rate limit from OpenRouter | Quota exceeded | Reduce `RESEARCH_DEFAULT_TOP_K`; consider local-inference branch |
