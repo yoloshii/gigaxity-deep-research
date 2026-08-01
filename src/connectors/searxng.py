@@ -31,6 +31,10 @@ class SearXNGConnector(Connector):
     def is_configured(self) -> bool:
         return bool(self.host)
 
+    def _probe_url(self) -> str | None:
+        # /healthz is SearXNG's documented liveness endpoint (see Troubleshooting).
+        return f"{self.host.rstrip('/')}/healthz" if self.host else None
+
     async def search(self, query: str, top_k: int = 10) -> SearchResult:
         """Execute SearXNG search."""
         if not self.is_configured():

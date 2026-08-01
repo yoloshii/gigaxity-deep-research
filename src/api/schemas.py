@@ -1,6 +1,8 @@
 """Pydantic schemas for API requests and responses."""
 
 from pydantic import BaseModel, Field
+
+from ..connectors.base import HealthStatus
 from typing import Literal
 
 
@@ -118,6 +120,26 @@ class HealthResponse(BaseModel):
     status: str
     connectors: list[str]
     llm_configured: bool
+
+
+class ConnectorHealthEntry(BaseModel):
+    """One connector's probed liveness state.
+
+    ``ok`` proves the endpoint answered HTTP — for paid APIs it does NOT
+    validate the credential (that would spend a billed call).
+    """
+
+    name: str
+    configured: bool
+    status: HealthStatus
+    detail: str = ""
+    latency_ms: int | None = None
+
+
+class ConnectorHealthResponse(BaseModel):
+    """Per-connector liveness report (real network probes)."""
+
+    connectors: list[ConnectorHealthEntry]
 
 
 # =============================================================================

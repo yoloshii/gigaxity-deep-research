@@ -13,6 +13,8 @@ from .schemas import (
     ResearchRequest,
     ResearchResponse,
     HealthResponse,
+    ConnectorHealthEntry,
+    ConnectorHealthResponse,
     SourceSchema,
     CitationSchema,
     # Discovery
@@ -84,6 +86,7 @@ from ..synthesis import (
     run_outline_synthesize,
 )
 from ..search import SearchAggregator
+from ..connectors.doctor import check_connectors
 from ..discovery import (
     Explorer,
     # P0 Enhancements
@@ -128,6 +131,30 @@ async def health_check():
         # Local servers without auth still need the user to set a placeholder key
         # so this signal stays meaningful.
         llm_configured=bool(settings.llm_api_key),
+    )
+
+
+@router.get("/health/connectors", response_model=ConnectorHealthResponse)
+async def health_connectors():
+    """Probe every connector's endpoint for liveness (real network calls).
+
+    /health reports config presence and never touches the network; this
+    endpoint actually contacts each connector (~2s cap, parallel) and
+    classifies ok / unreachable / unconfigured. "ok" proves reachability,
+    not paid-API credential validity.
+    """
+    checks = await check_connectors()
+    return ConnectorHealthResponse(
+        connectors=[
+            ConnectorHealthEntry(
+                name=c.name,
+                configured=c.configured,
+                status=c.status,
+                detail=c.detail,
+                latency_ms=c.latency_ms,
+            )
+            for c in checks
+        ]
     )
 
 

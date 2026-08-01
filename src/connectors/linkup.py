@@ -25,6 +25,10 @@ class LinkUpConnector(Connector):
     def is_configured(self) -> bool:
         return bool(self.api_key)
 
+    def _probe_url(self) -> str | None:
+        # Reachability only; key validity would cost a billed call.
+        return "https://api.linkup.so"
+
     async def search(self, query: str, top_k: int = 10) -> SearchResult:
         """Execute LinkUp search."""
         if not self.is_configured():
