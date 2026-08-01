@@ -9,7 +9,7 @@ Symptom-fix lookup table for common boot and runtime errors. Find your symptom i
 | `pydantic.ValidationError: RESEARCH_LLM_API_KEY` | Env var not set or empty | Set `RESEARCH_LLM_API_KEY` in `.env` or MCP `env` block |
 | `ImportError: cannot import name 'mcp'` | `fastmcp` not installed | `pip install -e .` (re-install with deps) |
 | `ImportError: cannot import name 'OpenAI'` from `openai` | Wrong `openai` SDK version | `pip install -U openai` |
-| `ConnectionRefusedError` on first call | SearXNG not running | Start SearXNG; `curl $RESEARCH_SEARXNG_HOST/healthz` should return 200 |
+| `ConnectionRefusedError` on first call | SearXNG not running | Start SearXNG; `curl $RESEARCH_SEARXNG_HOST/healthz` should return 200. REST mode: `GET /api/v1/health/connectors` probes every connector at once |
 | MCP server boots but Claude Code shows no tools | `command` in `~/.claude.json` points at wrong Python | Use absolute path to venv's Python |
 | MCP server hangs at startup | SearXNG host unreachable from inside the venv | `curl` from a fresh shell — DNS or firewall issue |
 | `EnvironmentError: RESEARCH_SEARXNG_HOST not reachable` | Localhost binding mismatch | If using Docker for both, use `host.docker.internal` or container DNS |

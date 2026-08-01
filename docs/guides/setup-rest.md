@@ -71,7 +71,8 @@ The REST surface mirrors the six MCP tools (two primitives plus four deep-resear
 
 | Method | Path | Body | Notes |
 |---|---|---|---|
-| GET | `/api/v1/health` | — | Health + connector status |
+| GET | `/api/v1/health` | — | Health + connector status (config presence only; no network I/O) |
+| GET | `/api/v1/health/connectors` | — | Real liveness probes per connector (~2s, parallel): `ok` / `unreachable` / `unconfigured`. `ok` = reachable, not key-valid |
 | POST | `/api/v1/search` | `{query, top_k?, connectors?}` | Multi-source search only, no LLM |
 | POST | `/api/v1/research` | `{query, top_k?, reasoning_effort?, preset?, focus_mode?}` | Combined search + synthesis |
 | POST | `/api/v1/ask` | `{query, context?}` | Quick conversational answer (direct LLM, no search) |
