@@ -151,7 +151,7 @@ Each stage has a verify step, so you can stop at any point and know the layer be
 | 2 | Primary search source | Stand up SearXNG (bundled compose file under [`companions/searxng/`](companions/searxng/)) | `curl http://localhost:8888/healthz` returns 200 | 5 min | [setup-companions.md](docs/guides/setup-companions.md) |
 | 3 | LLM endpoint | Start a local model (vLLM / SGLang / llama.cpp) **or** point env vars at a hosted endpoint such as OpenRouter | `curl $RESEARCH_LLM_API_BASE/models` returns a model list | 5–30 min | [setup-local-inference.md](docs/guides/setup-local-inference.md) |
 | 4 | Wire gigaxity into Claude Code | `cp .env.example .env`, edit env vars, register the stdio MCP block in `~/.claude.json`, restart Claude Code | `/mcp` shows `gigaxity-deep-research` with a green dot; `mcp__gigaxity-deep-research__research` returns a synthesis with citations | 5 min | [setup-mcp.md](docs/guides/setup-mcp.md) |
-| 5 | Companion MCPs (Triple Stack) | Register Context7, Exa, Exa Answer, Jina, Brightdata fallback, and gptr-mcp in `~/.claude.json` | `/mcp` shows all seven MCPs registered with green dots | 10–15 min | [triple-stack-setup.md](docs/guides/triple-stack-setup.md) |
+| 5 | Companion MCPs (Triple Stack) | Install the bundled companions (`exa-answer`, `jina-mcp`, optionally `brightdata-fallback`, `gptr-mcp`), then register those plus Context7 and Exa in `~/.claude.json` | `/mcp` shows all seven MCPs registered with green dots | 10–15 min | [triple-stack-setup.md](docs/guides/triple-stack-setup.md) · [setup-companions.md](docs/guides/setup-companions.md) |
 | 6 | Routing skill + agent instructions | Symlink [`skills/research-workflow/`](skills/research-workflow/) into your skills dir; paste the instruction block from [`CLAUDE.md`](CLAUDE.md#instruction-block--paste-into-your-harnesss-global-claudemd--agentsmd-or-system-prompt) into your harness's global `CLAUDE.md` / `AGENTS.md` (or a standalone agent's system prompt) | A research query triggers the `research-workflow` skill instead of the agent's built-in WebSearch | 3 min | [skill SKILL.md](skills/research-workflow/SKILL.md) |
 | 7 | Full-stack smoke | Run one query of each routing class and confirm the right MCP fires | See the smoke matrix below | 5 min | (below) |
 
@@ -234,7 +234,7 @@ Gigaxity Deep Research is the synthesis MCP in a seven-MCP deep research stack �
 | **Context7** | Library and API documentation lookup |
 | **Exa** | Code-context search, advanced web search, crawling |
 | **Exa Answer** | Speed-critical factual lookups (1–2 s) |
-| **Jina** | Free-tier web/arxiv/ssrn search, parallel reads, screenshots |
+| **Jina** *(bundled — self-hosted)* | Free-tier web search, URL reading, arXiv/SSRN/BibTeX, rerank, dedup, PDF layout |
 | **gigaxity-deep-research** *(this repo)* | Multi-source search + synthesis with Qwen3-30B-A3B-Thinking |
 | **Brightdata fallback** | Last-resort scraper for blocked URLs (CAPTCHA, paywall, Cloudflare) |
 | **gptr-mcp** | Social-first research — community knowledge from Reddit, X/Twitter, YouTube |

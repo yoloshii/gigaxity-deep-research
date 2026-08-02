@@ -8,6 +8,7 @@ Four companion services ship in [`companions/`](../../companions/) and pair with
 |---|---|---|
 | `companions/searxng/` | Local SearXNG instance via Docker | **Required** unless you point at an external SearXNG |
 | `companions/exa-answer/` | Tiny MCP wrapping Exa's `/answer` endpoint | Recommended — `QUICK FACTUAL` queries route here |
+| `companions/jina-mcp/` | Self-hosted Jina MCP — 19 tools: web search, URL reading, arXiv/SSRN/BibTeX, rerank, dedup, classify, PDF layout | **Recommended** — replaces Jina's hosted server, whose search lane refuses free-tier credits |
 | `companions/brightdata-fallback/` | Tiny MCP wrapping Brightdata Web Unlocker | Optional — needed only if you hit blocked URLs often |
 | `companions/gptr-mcp/` | Install glue for [`gptr-mcp`](https://github.com/assafelovic/gptr-mcp) — clones the upstream MCP shim around [GPT Researcher](https://github.com/assafelovic/gpt-researcher) and ships an env template tuned for social-first research (Reddit, X, YouTube) | Recommended — community-knowledge queries route here |
 
@@ -17,8 +18,9 @@ Four companion services ship in [`companions/`](../../companions/) and pair with
 1. SearXNG               (sets up the search backend)
 2. Parent server         (already covered in setup-mcp.md)
 3. exa-answer            (Python venv + register MCP)
-4. brightdata-fallback   (Python venv + register MCP) — optional
-5. gptr-mcp              (./install.sh clones upstream + register MCP)
+4. jina-mcp              (Python venv + register MCP)
+5. brightdata-fallback   (Python venv + register MCP) — optional
+6. gptr-mcp              (./install.sh clones upstream + register MCP)
 ```
 
 ## 1. SearXNG
@@ -97,7 +99,49 @@ EXA_API_KEY=your-exa-api-key-placeholder python mcp_server.py < /dev/null
 
 If it fails immediately with "EXA_API_KEY must be set" — env not picked up; double-check the `env` block.
 
-## 4. brightdata-fallback (optional)
+## 4. jina-mcp
+
+Install the self-hosted Jina MCP:
+
+```bash
+cd companions/jina-mcp
+
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Register with Claude Code in `~/.claude.json`:
+
+```json
+"jina": {
+  "type": "stdio",
+  "command": "/absolute/path/to/gigaxity-deep-research/companions/jina-mcp/.venv/bin/python",
+  "args": ["/absolute/path/to/gigaxity-deep-research/companions/jina-mcp/mcp_server.py"],
+  "env": {
+    "JINA_API_KEY": "your-jina-api-key-placeholder"
+  }
+}
+```
+
+Sign up at https://jina.ai for a free 10M-token key.
+
+**Already have a hosted `jina` entry?** Replace it. Delete the old `"type": "http"` block pointing at `https://mcp.jina.ai/v1` and paste the above under the same `jina` alias. Keeping the alias means tool paths stay `mcp__jina__*` and nothing downstream needs editing.
+
+**Why self-hosted.** Jina's hosted server routes its entire search family through `svip.jina.ai`, a paid lane that refuses trial credits — including the free 10M tier — and returns a bare `Internal Server Error` because the worker discards the response body. On a free key that takes out `search_web`, `search_arxiv`, `search_ssrn` and their parallel variants while reading and reranking keep working ([jina-ai/MCP#32](https://github.com/jina-ai/MCP/issues/32)). Rotating the key does not help. This server routes web search to `s.jina.ai` and takes arXiv, SSRN and BibTeX to their own free key-less APIs. Full detail in [`companions/jina-mcp/README.md`](../../companions/jina-mcp/README.md).
+
+After Claude Code restart, `mcp__jina__search_web` and 18 sibling tools are callable.
+
+Smoke test from the venv:
+
+```bash
+JINA_API_KEY=your-jina-api-key-placeholder python mcp_server.py < /dev/null
+# Should boot and wait for stdin. Ctrl+C to exit.
+```
+
+Then call `primer` from your agent — it prints the active search lane and every backend in use. `show_api_key` prints your wallet balances, which is what tells genuine key exhaustion apart from an unfunded lane.
+
+## 5. brightdata-fallback (optional)
 
 Install the minimal Brightdata Web Unlocker wrapper:
 
@@ -133,7 +177,7 @@ After Claude Code restart, `mcp__brightdata_fallback__scrape_as_markdown` is cal
 
 If you skip Brightdata, the routing skill degrades gracefully — URLs that would have routed here just propagate their original error. SYNTHESIS workflows tolerate this because they pull from many sources; single-URL queries on blocked sites will simply fail.
 
-## 5. gptr-mcp
+## 6. gptr-mcp
 
 `gptr-mcp` (the seventh MCP in the deep research stack) is a thin shim around [GPT Researcher](https://github.com/assafelovic/gpt-researcher) — the agentic-research library — tuned for social-first sources (Reddit, X/Twitter, YouTube). The bundled install script clones the upstream MCP into a sibling directory rather than vendoring source.
 

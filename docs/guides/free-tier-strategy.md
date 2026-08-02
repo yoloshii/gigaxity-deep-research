@@ -6,7 +6,9 @@ It also covers OpenRouter's pay-as-you-go pricing for Qwen3-30B-A3B-Thinking and
 
 ## Jina AI — free reader plus token-budgeted search
 
-[Jina AI](https://jina.ai) ships an MCP server with `read_url`, `parallel_read_url`, `search_web`, `parallel_search_web`, `search_arxiv`, `extract_pdf`, `sort_by_relevance` (reranker), `deduplicate_strings`, and several other tools. The free tier includes a generous token allowance before key rotation; for a developer doing multiple research syntheses per day, that's hundreds of full sessions before the limit is reached.
+This repo bundles its own Jina MCP server at [`companions/jina-mcp/`](../../companions/jina-mcp/) — `read_url`, `parallel_read_url`, `search_web`, `parallel_search_web`, `search_arxiv`, `search_ssrn`, `extract_pdf`, `sort_by_relevance` (reranker), `deduplicate_strings`, and more. The free tier includes a generous token allowance before key rotation; for a developer doing multiple research syntheses per day, that's hundreds of full sessions before the limit is reached.
+
+**Use the bundled server, not Jina's hosted one, if you are on the free tier.** Jina's own `https://mcp.jina.ai/v1` routes its whole search family through `svip.jina.ai`, a paid lane that refuses trial credits outright and reports the refusal as a bare `Internal Server Error` — so on a free key every search tool fails while reading and reranking keep working ([jina-ai/MCP#32](https://github.com/jina-ai/MCP/issues/32)). Rotating the key does not help; a replacement key is another trial key. The bundled server routes web search to `s.jina.ai`, which accepts trial credits, and takes arXiv, SSRN, and BibTeX to their own free key-less APIs — so those three cost **nothing against your Jina allowance at all**.
 
 Token cost per call (current, approximate):
 
