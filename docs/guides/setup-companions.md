@@ -230,9 +230,9 @@ After Claude Code restart, four tools become callable: `mcp__gptr-mcp__quick_sea
 
 The config above runs the stock `tavily` retriever. The `social_openai` (Reddit + YouTube) and `twitterapi` (native X/Twitter) retrievers are a first-party add-on shipped in this repo — they are **not** part of a vanilla GPT Researcher install. Enable them once per **[`companions/gptr-mcp/CUSTOM_RETRIEVERS.md`](../../companions/gptr-mcp/CUSTOM_RETRIEVERS.md)** (clone the library at `v3.5.0`, drop in the two packages, apply a 3-file registry patch, install editable into the venv). Then set in the `env` block: `RETRIEVER=social_openai,twitterapi,tavily`, `SOCIAL_OPENAI_DOMAINS=reddit.com,youtube.com`, `SOCIAL_OPENAI_MODEL=gpt-4o`, plus `TWITTERAPI_IO_KEY` (paid — omit `twitterapi` from `RETRIEVER` if you don't have one).
 
-⚠️ Pointing `RETRIEVER` at `social_openai`/`twitterapi` **before** enabling them makes GPT Researcher silently fall back to Tavily — no error, no social results. Run the verify step in CUSTOM_RETRIEVERS.md. LinkedIn isn't covered by `social_openai`; for LinkedIn-specific queries use Jina with `site:linkedin.com`.
+⚠️ Pointing `RETRIEVER` at `social_openai`/`twitterapi` **before** enabling them makes GPT Researcher silently fall back to Tavily — no error, no social results. Run the verify step in CUSTOM_RETRIEVERS.md. LinkedIn isn't covered by `social_openai`; for LinkedIn-specific queries use `mcp__exa__web_search_advanced_exa` with `includeDomains=["linkedin.com"]` (Jina's `site:` is broken upstream).
 
-If you skip gptr-mcp, the routing skill falls back to Jina with `site:reddit.com` etc. — workable but with less social-aware ranking.
+If you skip gptr-mcp, the routing skill falls back to `mcp__exa__web_search_advanced_exa` with `includeDomains=["reddit.com"]` etc. — workable but with less social-aware ranking. It does **not** fall back to Jina: site-restricted Jina search is broken upstream ([reader#1258](https://github.com/jina-ai/reader/issues/1258)).
 
 ## Verify the full stack
 
@@ -242,7 +242,7 @@ In Claude Code, type `/mcp` — confirm all seven MCPs show green:
 context7                        ●  (stdio, npx)
 exa                             ●  (HTTP)
 exa-answer                      ●  (stdio, companions/exa-answer)
-jina                            ●  (HTTP)
+jina                            ●  (stdio, companions/jina-mcp)
 gigaxity-deep-research          ●  (stdio, parent)
 brightdata_fallback             ●  (stdio, companions/brightdata-fallback) — optional
 gptr-mcp                        ●  (stdio, ../gptr-mcp-source)
@@ -254,6 +254,6 @@ If any are red, follow the "Failure modes" table in [triple-stack-setup.md](trip
 
 ## Why bundled vs separate repos?
 
-Bundling these three saves users from the most-common setup pitfalls: SearXNG without JSON enabled, missing-wrapper for `/answer`, and locating a Brightdata wrapper template. Each companion is self-contained — `requirements.txt` + a single Python file (or compose file for SearXNG) — so they don't add meaningful weight to the parent repo.
+Bundling these four saves users from the most-common setup pitfalls: SearXNG without JSON enabled, missing-wrapper for `/answer`, a hosted Jina server whose search lane refuses free-tier credits, and locating a Brightdata wrapper template. Each companion is self-contained — `requirements.txt` + a single Python file (or compose file for SearXNG) — so they don't add meaningful weight to the parent repo.
 
 If you want any companion in its own repo, the directories are portable. Copy the directory out, push to its own remote, adjust the parent's docs to point at the new URL. No edits to companion source needed.

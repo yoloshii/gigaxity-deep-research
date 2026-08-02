@@ -206,7 +206,8 @@ Single-source factual lookups. Use Triple Stack directly.
 - "How does [specific API] work?" → Context7 (resolve-library-id → query-docs)
 - "Explain [library feature]" → Context7 (resolve-library-id → query-docs)
 - "What is [programming concept]?" → Context7 (resolve-library-id → query-docs)
-- "Search images for..." → Jina search_images
+- "Search images for..." → Jina search_images (needs a PAID Jina balance; Exa advanced is the free-tier fallback)
+- "Find papers on..." → Jina search_arxiv — use arXiv **field syntax**, not the user's question verbatim (see DIRECT workflow)
 - Factual lookups with single source
 - Specific library/API/framework with official docs
 
@@ -430,7 +431,6 @@ result = mcp__gigaxity-deep-research__discover(
 # Step 3: Deep content fetch via Jina
 content = mcp__jina__parallel_read_url(
     urls=[top_scored_urls],  # 3-5 URLs from step 2
-    timeout=60000
 )
 
 # Step 4: Synthesize findings
@@ -480,11 +480,11 @@ Triple Stack (Context7 + Exa + Jina parallel) → gigaxity-deep-research synthes
 ctx7_lib     = mcp__context7__resolve-library-id(libraryName="FastAPI", query="FastAPI vs Flask production")
 ctx7_results = mcp__context7__query-docs(libraryId=ctx7_lib, query="FastAPI vs Flask production")
 exa_results  = mcp__exa__get_code_context_exa(query="FastAPI Flask production patterns")
-jina_results = mcp__jina__parallel_search_web(searches=[
-    {"query": "FastAPI Flask benchmarks 2026"},
-    {"query": "FastAPI Flask production tradeoffs"},
-    {"query": "FastAPI vs Flask async performance"},
-])  # 107 tokens for 3 parallel queries — broader coverage than a single search_web
+jina_results = mcp__jina__parallel_search_web(queries=[
+    "FastAPI Flask benchmarks 2026",
+    "FastAPI Flask production tradeoffs",
+    "FastAPI vs Flask async performance",
+])  # plain strings; 107 tokens for 3 parallel queries — broader than one search_web
 
 # Step 2 (optional depth boost): second-pass bulk-read of top URLs surfaced by Step 1
 # Rank union of URLs, bulk-read top 3-5, feed richer content to synthesis
@@ -495,8 +495,7 @@ ranked = mcp__jina__sort_by_relevance(               # 0 tokens (free reranker)
 )
 top_urls = ranked[:5]
 deep_content = mcp__jina__parallel_read_url(         # ~17k tokens (content-proportional)
-    urls=top_urls,
-    timeout=60000
+    urls=top_urls
 )
 
 # Step 3 (optional dedup): filter near-duplicate snippets before synthesis
@@ -716,21 +715,24 @@ mcp__gigaxity-deep-research__reason(
 - `exa_answer(query, include_sources)` — Fast factual answer with citations (1-2s, 94% SimpleQA accuracy). Unique — no Jina equivalent.
 - `exa_answer_detailed(query, system_prompt)` — Detailed answer with full source text.
 
-**Jina 1.4.0 (21 tools):**
+**Jina — bundled `companions/jina-mcp/` server (19 tools):**
 
 *Search (Jina-native — free-tier enabled):*
 - `mcp__jina__search_web(query, num)` — General web search (~63 tokens/call)
 - `mcp__jina__search_arxiv(query, num, sort)` — arXiv papers, structured author/abstract/version. Native arXiv API, key-less: 0 Jina tokens. Takes field syntax (`cat:cs.CL`, `abs:"..."`, `au:...`, boolean AND/OR) and `sort="date"` for newest-first.
 - `mcp__jina__search_ssrn(query, num)` — SSRN papers (econ/law/finance/social sciences). OpenAlex-backed and key-less: 0 Jina tokens, and each hit carries a citation count.
 - `mcp__jina__search_bibtex(query, num)` — DBLP → Semantic Scholar → BibTeX. Key-less: 0 Jina tokens.
-- `mcp__jina__search_images(query, return_url=True)` — Image search (ALWAYS use `return_url=True` — base64 causes API Error 400)
+- `mcp__jina__search_images(query, num)` — Image search. Needs a PAID Jina balance: the free lane has no image endpoint (`s.jina.ai` returns 503 for `type:"images"`), so a trial key gets an explanatory error, not results.
 - `mcp__jina__search_jina_blog(query)` — Jina AI blog search
 
 *Parallel multi-query / multi-URL:*
-- `mcp__jina__parallel_search_web(searches)` — 3-5 queries in one call (~107 tokens for 3 = 36/query)
-- `mcp__jina__parallel_search_arxiv(searches)` — parallel arXiv
-- `mcp__jina__parallel_search_ssrn(searches)` — parallel SSRN
-- `mcp__jina__parallel_read_url(urls, timeout=60000)` — Bulk read 3-5 URLs (~17k tokens, content-proportional)
+- `mcp__jina__parallel_search_web(queries, num, tbs)` — 3-5 query *strings* in one call (~107 tokens for 3 = 36/query)
+- `mcp__jina__parallel_search_arxiv(queries, num, sort)` — parallel arXiv; key-less, 0 Jina tokens
+- `mcp__jina__parallel_search_ssrn(queries, num)` — parallel SSRN; key-less, 0 Jina tokens
+- `mcp__jina__parallel_read_url(urls, with_links)` — Bulk read 3-5 URLs (~17k tokens, content-proportional)
+
+Every `parallel_*` tool takes a **flat list of strings** and one `num` applied across all of them — not a
+list of `{"query": ...}` objects — and none accepts a per-call `timeout` (see Performance Notes).
 
 *URL reading:*
 - `mcp__jina__read_url(url)` — URL to clean markdown (0 tokens, free reader tier)
@@ -743,7 +745,7 @@ mcp__gigaxity-deep-research__reason(
 - `mcp__jina__sort_by_relevance(query, documents)` — Reranker (insert between Triple Stack gather and synthesize)
 - `mcp__jina__deduplicate_strings(strings)` — Semantic dedup (save synthesis tokens)
 - `mcp__jina__deduplicate_images(images)` — CLIP v2 image dedup. NOT exposed by the bundled server; use `deduplicate_strings` on image captions/URLs instead.
-- `mcp__jina__classify_text(input, labels)` — Label/route content via embeddings
+- `mcp__jina__classify_text(texts, labels)` — Label/route content via embeddings
 
 *Free pre-processing / utility:*
 - `mcp__jina__primer()` — Current UTC / user timezone / session time context
@@ -802,7 +804,7 @@ discover_result = mcp__gigaxity-deep-research__discover(
     focus_mode="general"  # → gaps: documentation, examples, alternatives
 )
 # Score URLs, select top 3-5
-content = mcp__jina__parallel_read_url(urls=[top_urls], timeout=60000)
+content = mcp__jina__parallel_read_url(urls=[top_urls])
 mcp__gigaxity-deep-research__synthesize(
     query="vector databases",
     sources=[...],
@@ -859,7 +861,7 @@ discover_result = mcp__gigaxity-deep-research__discover(
     top_k=10,
     focus_mode="news"  # → time-filtered, announcement/impact gaps
 )
-content = mcp__jina__parallel_read_url(urls=[...], timeout=60000)
+content = mcp__jina__parallel_read_url(urls=[...])
 mcp__gigaxity-deep-research__synthesize(
     query="latest AI agent developments",
     sources=[...],
@@ -887,7 +889,7 @@ discover_result = mcp__gigaxity-deep-research__discover(
     top_k=10,
     focus_mode="debugging"  # → error_context, root_cause, workarounds gaps
 )
-content = mcp__jina__parallel_read_url(urls=[...], timeout=60000)
+content = mcp__jina__parallel_read_url(urls=[...])
 mcp__gigaxity-deep-research__synthesize(
     query="Fix CORS policy errors",
     sources=[...],
@@ -906,7 +908,7 @@ discover_result = mcp__gigaxity-deep-research__discover(
     top_k=10,
     focus_mode="tutorial"  # → prerequisites, step_by_step gaps
 )
-content = mcp__jina__parallel_read_url(urls=[...], timeout=60000)
+content = mcp__jina__parallel_read_url(urls=[...])
 mcp__gigaxity-deep-research__synthesize(
     query="Docker getting started guide",
     sources=[...],
@@ -1142,7 +1144,7 @@ mcp__jina__search_web(query)             # 63 tokens/call — primary
 ### Parallel Multi-Query Web Search
 
 ```
-mcp__jina__parallel_search_web(searches=[3-5 query variants])  # 107 tokens for 3 queries
+mcp__jina__parallel_search_web(queries=[3-5 query variants])  # 107 tokens for 3 queries
   # Exa has no parallel mode — no Exa fallback at the parallel tier
   ON FAIL → Sequential mcp__exa__web_search_exa calls
 ```
@@ -1197,11 +1199,10 @@ Field result: **2 of 4 dead repos recovered this way, both top-tier candidates.*
 ### Image Search
 
 ```
-mcp__jina__search_images(query, return_url=True)
+mcp__jina__search_images(query, num)
   # Requires a PAID Jina balance — the free lane has no image search
   # (s.jina.ai returns 503 for type:"images"), so on a trial key this
   # returns an explanatory error rather than results.
-  # ALWAYS use return_url=True (base64 causes API Error 400)
   ON FAIL → mcp__exa__web_search_advanced_exa(query)   # web results w/ images
 ```
 
@@ -1247,9 +1248,8 @@ Tool completely fails (timeout, connection error)?
 - **SYNTHESIS:** ~5000-10000 tokens, 3-5 min
 
 **Jina parallel operations:**
-- Always use `timeout=60000` (default 30000 insufficient)
 - Limit to 3-5 URLs per parallel call
-- Use `return_url=True` for images/screenshots
+- The bundled server has no per-call `timeout` argument — it applies `JINA_TIMEOUT` (default 60s) server-side to every request, and fans out at most `JINA_MAX_PARALLEL` (default 5) at a time. Tune those in the MCP `env` block, not per call.
 
 **gigaxity-deep-research connector fan-out (load-bearing):**
 - `mcp__gigaxity-deep-research__search` / `discover` / `research` fan out to up to 3 backends in parallel via RRF fusion: **SearXNG** (always available — no key), **Tavily** (gated on `RESEARCH_TAVILY_API_KEY`), **LinkUp** (gated on `RESEARCH_LINKUP_API_KEY`).
@@ -1271,7 +1271,7 @@ Tool completely fails (timeout, connection error)?
 
 ## Use Case Priority Matrix
 
-Rationale: Jina is rotatable-for-free (10M trial tier via Camoufox key rotation); Exa costs a Google account lockout per rotation. Default to Jina for high-frequency calls, reserve Exa for what only Exa does well.
+Rationale: Jina's free 10M trial tier absorbs high-frequency calls cheaply, and the bundled server takes arXiv, SSRN and BibTeX off the Jina allowance entirely. Exa bills per call. Default to Jina for volume, reserve Exa for what only Exa does — category/domain/date filters, code context, and the `answer` endpoint.
 
 | Task | PRIMARY | Secondary | NEVER |
 |------|---------|-----------|-------|
@@ -1288,13 +1288,13 @@ Rationale: Jina is rotatable-for-free (10M trial tier via Camoufox key rotation)
 | **People / OSINT (attribute search)** | Exa advanced (category="people") | Exa advanced `includeDomains=["linkedin.com"]` | Context7 · Jina `site:` (broken upstream) |
 | **Financial reports (SEC, earnings)** | Exa advanced (category="financial report") | Exa advanced (category="pdf") | — |
 | **News / current events (date-bounded)** | Exa advanced (category="news" + startPublishedDate) | Jina search_web | Context7 |
-| **Social (tweets)** | gptr-mcp quick_search (site:x.com) | Jina search_web | Exa (no tweet category) |
+| **Social (tweets)** | gptr-mcp quick_search (`twitterapi` retriever) | Exa advanced `includeDomains=["x.com"]` | Jina `site:` (broken upstream) · Exa `category` (no tweet category) |
 | **Academic (arXiv)** | Jina search_arxiv / parallel_search_arxiv (field syntax: `cat:`, `abs:`, `au:`; `sort="date"`) | Exa advanced (category="research paper") | — |
 | **Academic (SSRN — econ/law/finance)** | Jina search_ssrn / parallel_search_ssrn (OpenAlex, key-less, citation counts) | Exa advanced (category="research paper") | — |
 | **BibTeX citations** | Jina search_bibtex (DBLP → Semantic Scholar, key-less) | Exa advanced (category="research paper") | — |
 | **PDFs / whitepapers** | Exa advanced (category="pdf") | Jina search_web | — |
 | **PDF layout extraction (figures/tables)** | Jina extract_pdf | — | — |
-| **Images** | Jina search_images (`return_url=True`) | — | All others |
+| **Images** | Jina search_images | — | All others |
 | **Screenshots** | Jina capture_screenshot_url | — | All others |
 | **URL content extraction (single)** | Jina read_url (0 tokens) | Exa crawling_exa | — |
 | **URL content extraction (bulk 3-5)** | Jina parallel_read_url | Exa crawling_exa with urls array | — |
@@ -1319,9 +1319,15 @@ Rationale: Jina is rotatable-for-free (10M trial tier via Camoufox key rotation)
 
 ---
 
-## Token Burn Rate (Jina, 10M trial key, stabilized probe 2026-04-18)
+## Token Burn Rate (bundled `companions/jina-mcp/` server, 10M trial key — re-baselined 2026-08-03)
 
-Use this to budget calls per rotation. Full Jina tier with Camoufox rotation ≈ effectively unlimited; Exa burns Exa credits per call (treat as precious).
+Use this to budget calls. Exa burns Exa credits per call (treat as precious); Jina's free tier is generous
+and the three academic tools now cost **nothing at all**, having left Jina for key-less native APIs.
+
+**A fresh key does not fix every Jina failure.** Read the response body before concluding the key is spent:
+`out of tokens` / HTTP 402 means genuinely exhausted, but `Not enough credits` means the *lane* is unfunded
+(`svip.jina.ai` takes paid balance only and refuses trial credits outright) — a replacement trial key fails
+identically. The bundled server routes web search to `s.jina.ai` specifically to stay out of that lane.
 
 | Tool | Cost/call | Notes |
 |------|-----------|-------|
@@ -1366,8 +1372,7 @@ profiles = mcp__exa__web_search_advanced_exa(
 
 # Step 2: deep-read top profile(s)
 profile_content = mcp__jina__parallel_read_url(
-    urls=[top_3_profile_urls],
-    timeout=60000
+    urls=[top_3_profile_urls]
 )
 
 # Step 3: third-party mentions (what OTHERS say — excludes self-authored)
@@ -1379,10 +1384,10 @@ mentions = mcp__exa__web_search_advanced_exa(
 )
 
 # Step 4: academic output (if applicable)
-papers = mcp__jina__parallel_search_arxiv(searches=[
-    {"query": "author:[name]"},
-    {"query": "[name] [subfield]"},
-])
+papers = mcp__jina__parallel_search_arxiv(queries=[
+    "au:[name]",              # arXiv field syntax is `au:`, not `author:`
+    "[name] [subfield]",
+], num=10)                    # plain strings; one `num` covers every query
 
 # Step 5: verify site activity (credibility signal)
 freshness = mcp__jina__guess_datetime_url(url=person_home_url)
@@ -1415,7 +1420,7 @@ top_urls = mcp__jina__sort_by_relevance(
     query="[company] strategy financials recent moves",
     documents=[...all URLs from 1-3...]
 )[:5]
-content = mcp__jina__parallel_read_url(urls=top_urls, timeout=60000)
+content = mcp__jina__parallel_read_url(urls=top_urls)
 
 # Step 5: visual check on marketing site
 screenshot = mcp__jina__capture_screenshot_url(url=company_home_url)
@@ -1435,11 +1440,11 @@ User: "Lit review on [topic] — recent work + foundational papers"
 
 # Step 1: parallel academic search across 3-5 angles
 # All three academic tools are key-less (0 Jina tokens) — use generous `num`.
-arxiv = mcp__jina__parallel_search_arxiv(searches=[
-    {"query": 'cat:[primary-cat] AND abs:"[topic]"', "num": 20},   # in-field, precise
-    {"query": "[topic] survey OR review", "num": 15},
-    {"query": "[topic]", "num": 15},                              # broad safety net
-], sort="date")
+arxiv = mcp__jina__parallel_search_arxiv(queries=[
+    'cat:[primary-cat] AND abs:"[topic]"',   # in-field, precise
+    "[topic] survey OR review",
+    "[topic]",                               # broad safety net
+], num=20, sort="date")                      # plain strings; `num` is per-call, not per-query
 ssrn = mcp__jina__search_ssrn(query="[topic]", num=15)  # if econ/law/finance; returns citation counts
 non_arxiv = mcp__exa__web_search_advanced_exa(query="[topic]", category="research paper", numResults=5)
 
@@ -1480,7 +1485,7 @@ freshness = [mcp__jina__guess_datetime_url(url=u) for u in coverage_urls]
 ranked = mcp__jina__sort_by_relevance(query="[event] timeline", documents=verified_urls)
 
 # Step 4: deep-read top 5
-timeline_content = mcp__jina__parallel_read_url(urls=ranked[:5], timeout=60000)
+timeline_content = mcp__jina__parallel_read_url(urls=ranked[:5])
 
 # Step 5: synthesize chronologically
 mcp__gigaxity-deep-research__synthesize(
@@ -1531,7 +1536,7 @@ User: "Summarize findings across these whitepapers on [topic]"
 pdfs = mcp__exa__web_search_advanced_exa(query="[topic]", category="pdf", numResults=10)
 
 # Step 2: full-text via Jina (text content)
-text = mcp__jina__parallel_read_url(urls=pdf_urls[:5], timeout=60000)
+text = mcp__jina__parallel_read_url(urls=pdf_urls[:5])
 
 # Step 3: structured extraction (figures, tables, equations) from top 2-3
 structured = [mcp__jina__extract_pdf(url=u) for u in pdf_urls[:3]]
@@ -1572,7 +1577,7 @@ competitor_news = [
 # Step 3: rerank union, deep-read top 5
 all_urls = [...all competitor + news URLs...]
 ranked = mcp__jina__sort_by_relevance(query="[category] competitive moves", documents=all_urls)
-content = mcp__jina__parallel_read_url(urls=ranked[:5], timeout=60000)
+content = mcp__jina__parallel_read_url(urls=ranked[:5])
 
 # Step 4: synthesize
 mcp__gigaxity-deep-research__synthesize(

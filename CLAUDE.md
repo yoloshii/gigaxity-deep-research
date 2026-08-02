@@ -287,7 +287,7 @@ Task tool:
     → ToolSearch(query='select:mcp__gigaxity-deep-research__discover,mcp__jina__parallel_read_url,mcp__gigaxity-deep-research__synthesize')
     → mcp__gigaxity-deep-research__discover(query, focus_mode, identify_gaps=True)
     → Score URLs from result, select top 3-5
-    → mcp__jina__parallel_read_url(urls, timeout=60000)
+    → mcp__jina__parallel_read_url(urls)
     → mcp__gigaxity-deep-research__synthesize(query, sources, preset)
 
     **SYNTHESIS** (comparison, best practices, consensus, cross-validation):
@@ -295,7 +295,7 @@ Task tool:
     → Execute in parallel:
       - mcp__context7__resolve-library-id(libraryName, query) → mcp__context7__query-docs(libraryId, query)   # library/API docs (two-step)
       - mcp__exa__get_code_context_exa(query)                             # code-specific
-      - mcp__jina__parallel_search_web(searches=[3-5 query variants])     # free-tier, ~107 tokens for 3 queries
+      - mcp__jina__parallel_search_web(queries=[3-5 query strings])       # free-tier, ~107 tokens for 3 queries
     → Optional free middleware before synthesis:
       - mcp__jina__sort_by_relevance(query, documents) — 0 tokens
       - mcp__jina__deduplicate_strings(strings) — 0 tokens

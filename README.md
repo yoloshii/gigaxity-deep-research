@@ -164,7 +164,7 @@ Run each query in Claude Code (or the agent of your choice) after Stage 7 and co
 | "What's the latest stable version of Bun?" | `exa-answer` | 1–2 s factual answer with citations |
 | "What does the OpenAI Python SDK's `client.beta` namespace cover?" | `context7` (`resolve-library-id` → `query-docs`) | Library/API documentation chunks |
 | "Show me a code example using `httpx.AsyncClient` with retries" | `exa` (`get_code_context_exa`) | Curated code-context snippets |
-| "Find recent papers on CRAG quality gates" | `jina` (`search_arxiv`) | arXiv search hits |
+| "Find recent papers on corrective RAG" | `jina` (`search_arxiv`) | arXiv hits — and the agent should translate the question into arXiv **field syntax** (`abs:CRAG AND cat:cs.CL`) rather than passing it verbatim. Verbatim questions match stopwords and author surnames: "Find recent papers on CRAG quality gates" returns a paper co-authored by someone named *Find*. |
 | "Compare FastAPI vs Litestar for production APIs in 2026" | `gigaxity-deep-research` (`synthesize`) | Citation-backed comparative synthesis |
 | "What do people on Reddit say about Bun vs Node for production?" | `gptr-mcp` (`quick_search`) | Reddit / X / YouTube community sentiment |
 
@@ -252,7 +252,7 @@ The bundled [`research-workflow`](skills/research-workflow/) skill plus the inst
 - [Guide: MCP setup (Claude Code walkthrough — same MCP block adapts to any MCP-capable harness)](docs/guides/setup-mcp.md)
 - [Guide: REST API setup for distributed compute](docs/guides/setup-rest.md)
 - [Guide: Local inference (Qwen3 self-host)](docs/guides/setup-local-inference.md)
-- [Guide: Bundled companions setup (SearXNG, Exa Answer, Brightdata)](docs/guides/setup-companions.md)
+- [Guide: Bundled companions setup (SearXNG, Exa Answer, Jina, Brightdata)](docs/guides/setup-companions.md)
 - [Guide: Triple Stack — full deep research setup](docs/guides/triple-stack-setup.md)
 - [Guide: Free-tier strategy](docs/guides/free-tier-strategy.md): configuring the search MCPs against each provider's free tier
 - [Reference: MCP tools](docs/reference/mcp-tools.md): input/output reference for the six stdio MCP tools this server exposes
