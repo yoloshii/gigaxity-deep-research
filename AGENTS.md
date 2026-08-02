@@ -362,7 +362,7 @@ If the header is absent: relay the subagent's full output as normal.
 | URL freshness / credibility check | mcp__jina__guess_datetime_url (free) | — |
 | Academic (arXiv) — single query | mcp__jina__search_arxiv (field syntax: `cat:cs.CL`, `abs:"..."`, `au:...`, boolean AND/OR; `sort="date"` for newest-first) | — |
 | Academic (arXiv) — multi-query parallel | mcp__jina__parallel_search_arxiv | — |
-| Academic (SSRN — econ/law/finance) | mcp__jina__search_ssrn / parallel_search_ssrn | — |
+| Academic (SSRN — econ/law/finance) | mcp__jina__search_ssrn / parallel_search_ssrn (OpenAlex, key-less, citation counts) | mcp__exa__web_search_advanced_exa with `category="research paper"` |
 | BibTeX citations | mcp__jina__search_bibtex | — |
 | PDF layout extraction (figures, tables, equations) | mcp__jina__extract_pdf | — |
 | Images | mcp__jina__search_images (needs PAID Jina balance — no free-lane equivalent) | mcp__exa__web_search_advanced_exa |

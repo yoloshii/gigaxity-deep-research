@@ -337,7 +337,7 @@ exa_answer_detailed(query="What are the system requirements for Bun?")
 | Bulk URL reading (3-5) | `mcp__jina__parallel_read_url` (content-proportional) | `mcp__exa__crawling_exa` with urls array |
 | URL subpage crawl | `mcp__exa__crawling_exa` with `subpages` + `subpageTarget` | — (Jina has no subpage mode) |
 | Academic (arXiv) | `mcp__jina__search_arxiv` / `mcp__jina__parallel_search_arxiv` — supports arXiv field syntax (`cat:cs.CL`, `abs:"..."`, `au:...`, boolean AND/OR) and `sort="date"` for newest-first | `mcp__exa__web_search_advanced_exa category="research paper"` |
-| Academic (SSRN — econ/law/finance) | `mcp__jina__search_ssrn` / `mcp__jina__parallel_search_ssrn` | — |
+| Academic (SSRN — econ/law/finance) | `mcp__jina__search_ssrn` / `mcp__jina__parallel_search_ssrn` — OpenAlex-backed, key-less (0 Jina tokens); returns citation counts | `mcp__exa__web_search_advanced_exa category="research paper"` |
 | BibTeX citations | `mcp__jina__search_bibtex` (DBLP + Semantic Scholar) | — |
 | PDF layout extraction (figures/tables) | `mcp__jina__extract_pdf` | — |
 | Images | `mcp__jina__search_images` (needs PAID Jina balance — no free-lane equivalent) | `mcp__exa__web_search_advanced_exa` |
@@ -720,7 +720,7 @@ mcp__gigaxity-deep-research__reason(
 *Search (Jina-native — free-tier enabled):*
 - `mcp__jina__search_web(query, num)` — General web search (~63 tokens/call)
 - `mcp__jina__search_arxiv(query, num)` — arXiv papers, structured author/abstract/version
-- `mcp__jina__search_ssrn(query, num)` — SSRN papers (econ/law/finance/social sciences)
+- `mcp__jina__search_ssrn(query, num)` — SSRN papers (econ/law/finance/social sciences). OpenAlex-backed and key-less: 0 Jina tokens, and each hit carries a citation count.
 - `mcp__jina__search_bibtex(query, num)` — DBLP + Semantic Scholar → BibTeX
 - `mcp__jina__search_images(query, return_url=True)` — Image search (ALWAYS use `return_url=True` — base64 causes API Error 400)
 - `mcp__jina__search_jina_blog(query)` — Jina AI blog search
@@ -1279,7 +1279,7 @@ Rationale: Jina is rotatable-for-free (10M trial tier via Camoufox key rotation)
 | **News / current events (date-bounded)** | Exa advanced (category="news" + startPublishedDate) | Jina search_web | Context7 |
 | **Social (tweets)** | gptr-mcp quick_search (site:x.com) | Jina search_web | Exa (no tweet category) |
 | **Academic (arXiv)** | Jina search_arxiv / parallel_search_arxiv (field syntax: `cat:`, `abs:`, `au:`; `sort="date"`) | Exa advanced (category="research paper") | — |
-| **Academic (SSRN — econ/law/finance)** | Jina search_ssrn / parallel_search_ssrn | — | — |
+| **Academic (SSRN — econ/law/finance)** | Jina search_ssrn / parallel_search_ssrn (OpenAlex, key-less, citation counts) | Exa advanced (category="research paper") | — |
 | **BibTeX citations** | Jina search_bibtex | — | — |
 | **PDFs / whitepapers** | Exa advanced (category="pdf") | Jina search_web | — |
 | **PDF layout extraction (figures/tables)** | Jina extract_pdf | — | — |
@@ -1323,10 +1323,10 @@ Use this to budget calls per rotation. Full Jina tier with Camoufox rotation ≈
 | `guess_datetime_url` | **0** (est.) | Free metadata probe |
 | `search_web` | **63** | Dirt cheap — primary general search |
 | `parallel_search_web` | **107 / 3 queries = 36/query** | Winner for SYNTHESIS gather |
-| `search_arxiv` | **343** | Cheap — academic primary |
-| `search_ssrn` | ~343 (est.) | Cheap — social science primary |
-| `search_bibtex` | ~343 (est.) | Cheap — citation workflows |
-| `search_images` | ~100 (est.) | Cheap |
+| `search_arxiv` | **0** | Free — native arXiv API, key-less; supports `cat:`/`abs:`/`au:` + `sort="date"` |
+| `search_ssrn` | **0** | Free — OpenAlex, key-less; returns citation counts |
+| `search_bibtex` | **0** | Free — DBLP → Semantic Scholar, key-less |
+| `search_images` | — | Needs PAID Jina balance; no free-lane equivalent |
 | `capture_screenshot_url` | content-proportional (img ~13KB b64) | Use sparingly |
 | `parallel_read_url` | **17,033** | Content-proportional — use for SYNTHESIS deep reads only |
 | `extract_pdf` | content-proportional | Use for specific PDFs, not bulk |
