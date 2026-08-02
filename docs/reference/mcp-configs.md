@@ -82,17 +82,20 @@ Bundled in this repo at [`companions/exa-answer/`](../../companions/exa-answer/)
 
 ## 4. Jina
 
-HTTP transport with bearer token. Fully hosted — no install. Sign up at https://jina.ai (free 10M tier).
+stdio transport. Bundled in this repo at [`companions/jina-mcp/`](../../companions/jina-mcp/) — `pip install -r requirements.txt`, then register. Sign up at https://jina.ai (free 10M tier).
 
 ```json
 "jina": {
-  "type": "http",
-  "url": "https://mcp.jina.ai/v1",
-  "headers": {
-    "Authorization": "Bearer YOUR_JINA_API_KEY_PLACEHOLDER"
+  "type": "stdio",
+  "command": "python3",
+  "args": ["/absolute/path/to/gigaxity-deep-research/companions/jina-mcp/mcp_server.py"],
+  "env": {
+    "JINA_API_KEY": "YOUR_JINA_API_KEY_PLACEHOLDER"
   }
 }
 ```
+
+> Bundled since v0.8.0. The hosted `https://mcp.jina.ai/v1` server routes search through a paid-only lane that refuses free-tier trial credits — see [`companions/jina-mcp/README.md`](../../companions/jina-mcp/README.md).
 
 **Tools exposed:**
 - `read_url` (0 tokens — free reader tier)
@@ -102,15 +105,19 @@ HTTP transport with bearer token. Fully hosted — no install. Sign up at https:
 - `search_arxiv` / `parallel_search_arxiv` (~343 tokens)
 - `search_ssrn` / `parallel_search_ssrn` (econ, law, finance papers)
 - `search_bibtex` (citation entries)
-- `search_images`, `capture_screenshot_url`
+- `search_images` (needs paid balance — no free-lane equivalent), `capture_screenshot_url`
+- `search_jina_blog` (needs optional `JINA_GHOST_KEY`)
 - `extract_pdf` (PDF layout extraction — figures, tables, equations)
 - `guess_datetime_url` (URL freshness inference for credibility checks)
 - `sort_by_relevance` (free reranker, 0 tokens)
-- `deduplicate_strings`, `deduplicate_images` (free dedup, 0 tokens)
+- `deduplicate_strings` (free dedup, 0 tokens)
 - `classify_text` (free embeddings classifier)
-- `primer` (session timezone/time context, 0 tokens)
+- `primer` (current UTC + active search lane, 0 tokens)
+- `show_api_key` (masked key + wallet balances — use to tell genuine exhaustion from an unfunded lane)
 
-**AVOID:** `expand_query` — 12,000 tokens per call. Rewrite query variants in the prompt instead.
+19 tools total. Two are deliberately **not** carried over from the hosted server: `expand_query` (12,000 tokens per call — rewrite query variants in the prompt instead) and `deduplicate_images`.
+
+**Known upstream breakage:** the `site` argument on `search_web` currently 500s — `s.jina.ai` proxies site-restricted queries to a degraded backend ([reader#1258](https://github.com/jina-ai/reader/issues/1258)). Leave it empty until fixed.
 
 ## 5. gigaxity-deep-research (this repo)
 

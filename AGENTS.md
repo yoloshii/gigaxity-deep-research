@@ -155,9 +155,10 @@ The full deep-research workflow uses seven MCPs. The middle three (`context7` + 
   "env": { "EXA_API_KEY": "YOUR_EXA_API_KEY" }
 },
 "jina": {
-  "type": "http",
-  "url": "https://mcp.jina.ai/v1",
-  "headers": { "Authorization": "Bearer YOUR_JINA_API_KEY" }
+  "type": "stdio",
+  "command": "python3",
+  "args": ["/absolute/path/to/gigaxity-deep-research/companions/jina-mcp/mcp_server.py"],
+  "env": { "JINA_API_KEY": "YOUR_JINA_API_KEY" }
 },
 "brightdata_fallback": {
   "type": "stdio",
@@ -200,7 +201,7 @@ Sign-up links:
 - Tavily (for gptr-mcp fallback retriever): https://tavily.com
 - TwitterAPI.io (for gptr-mcp's `twitterapi` retriever; paid, opt-in): https://twitterapi.io
 
-`exa-answer` and `brightdata_fallback` are minimal wrappers **bundled in this repo** under [`companions/`](companions/) — both are single-file Python MCP servers with a `requirements.txt` each. `gptr-mcp` is the [upstream MCP shim](https://github.com/assafelovic/gptr-mcp) around [GPT Researcher](https://github.com/assafelovic/gpt-researcher) — `companions/gptr-mcp/install.sh` clones it into a sibling directory rather than vendoring source. Install per [`docs/guides/setup-companions.md`](docs/guides/setup-companions.md).
+`exa-answer`, `jina`, and `brightdata_fallback` are **bundled in this repo** under [`companions/`](companions/) — each is a single-file Python MCP server with a `requirements.txt`. `jina` is self-hosted rather than pointed at `https://mcp.jina.ai/v1` because the hosted server's search family routes through a paid-only lane that refuses free-tier trial credits and reports the refusal as `Internal Server Error`; see [`companions/jina-mcp/README.md`](companions/jina-mcp/README.md). `gptr-mcp` is the [upstream MCP shim](https://github.com/assafelovic/gptr-mcp) around [GPT Researcher](https://github.com/assafelovic/gpt-researcher) — `companions/gptr-mcp/install.sh` clones it into a sibling directory rather than vendoring source. Install per [`docs/guides/setup-companions.md`](docs/guides/setup-companions.md).
 
 ### Bundled skill
 
@@ -304,7 +305,7 @@ Task tool:
     → ToolSearch(query='select:mcp__gptr-mcp__quick_search,mcp__gptr-mcp__deep_research,mcp__jina__search_web,mcp__jina__read_url')
     → mcp__gptr-mcp__quick_search(query) — single-call social-first lookup
     → mcp__gptr-mcp__deep_research(query) — multi-hop social-first research with cross-platform sentiment
-    → For LinkedIn-specific queries: mcp__jina__search_web "site:linkedin.com"
+    → For LinkedIn-specific queries: mcp__exa__web_search_advanced_exa(query, includeDomains=["linkedin.com"])
     → Combine with SYNTHESIS when comparing community sentiment to documentation/spec
     → On href-only returns (empty body/title from Reddit/X/YouTube), follow up with mcp__jina__read_url on the href — never cite from URL slug alone.
 
@@ -345,26 +346,26 @@ If the header is absent: relay the subagent's full output as normal.
 |---|---|---|
 | Quick factual answer (1-2 s) | mcp__exa-answer__exa_answer | mcp__exa__web_search_advanced_exa |
 | Library / API documentation | mcp__context7__resolve-library-id → query-docs | mcp__exa__get_code_context_exa |
-| Code examples / patterns | mcp__exa__get_code_context_exa | mcp__jina__search_web "site:github.com" |
+| Code examples / patterns | mcp__exa__get_code_context_exa | mcp__exa__web_search_advanced_exa with `includeDomains=["github.com"]` |
 | General web (single query) | mcp__jina__search_web (~63 tokens) | mcp__exa__web_search_exa |
 | Parallel multi-query web (3-5 variants) | mcp__jina__parallel_search_web (~107 / 3) | sequential mcp__exa__web_search_exa |
 | Advanced web (date-bounded, highlights, domain filters) | mcp__exa__web_search_advanced_exa | mcp__jina__search_web with manual filtering |
 | Company info / company research | mcp__exa__web_search_advanced_exa with `category="company"` | mcp__jina__search_web |
 | People / OSINT / attribute-based | mcp__exa__web_search_advanced_exa with `category="people"` | mcp__jina__search_web |
 | Financial reports (SEC, earnings) | mcp__exa__web_search_advanced_exa with `category="financial report"` | — |
-| News (date-bounded) | mcp__exa__web_search_advanced_exa with `category="news"` | mcp__jina__search_web with `site:` |
-| GitHub repo discovery | mcp__exa__web_search_advanced_exa with `category="github"` | mcp__jina__search_web "site:github.com" |
+| News (date-bounded) | mcp__exa__web_search_advanced_exa with `category="news"` | mcp__jina__search_web (unrestricted — Jina `site:` is broken upstream) |
+| GitHub repo discovery | mcp__exa__web_search_advanced_exa with `category="github"` | mcp__exa__web_search_advanced_exa with `includeDomains=["github.com"]` |
 | PDFs / whitepapers (search) | mcp__exa__web_search_advanced_exa with `category="pdf"` | — |
 | URL subpage crawl (multiple pages from one site) | mcp__exa__crawling_exa with `subpages` / `subpageTarget` | — (Jina has no subpage mode) |
 | URL → markdown (single) | mcp__jina__read_url (0 tokens) | mcp__brightdata_fallback__scrape_as_markdown |
 | URL → markdown (bulk 3-5) | mcp__jina__parallel_read_url | per-URL fallback to Brightdata for blocked ones |
 | URL freshness / credibility check | mcp__jina__guess_datetime_url (free) | — |
-| Academic (arXiv) — single query | mcp__jina__search_arxiv | — |
+| Academic (arXiv) — single query | mcp__jina__search_arxiv (field syntax: `cat:cs.CL`, `abs:"..."`, `au:...`, boolean AND/OR; `sort="date"` for newest-first) | — |
 | Academic (arXiv) — multi-query parallel | mcp__jina__parallel_search_arxiv | — |
 | Academic (SSRN — econ/law/finance) | mcp__jina__search_ssrn / parallel_search_ssrn | — |
 | BibTeX citations | mcp__jina__search_bibtex | — |
 | PDF layout extraction (figures, tables, equations) | mcp__jina__extract_pdf | — |
-| Images | mcp__jina__search_images | — |
+| Images | mcp__jina__search_images (needs PAID Jina balance — no free-lane equivalent) | mcp__exa__web_search_advanced_exa |
 | Screenshots | mcp__jina__capture_screenshot_url | — |
 | Free reranker (before synthesis) | mcp__jina__sort_by_relevance (0 tokens) | — |
 | Free dedup (before synthesis) | mcp__jina__deduplicate_strings (0 tokens) | — |
@@ -372,10 +373,12 @@ If the header is absent: relay the subagent's full output as normal.
 | CoT reasoning over evidence | mcp__gigaxity-deep-research__reason | — |
 | Exploratory expansion + gap detection | mcp__gigaxity-deep-research__discover | — |
 | Quick conversational LLM answer | mcp__gigaxity-deep-research__ask | mcp__exa-answer__exa_answer |
-| Social-first research (Reddit / X / YouTube — "what do people think") | mcp__gptr-mcp__quick_search | mcp__jina__search_web with site: filter |
+| Social-first research (Reddit / X / YouTube — "what do people think") | mcp__gptr-mcp__quick_search | mcp__exa__web_search_advanced_exa with `includeDomains=["reddit.com"]` |
 | Deep social research (multi-hop community sentiment) | mcp__gptr-mcp__deep_research | — |
 
-**AVOID:** `mcp__jina__expand_query` — 12,000 tokens/call. Rewrite query variants in the prompt instead.
+**AVOID:** `mcp__jina__expand_query` — 12,000 tokens/call. Rewrite query variants in the prompt instead. Not exposed by the bundled server at all.
+
+**Domain-scoped search goes through Exa, never Jina.** Do NOT route a domain restriction to `mcp__jina__search_web` — neither the `site:` operator in the query nor the `site` argument works. `s.jina.ai` proxies site-restricted queries to an internal upstream returning `TypeError: fetch failed` since ~2026-08-01 ([jina-ai/reader#1258](https://github.com/jina-ai/reader/issues/1258)); both forms return HTTP 500. Dropping the restriction is not a substitute — unrestricted `search_web("model context protocol github")` returned sketchfab.com and models.com. Use `mcp__exa__web_search_advanced_exa` with `includeDomains=[...]`. Restore the Jina route only after verifying the upstream issue is closed.
 
 **Exa MCP 3.2.0 caveat:** the `type="deep"` parameter previously documented for `web_search_exa` does NOT exist in the current MCP. The deprecated `deep_researcher_start` / `deep_researcher_check` have no MCP replacement either. For deep multi-hop research, use the chain `mcp__gigaxity-deep-research__discover` → `mcp__jina__parallel_read_url` → `mcp__gigaxity-deep-research__synthesize`.
 
@@ -393,8 +396,8 @@ When the user supplies a specific URL, route by URL type:
 | Paywalled / Cloudflare / CAPTCHA | mcp__brightdata_fallback__scrape_as_markdown (direct) | mcp__exa__crawling_exa |
 | PDF files | dedicated PDF reader (e.g. pdf_reader MCP if installed) | mcp__jina__extract_pdf |
 | URL subpage crawl (multiple pages from one site) | mcp__exa__crawling_exa with subpages | — |
-| Reddit / X / YouTube discussion or community sentiment | mcp__gptr-mcp__quick_search | mcp__jina__search_web with `site:reddit.com` etc. |
-| LinkedIn (gptr-mcp's social retriever excludes LinkedIn) | mcp__jina__search_web with `site:linkedin.com` | mcp__exa__web_search_advanced_exa |
+| Reddit / X / YouTube discussion or community sentiment | mcp__gptr-mcp__quick_search | mcp__exa__web_search_advanced_exa with `includeDomains=["reddit.com"]` |
+| LinkedIn (gptr-mcp's social retriever excludes LinkedIn) | mcp__exa__web_search_advanced_exa with `includeDomains=["linkedin.com"]` | — (Jina `site:` is broken upstream) |
 
 ---
 

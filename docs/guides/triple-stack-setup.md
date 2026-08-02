@@ -70,17 +70,24 @@ What it does: 1–2 s factual lookups with citations (94% SimpleQA accuracy). Us
 
 ## Stack 4: Jina
 
+Bundled in this repo since v0.8.0 — see [`companions/jina-mcp/`](../../companions/jina-mcp/).
+
 ```json
 "jina": {
-  "type": "http",
-  "url": "https://mcp.jina.ai/v1",
-  "headers": { "Authorization": "Bearer YOUR_JINA_API_KEY" }
+  "type": "stdio",
+  "command": "python3",
+  "args": ["/absolute/path/to/gigaxity-deep-research/companions/jina-mcp/mcp_server.py"],
+  "env": { "JINA_API_KEY": "YOUR_JINA_API_KEY" }
 }
 ```
 
 Sign up: https://jina.ai. The free tier is 10M tokens — enough for hundreds of full-pipeline queries.
 
 What it does: web search, URL reading (free reader tier), arxiv, ssrn, parallel reads, classification, reranking, dedup. The workhorse free-tier MCP.
+
+**Why bundled rather than hosted.** The hosted `https://mcp.jina.ai/v1` routes its entire search family through `svip.jina.ai`, a paid-only lane that refuses trial credits — including the free 10M tier this guide recommends — and reports the refusal as a bare `Internal Server Error`. Since ~1 Aug 2026 that has taken out `search_web`, `search_arxiv`, `search_ssrn`, and their parallel variants for every trial-tier user ([jina-ai/MCP#32](https://github.com/jina-ai/MCP/issues/32)). Rotating the key does not help; a new key is another trial key.
+
+The bundled server routes web search to `s.jina.ai` (which accepts trial credits) and takes arXiv, SSRN, and BibTeX to their own free key-less APIs. Same 19 tool names, so nothing downstream changes.
 
 ## Stack 5: gigaxity-deep-research (this repo)
 
@@ -184,6 +191,9 @@ If routing happens correctly, the stack is wired.
 | Routing always picks the same MCP | Instruction block not in global CLAUDE.md | Paste the block per the section above |
 | `context7` returns empty for queries that should hit official docs | Free tier exhausted or library not indexed | Verify the library ID via `resolve-library-id`; check usage at the context7.com dashboard |
 | Jina calls fail with 401 | Bearer token expired or wrong | Regenerate at https://jina.ai dashboard |
+| Jina search returns `Internal Server Error` while `read_url` works | You are on the hosted `mcp.jina.ai` server, whose search lane refuses trial credits | Switch to the bundled [`companions/jina-mcp/`](../../companions/jina-mcp/) server. Do **not** rotate the key — a new trial key fails identically |
+| Jina search says `Not enough credits` but your balance looks fine | `JINA_SEARCH_ENDPOINT=vip` on a trial key — that lane needs a paid `regular_balance` | Unset it (defaults to `standard`). Run `show_api_key` to see both balances |
+| `search_web` with a `site` filter 500s | Upstream: `s.jina.ai` proxies site-restricted queries to a degraded backend ([reader#1258](https://github.com/jina-ai/reader/issues/1258)) | Leave `site` empty and filter results yourself until it is fixed |
 | `brightdata_fallback` errors on every URL | `.env` in `cwd` missing or wrong creds | Re-check Brightdata zone setup |
 | `gigaxity-deep-research` calls work but other MCPs don't | One specific MCP misconfigured | Run `/mcp` and check the failing MCP's status |
 
