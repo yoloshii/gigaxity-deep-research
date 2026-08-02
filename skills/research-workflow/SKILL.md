@@ -338,7 +338,7 @@ exa_answer_detailed(query="What are the system requirements for Bun?")
 | URL subpage crawl | `mcp__exa__crawling_exa` with `subpages` + `subpageTarget` | — (Jina has no subpage mode) |
 | Academic (arXiv) | `mcp__jina__search_arxiv` / `mcp__jina__parallel_search_arxiv` — supports arXiv field syntax (`cat:cs.CL`, `abs:"..."`, `au:...`, boolean AND/OR) and `sort="date"` for newest-first | `mcp__exa__web_search_advanced_exa category="research paper"` |
 | Academic (SSRN — econ/law/finance) | `mcp__jina__search_ssrn` / `mcp__jina__parallel_search_ssrn` — OpenAlex-backed, key-less (0 Jina tokens); returns citation counts | `mcp__exa__web_search_advanced_exa category="research paper"` |
-| BibTeX citations | `mcp__jina__search_bibtex` (DBLP + Semantic Scholar) | — |
+| BibTeX citations | `mcp__jina__search_bibtex` (DBLP → Semantic Scholar, key-less, 0 Jina tokens) | `mcp__exa__web_search_advanced_exa category="research paper"` |
 | PDF layout extraction (figures/tables) | `mcp__jina__extract_pdf` | — |
 | Images | `mcp__jina__search_images` (needs PAID Jina balance — no free-lane equivalent) | `mcp__exa__web_search_advanced_exa` |
 | Screenshots | `mcp__jina__capture_screenshot_url` | — |
@@ -375,8 +375,9 @@ mcp__exa__get_code_context_exa(query="React useState patterns")
 # URL reading
 mcp__jina__read_url(url="https://docs.example.com/api")
 
-# Academic papers
-mcp__jina__search_arxiv(query="transformer architecture", num=5)
+# Academic papers — free and key-less, so don't ration `num`.
+# Use arXiv field syntax; a bare query searches all fields and is usually too broad.
+mcp__jina__search_arxiv(query='cat:cs.CL AND abs:"transformer architecture"', num=15, sort="date")
 
 # Quick answer (no search needed)
 mcp__gigaxity-deep-research__ask(query="What is dependency injection?")
@@ -719,9 +720,9 @@ mcp__gigaxity-deep-research__reason(
 
 *Search (Jina-native — free-tier enabled):*
 - `mcp__jina__search_web(query, num)` — General web search (~63 tokens/call)
-- `mcp__jina__search_arxiv(query, num)` — arXiv papers, structured author/abstract/version
+- `mcp__jina__search_arxiv(query, num, sort)` — arXiv papers, structured author/abstract/version. Native arXiv API, key-less: 0 Jina tokens. Takes field syntax (`cat:cs.CL`, `abs:"..."`, `au:...`, boolean AND/OR) and `sort="date"` for newest-first.
 - `mcp__jina__search_ssrn(query, num)` — SSRN papers (econ/law/finance/social sciences). OpenAlex-backed and key-less: 0 Jina tokens, and each hit carries a citation count.
-- `mcp__jina__search_bibtex(query, num)` — DBLP + Semantic Scholar → BibTeX
+- `mcp__jina__search_bibtex(query, num)` — DBLP → Semantic Scholar → BibTeX. Key-less: 0 Jina tokens.
 - `mcp__jina__search_images(query, return_url=True)` — Image search (ALWAYS use `return_url=True` — base64 causes API Error 400)
 - `mcp__jina__search_jina_blog(query)` — Jina AI blog search
 
@@ -1157,9 +1158,16 @@ mcp__jina__read_url(github_issue_url)
 ### Academic Papers
 
 ```
-mcp__jina__search_arxiv(query)
-  # No fallback - Jina is primary for academic
+mcp__jina__search_arxiv(query)          # native arXiv API — free, key-less
+  ON EMPTY → widen: drop field prefixes, or swap cat: for a broader category
+  ON FAIL  → mcp__exa__web_search_advanced_exa(query, category="research paper")
 ```
+
+arXiv, SSRN and BibTeX all left Jina — they hit the native arXiv API, OpenAlex, and
+DBLP/Semantic Scholar respectively, all key-less. **They cost nothing against the Jina
+token allowance**, so raise `num` and prefer the `parallel_*` variants freely; the old
+"ration academic calls" instinct no longer applies. Exa's `research paper` category is
+the cross-vendor fallback and also the way to reach non-arXiv preprints.
 
 ### Repository Discovery
 
@@ -1280,7 +1288,7 @@ Rationale: Jina is rotatable-for-free (10M trial tier via Camoufox key rotation)
 | **Social (tweets)** | gptr-mcp quick_search (site:x.com) | Jina search_web | Exa (no tweet category) |
 | **Academic (arXiv)** | Jina search_arxiv / parallel_search_arxiv (field syntax: `cat:`, `abs:`, `au:`; `sort="date"`) | Exa advanced (category="research paper") | — |
 | **Academic (SSRN — econ/law/finance)** | Jina search_ssrn / parallel_search_ssrn (OpenAlex, key-less, citation counts) | Exa advanced (category="research paper") | — |
-| **BibTeX citations** | Jina search_bibtex | — | — |
+| **BibTeX citations** | Jina search_bibtex (DBLP → Semantic Scholar, key-less) | Exa advanced (category="research paper") | — |
 | **PDFs / whitepapers** | Exa advanced (category="pdf") | Jina search_web | — |
 | **PDF layout extraction (figures/tables)** | Jina extract_pdf | — | — |
 | **Images** | Jina search_images (`return_url=True`) | — | All others |
@@ -1423,12 +1431,13 @@ mcp__gigaxity-deep-research__synthesize(
 User: "Lit review on [topic] — recent work + foundational papers"
 
 # Step 1: parallel academic search across 3-5 angles
+# All three academic tools are key-less (0 Jina tokens) — use generous `num`.
 arxiv = mcp__jina__parallel_search_arxiv(searches=[
-    {"query": "[topic] recent"},
-    {"query": "[topic] foundational"},
-    {"query": "[topic] survey"},
-])
-ssrn = mcp__jina__search_ssrn(query="[topic]", num=5)  # if econ/law/finance
+    {"query": 'cat:[primary-cat] AND abs:"[topic]"', "num": 20},   # in-field, precise
+    {"query": "[topic] survey OR review", "num": 15},
+    {"query": "[topic]", "num": 15},                              # broad safety net
+], sort="date")
+ssrn = mcp__jina__search_ssrn(query="[topic]", num=15)  # if econ/law/finance; returns citation counts
 non_arxiv = mcp__exa__web_search_advanced_exa(query="[topic]", category="research paper", numResults=5)
 
 # Step 2: canonical citations
