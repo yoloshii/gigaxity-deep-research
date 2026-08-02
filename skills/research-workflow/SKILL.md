@@ -1198,8 +1198,11 @@ Field result: **2 of 4 dead repos recovered this way, both top-tier candidates.*
 
 ```
 mcp__jina__search_images(query, return_url=True)
-  # No fallback - Jina is primary for images
+  # Requires a PAID Jina balance — the free lane has no image search
+  # (s.jina.ai returns 503 for type:"images"), so on a trial key this
+  # returns an explanatory error rather than results.
   # ALWAYS use return_url=True (base64 causes API Error 400)
+  ON FAIL → mcp__exa__web_search_advanced_exa(query)   # web results w/ images
 ```
 
 ### Synthesis Fallback
