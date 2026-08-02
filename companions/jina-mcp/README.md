@@ -73,6 +73,7 @@ Register in `~/.claude.json`:
 {
   "mcpServers": {
     "jina": {
+      "type": "stdio",
       "command": "python3",
       "args": ["/absolute/path/to/companions/jina-mcp/mcp_server.py"],
       "env": { "JINA_API_KEY": "jina_your_key_here" }
@@ -123,8 +124,11 @@ that one tool says so and nothing else is affected.
 Site-restricted search fails regardless of client. `s.jina.ai` proxies both the
 `X-Site` header and the `site:` operator to `svip`, which currently returns
 `TypeError: fetch failed`. The `site` argument on `search_web` is wired and will
-start working when Jina fixes it; until then, leave it empty and filter results
-yourself. Tracked at
+start working when Jina fixes it; until then, leave it empty and send
+domain-scoped searches to Exa's `web_search_advanced_exa` with
+`includeDomains=[...]`, a real filter rather than a query-string hint. Simply
+dropping the restriction is not a substitute — an unrestricted search for
+"model context protocol github" returns sketchfab.com and models.com. Tracked at
 [jina-ai/reader#1258](https://github.com/jina-ai/reader/issues/1258).
 
 ## Configuration

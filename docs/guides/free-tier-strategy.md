@@ -20,10 +20,15 @@ Token cost per call (current, approximate):
 | `search_web` | ~63 tokens |
 | `parallel_search_web` | ~107 tokens for 3 queries |
 | `parallel_read_url` | ~17,000 tokens (content-proportional) |
-| `search_arxiv` | ~343 tokens |
+| `search_arxiv` / `parallel_search_arxiv` | **0** — native arXiv API, key-less |
+| `search_ssrn` / `parallel_search_ssrn` | **0** — OpenAlex, key-less |
+| `search_bibtex` | **0** — DBLP → Semantic Scholar, key-less |
+| `search_images` | needs a **paid** balance — the free lane has no image endpoint |
 | `extract_pdf` | content-proportional |
 
-**Avoid:** `expand_query` — 12,000 tokens per call. Rewrite query variants in the prompt instead. The bundled `research-workflow` skill already generates variants in-prompt at zero token cost.
+The three academic tools charge nothing against your Jina allowance, so don't ration them — raise `num` and prefer the `parallel_*` variants freely.
+
+**Not available:** `expand_query` (12,000 tokens per call upstream) and `deduplicate_images` are deliberately not carried over by the bundled server. Rewrite query variants in the prompt instead — the `research-workflow` skill already generates them in-prompt at zero cost.
 
 ## Exa — generous free trial credits, then paid
 
@@ -75,6 +80,8 @@ The `research-workflow` skill encodes the routing logic that keeps each tool use
 - **General web search** → `mcp__jina__search_web` (~63 tokens) before any paid alternative
 - **Multi-query parallel web** → `mcp__jina__parallel_search_web` (~107 tokens for 3 queries — better unit economics than three sequential calls)
 - **Bulk URL reading** → `mcp__jina__parallel_read_url` first; substitute `mcp__brightdata_fallback__scrape_as_markdown` only for blocked URLs
+- **Academic search (arXiv / SSRN / BibTeX)** → `mcp__jina__search_arxiv`, `search_ssrn`, `search_bibtex` — all key-less and free, so they never touch the Jina allowance. Send arXiv **field syntax** (`cat:cs.CL AND abs:"..."`), not the user's question verbatim
+- **Domain-scoped search** → `mcp__exa__web_search_advanced_exa` with `includeDomains=[...]`, never Jina's `site:` (broken upstream)
 - **Reranking / dedup before synthesis** → `mcp__jina__sort_by_relevance` and `mcp__jina__deduplicate_strings` (both 0 tokens)
 - **Synthesis with citations** → `mcp__gigaxity-deep-research__synthesize` (one OpenRouter call per session)
 

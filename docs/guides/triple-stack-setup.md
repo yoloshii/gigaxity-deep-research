@@ -1,8 +1,8 @@
 # Triple Stack — full deep research setup for Claude Code
 
-Six MCP servers. One classification skill. The combination turns Claude Code into a deep-research-first environment that picks the right tool per query class without hand-holding.
+Seven MCP servers. One classification skill. The combination turns Claude Code into a deep-research-first environment that picks the right tool per query class without hand-holding.
 
-This guide assumes you've already set up `gigaxity-deep-research` per [setup-mcp.md](setup-mcp.md). It walks through the other five companion MCPs.
+This guide assumes you've already set up `gigaxity-deep-research` per [setup-mcp.md](setup-mcp.md). It walks through the other six companion MCPs.
 
 ## The seven MCPs
 
@@ -24,7 +24,7 @@ The routing logic *does* degrade gracefully if an MCP isn't registered, so you c
 
 ## Prerequisites
 
-You'll register all five into your global `~/.claude.json` under `mcpServers`. The four paid services need API keys; sign up first.
+You'll register all seven into your global `~/.claude.json` under `mcpServers`. Each needs its own API key (Exa's covers both `exa` and `exa-answer`); sign up first.
 
 ## Stack 1: Context7
 
@@ -142,11 +142,11 @@ Bundled in this repo with an install script that clones upstream — see [`../..
 
 What it does: surfaces real-world opinions, troubleshooting threads, and community sentiment from Reddit, X/Twitter, and YouTube — content that web search and documentation lookup miss. Routed automatically by the `research-workflow` skill when a query benefits from lived-experience knowledge.
 
-LinkedIn is **not** part of `SOCIAL_OPENAI_DOMAINS` (the upstream retriever doesn't support LinkedIn well). For LinkedIn-specific queries, route to Jina with `site:linkedin.com`.
+LinkedIn is **not** part of `SOCIAL_OPENAI_DOMAINS` (the upstream retriever doesn't support LinkedIn well). For LinkedIn-specific queries, use `mcp__exa__web_search_advanced_exa` with `includeDomains=["linkedin.com"]` — a real domain filter. Do **not** route it to Jina: site-restricted Jina search is broken upstream ([reader#1258](https://github.com/jina-ai/reader/issues/1258)).
 
 ## Install the routing skill
 
-The bundled [`research-workflow` skill](../../skills/research-workflow/SKILL.md) is what makes the agent route correctly across all six MCPs.
+The bundled [`research-workflow` skill](../../skills/research-workflow/SKILL.md) is what makes the agent route correctly across all seven MCPs.
 
 ```bash
 mkdir -p ~/.claude/skills
@@ -169,7 +169,7 @@ Without this block, the skill works but the agent has to discover the routing on
 
 ## Verify
 
-In Claude Code, type `/mcp` — you should see all six MCPs listed with green dots.
+In Claude Code, type `/mcp` — you should see all seven MCPs listed with green dots.
 
 Test each by asking a question that should route to it:
 
@@ -178,7 +178,7 @@ Test each by asking a question that should route to it:
 | "What is the OpenAI Python SDK's `client.beta` namespace for?" | `context7` |
 | "Show me a code example using `httpx.AsyncClient` with retries" | `exa` (`get_code_context_exa`) |
 | "What's the current Bun version?" | `exa-answer` |
-| "Find recent papers on CRAG quality gates" | `jina` (`search_arxiv`) |
+| "Find recent papers on corrective RAG" | `jina` (`search_arxiv`) — the agent should send arXiv field syntax (`abs:CRAG AND cat:cs.CL`), not the question verbatim |
 | "What do people say about FastAPI vs Litestar in 2026?" | `gigaxity-deep-research` (`synthesize`) |
 
 If routing happens correctly, the stack is wired.
@@ -193,12 +193,12 @@ If routing happens correctly, the stack is wired.
 | Jina calls fail with 401 | Bearer token expired or wrong | Regenerate at https://jina.ai dashboard |
 | Jina search returns `Internal Server Error` while `read_url` works | You are on the hosted `mcp.jina.ai` server, whose search lane refuses trial credits | Switch to the bundled [`companions/jina-mcp/`](../../companions/jina-mcp/) server. Do **not** rotate the key — a new trial key fails identically |
 | Jina search says `Not enough credits` but your balance looks fine | `JINA_SEARCH_ENDPOINT=vip` on a trial key — that lane needs a paid `regular_balance` | Unset it (defaults to `standard`). Run `show_api_key` to see both balances |
-| `search_web` with a `site` filter 500s | Upstream: `s.jina.ai` proxies site-restricted queries to a degraded backend ([reader#1258](https://github.com/jina-ai/reader/issues/1258)) | Leave `site` empty and filter results yourself until it is fixed |
+| `search_web` with a `site` filter 500s | Upstream: `s.jina.ai` proxies site-restricted queries to a degraded backend ([reader#1258](https://github.com/jina-ai/reader/issues/1258)) | Leave `site` empty. For a real domain filter use `mcp__exa__web_search_advanced_exa` with `includeDomains=[...]` — dropping the restriction is not a substitute |
 | `brightdata_fallback` errors on every URL | `.env` in `cwd` missing or wrong creds | Re-check Brightdata zone setup |
 | `gigaxity-deep-research` calls work but other MCPs don't | One specific MCP misconfigured | Run `/mcp` and check the failing MCP's status |
 
 ## Next steps
 
-- [MCP tool reference](../reference/mcp-tools.md) — full schemas for the four `gigaxity-deep-research` tools
+- [MCP tool reference](../reference/mcp-tools.md) — full schemas for the six `gigaxity-deep-research` tools
 - [REST API reference](../reference/rest-api.md) — same surface over HTTP
 - [Troubleshooting](../troubleshooting.md) — boot and runtime errors

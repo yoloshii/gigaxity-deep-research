@@ -178,7 +178,7 @@ Each `sources[i]` dict:
     "title": str,                    # required
     "content": str,                  # required
     "url": str,                      # optional
-    "origin": str,                   # optional, e.g. "ref", "exa", "jina"
+    "origin": str,                   # optional, e.g. "context7", "exa", "jina"
     "source_type": str,              # optional, e.g. "documentation", "article"
 }
 ```
@@ -244,7 +244,7 @@ Each `sources[i]` dict (sources-aware mode):
     "title": str,                    # required
     "content": str,                  # required
     "url": str,                      # optional
-    "origin": str,                   # optional, e.g. "ref", "exa", "jina"
+    "origin": str,                   # optional, e.g. "context7", "exa", "jina"
     "source_type": str,              # optional, e.g. "documentation", "article"
 }
 ```

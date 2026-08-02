@@ -102,9 +102,9 @@ stdio transport. Bundled in this repo at [`companions/jina-mcp/`](../../companio
 - `parallel_read_url` (~17k tokens, content-proportional)
 - `search_web` (~63 tokens)
 - `parallel_search_web` (~107 tokens for 3 queries — better unit economics than 3 sequential calls)
-- `search_arxiv` / `parallel_search_arxiv` (~343 tokens)
-- `search_ssrn` / `parallel_search_ssrn` (econ, law, finance papers)
-- `search_bibtex` (citation entries)
+- `search_arxiv` / `parallel_search_arxiv` (**0 tokens** — native arXiv API, key-less; takes field syntax `cat:`/`abs:`/`au:` + boolean AND/OR, and `sort="date"`)
+- `search_ssrn` / `parallel_search_ssrn` (**0 tokens** — OpenAlex, key-less; econ, law, finance papers with citation counts)
+- `search_bibtex` (**0 tokens** — DBLP → Semantic Scholar, key-less)
 - `search_images` (needs paid balance — no free-lane equivalent), `capture_screenshot_url`
 - `search_jina_blog` (needs optional `JINA_GHOST_KEY`)
 - `extract_pdf` (PDF layout extraction — figures, tables, equations)
@@ -117,7 +117,7 @@ stdio transport. Bundled in this repo at [`companions/jina-mcp/`](../../companio
 
 19 tools total. Two are deliberately **not** carried over from the hosted server: `expand_query` (12,000 tokens per call — rewrite query variants in the prompt instead) and `deduplicate_images`.
 
-**Known upstream breakage:** the `site` argument on `search_web` currently 500s — `s.jina.ai` proxies site-restricted queries to a degraded backend ([reader#1258](https://github.com/jina-ai/reader/issues/1258)). Leave it empty until fixed.
+**Known upstream breakage:** the `site` argument on `search_web` currently 500s — `s.jina.ai` proxies site-restricted queries to a degraded backend ([reader#1258](https://github.com/jina-ai/reader/issues/1258)), and the `site:` operator inside the query text fails the same way. Leave it empty and route domain-scoped searches to `mcp__exa__web_search_advanced_exa` with `includeDomains=[...]`; simply dropping the restriction is not a substitute.
 
 ## 5. gigaxity-deep-research (this repo)
 

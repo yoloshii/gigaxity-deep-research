@@ -153,7 +153,10 @@ Three escape hatches:
 | `mcp__jina__deduplicate_strings` | 0 |
 | `mcp__jina__search_web` | ~63 tokens |
 | `mcp__jina__parallel_search_web` | ~107 tokens / 3 queries (~36 each) |
-| `mcp__jina__search_arxiv` | ~343 |
+| `mcp__jina__search_arxiv` / `parallel_search_arxiv` | **0** — native arXiv API, key-less |
+| `mcp__jina__search_ssrn` / `parallel_search_ssrn` | **0** — OpenAlex, key-less |
+| `mcp__jina__search_bibtex` | **0** — DBLP → Semantic Scholar, key-less |
+| `mcp__jina__search_images` | needs a **paid** Jina balance (no free lane) |
 | `mcp__jina__parallel_read_url` | ~17,000 (content-proportional) |
 | `mcp__exa-answer__exa_answer` | flat per-call, paid |
 | `mcp__exa__web_search_exa` | flat per-call, paid |
