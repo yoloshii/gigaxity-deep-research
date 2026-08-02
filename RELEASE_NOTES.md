@@ -4,7 +4,7 @@
 
 Fixes the URL `companions/jina-mcp`'s `search_ssrn` returns for SSRN records that carry no DOI. The tool preferred `doi` and fell straight through to the OpenAlex work ID, so a DOI-less record surfaced as `https://openalex.org/W3121731372` — a resolvable link, but an inconsistent one next to the `https://doi.org/10.2139/ssrn.*` rows beside it, and a detour for a reader who wants the paper. OpenAlex carries the real SSRN page on those records at `primary_location.landing_page_url`, so the fallback chain is now DOI → SSRN landing page → OpenAlex ID, with the work ID demoted to a genuine last resort. Live-verified on the query that surfaced it (`algorithmic trading market microstructure`): the previously-OpenAlex row now returns `https://autopapers.ssrn.com/sol3/papers.cfm?abstract_id=245795`, and zero OpenAlex fallbacks remain in the result set.
 
-Output-shape change confined to one field of one tool, no API/config/contract change elsewhere — PATCH. Applied to `main` and `local-inference` in parity, and to the private `tool-openrouter` mirror.
+Output-shape change confined to one field of one tool, no API/config/contract change elsewhere — PATCH. Applied to `main` and `local-inference` in parity.
 
 ## v0.8.0 (2026-08-03)
 
