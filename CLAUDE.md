@@ -363,9 +363,9 @@ If the header is absent: relay the subagent's full output as normal.
 | URL → markdown (bulk 3-5) | mcp__jina__parallel_read_url | per-URL fallback to Brightdata for blocked ones |
 | URL freshness / credibility check | mcp__jina__guess_datetime_url (free) | — |
 | Academic (arXiv) — single query | mcp__jina__search_arxiv (field syntax: `cat:cs.CL`, `abs:"..."`, `au:...`, boolean AND/OR; `sort="date"` for newest-first) | — |
-| Academic (arXiv) — multi-query parallel | mcp__jina__parallel_search_arxiv | — |
+| Academic (arXiv) — multi-query parallel | mcp__jina__parallel_search_arxiv (key-less, 0 Jina tokens — use generous `num`) | mcp__exa__web_search_advanced_exa with `category="research paper"` |
 | Academic (SSRN — econ/law/finance) | mcp__jina__search_ssrn / parallel_search_ssrn (OpenAlex, key-less, citation counts) | mcp__exa__web_search_advanced_exa with `category="research paper"` |
-| BibTeX citations | mcp__jina__search_bibtex | — |
+| BibTeX citations | mcp__jina__search_bibtex (DBLP → Semantic Scholar, key-less, 0 Jina tokens) | mcp__exa__web_search_advanced_exa with `category="research paper"` |
 | PDF layout extraction (figures, tables, equations) | mcp__jina__extract_pdf | — |
 | Images | mcp__jina__search_images (needs PAID Jina balance — no free-lane equivalent) | mcp__exa__web_search_advanced_exa |
 | Screenshots | mcp__jina__capture_screenshot_url | — |
