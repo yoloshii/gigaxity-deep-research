@@ -310,13 +310,19 @@ def _search_ssrn(query: str, num: int) -> str:
 
     out = [f"SSRN results for {query!r} (via OpenAlex, {payload.get('meta', {}).get('count', '?')} total):"]
     for i, w in enumerate(rows, 1):
+        # Prefer the DOI (canonical, citable). Not every SSRN record in OpenAlex
+        # has one — those still carry the real SSRN landing page, so fall back to
+        # that before the OpenAlex work ID, which is a last resort rather than a
+        # useful link for the reader.
         doi = w.get("doi") or ""
+        landing = ((w.get("primary_location") or {}).get("landing_page_url")) or ""
+        url = doi or landing or w.get("id", "")
         authors = [
             (a.get("author") or {}).get("display_name")
             for a in (w.get("authorships") or [])[:5]
         ]
         out.append(f"[{i}] {w.get('title') or 'Untitled'}")
-        out.append(f"[{i}] URL: {doi or w.get('id', '')}")
+        out.append(f"[{i}] URL: {url}")
         if any(authors):
             out.append(f"[{i}] Authors: {', '.join(a for a in authors if a)}")
         out.append(f"[{i}] Published: {w.get('publication_date', 'unknown')} | cited by {w.get('cited_by_count', 0)}")
