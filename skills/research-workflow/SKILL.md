@@ -332,24 +332,24 @@ exa_answer_detailed(query="What are the system requirements for Bun?")
 | Query Type | Primary Tool | Fallback |
 |------------|--------------|----------|
 | API docs | `mcp__context7__resolve-library-id` → `query-docs` | `mcp__exa__get_code_context_exa` |
-| Code examples / patterns | `mcp__exa__get_code_context_exa` | `mcp__jina__search_web` with `site:github.com` |
+| Code examples / patterns | `mcp__exa__get_code_context_exa` | `mcp__exa__web_search_advanced_exa includeDomains=["github.com"]` |
 | URL reading | `mcp__jina__read_url` (0 tokens) | `mcp__exa__crawling_exa` |
 | Bulk URL reading (3-5) | `mcp__jina__parallel_read_url` (content-proportional) | `mcp__exa__crawling_exa` with urls array |
 | URL subpage crawl | `mcp__exa__crawling_exa` with `subpages` + `subpageTarget` | — (Jina has no subpage mode) |
-| Academic (arXiv) | `mcp__jina__search_arxiv` / `mcp__jina__parallel_search_arxiv` | `mcp__exa__web_search_advanced_exa category="research paper"` |
+| Academic (arXiv) | `mcp__jina__search_arxiv` / `mcp__jina__parallel_search_arxiv` — supports arXiv field syntax (`cat:cs.CL`, `abs:"..."`, `au:...`, boolean AND/OR) and `sort="date"` for newest-first | `mcp__exa__web_search_advanced_exa category="research paper"` |
 | Academic (SSRN — econ/law/finance) | `mcp__jina__search_ssrn` / `mcp__jina__parallel_search_ssrn` | — |
 | BibTeX citations | `mcp__jina__search_bibtex` (DBLP + Semantic Scholar) | — |
 | PDF layout extraction (figures/tables) | `mcp__jina__extract_pdf` | — |
-| Images | `mcp__jina__search_images` | — |
+| Images | `mcp__jina__search_images` (needs PAID Jina balance — no free-lane equivalent) | `mcp__exa__web_search_advanced_exa` |
 | Screenshots | `mcp__jina__capture_screenshot_url` | — |
 | General web | `mcp__jina__search_web` (63 tokens) | `mcp__exa__web_search_exa` |
 | Parallel multi-query web (3-5 variants) | `mcp__jina__parallel_search_web` (107 tokens for 3 queries) | — (Exa has no parallel mode) |
 | Advanced web (category/domain/date filters) | `mcp__exa__web_search_advanced_exa` | `mcp__exa__web_search_exa` |
 | Company info | `mcp__exa__web_search_advanced_exa category="company"` | `mcp__jina__search_web "<name> company"` |
-| People / OSINT / attribute-based | `mcp__exa__web_search_advanced_exa category="people"` | `mcp__jina__search_web "<name> site:linkedin.com"` |
+| People / OSINT / attribute-based | `mcp__exa__web_search_advanced_exa category="people"` | `mcp__exa__web_search_advanced_exa includeDomains=["linkedin.com"]` |
 | Financial reports (SEC, earnings) | `mcp__exa__web_search_advanced_exa category="financial report"` | `mcp__exa__web_search_advanced_exa category="pdf"` |
 | News (date-bounded) | `mcp__exa__web_search_advanced_exa category="news"` with `startPublishedDate/endPublishedDate` | `mcp__jina__search_web` |
-| GitHub repo discovery | `mcp__exa__web_search_advanced_exa category="github"` | `mcp__jina__search_web "site:github.com"` |
+| GitHub repo discovery | `mcp__exa__web_search_advanced_exa category="github"` | `mcp__exa__web_search_advanced_exa includeDomains=["github.com"]` |
 | PDFs / whitepapers | `mcp__exa__web_search_advanced_exa category="pdf"` | — |
 | URL freshness inference | `mcp__jina__guess_datetime_url` | — (credibility/staleness checks) |
 | Deep multi-hop async research | gigaxity-deep-research discover → Jina parallel_read_url → synthesize | — (Exa MCP 3.2.0 does not expose `type="deep"`) |
@@ -359,7 +359,9 @@ exa_answer_detailed(query="What are the system requirements for Bun?")
 | Time-aware session context | `mcp__jina__primer` (current UTC / timezone) | — |
 | Quick LLM answer | `mcp__gigaxity-deep-research__ask` | — |
 
-**AVOID:** `mcp__jina__expand_query` (12k tokens/call — rewrite queries manually instead).
+**AVOID:** `mcp__jina__expand_query` (12k tokens/call — rewrite queries manually instead). Not exposed by the bundled server at all.
+
+**Domain-scoped search goes through Exa, never Jina.** Do NOT route a domain restriction to `mcp__jina__search_web` — neither the `site:` operator in the query nor the `site` argument works. `s.jina.ai` proxies site-restricted queries to an internal upstream that has returned `TypeError: fetch failed` since ~2026-08-01 ([jina-ai/reader#1258](https://github.com/jina-ai/reader/issues/1258)), so both forms return HTTP 500. Dropping the restriction is not a substitute — an unrestricted `search_web("model context protocol github")` returned sketchfab.com and models.com. Use `mcp__exa__web_search_advanced_exa` with `includeDomains=[...]`, a real domain filter rather than a query-string hint. Restore the Jina route only after verifying the upstream issue is closed.
 
 **Implementation:**
 
@@ -739,7 +741,7 @@ mcp__gigaxity-deep-research__reason(
 *Free post-processing middleware (0 tokens — use liberally):*
 - `mcp__jina__sort_by_relevance(query, documents)` — Reranker (insert between Triple Stack gather and synthesize)
 - `mcp__jina__deduplicate_strings(strings)` — Semantic dedup (save synthesis tokens)
-- `mcp__jina__deduplicate_images(images)` — CLIP v2 image dedup
+- `mcp__jina__deduplicate_images(images)` — CLIP v2 image dedup. NOT exposed by the bundled server; use `deduplicate_strings` on image captions/URLs instead.
 - `mcp__jina__classify_text(input, labels)` — Label/route content via embeddings
 
 *Free pre-processing / utility:*
@@ -1149,7 +1151,7 @@ mcp__jina__parallel_search_web(searches=[3-5 query variants])  # 107 tokens for 
 ```
 mcp__jina__read_url(github_issue_url)
   ON ERROR/404 → mcp__brightdata_fallback__scrape_as_markdown(url)
-  ON FAIL → mcp__exa__web_search_exa("site:github.com [topic]")  # find alternatives
+  ON FAIL → mcp__exa__web_search_advanced_exa("[topic]", includeDomains=["github.com"])  # find alternatives
 ```
 
 ### Academic Papers
@@ -1164,7 +1166,9 @@ mcp__jina__search_arxiv(query)
 ```
 mcp__exa__web_search_advanced_exa(query, category="github")
   ON FAIL → mcp__exa__web_search_exa(query)
-  ON FAIL → mcp__jina__search_web(query + " site:github.com")
+  ON FAIL → mcp__exa__web_search_advanced_exa(query, includeDomains=["github.com"])
+  # NOT mcp__jina__search_web with site:github.com — site-restricted Jina search
+  # returns HTTP 500 upstream (jina-ai/reader#1258). See "Domain-scoped search" note.
 ```
 
 **Distinct failure mode — the search succeeded but the RESULT is dead (404 on clone/fetch).** Search
@@ -1262,19 +1266,19 @@ Rationale: Jina is rotatable-for-free (10M trial tier via Camoufox key rotation)
 |------|---------|-----------|-------|
 | **Mid-task factual lookup** | exa_answer (1-2s, 94% SimpleQA) | gigaxity-deep-research ask | Synthesis tools |
 | **API docs** | Context7 | Exa get_code_context | — |
-| **Code examples / patterns** | Exa get_code_context | Jina search_web `site:github.com` | Context7 |
+| **Code examples / patterns** | Exa get_code_context | Exa advanced `includeDomains=["github.com"]` | Context7 · Jina `site:` (broken upstream) |
 | **Repository docs** | Context7 | Jina read_url | — |
-| **GitHub repo discovery** | Exa advanced (category="github") | Jina search_web `site:github.com` | — |
+| **GitHub repo discovery** | Exa advanced (category="github") | Exa advanced `includeDomains=["github.com"]` | Jina `site:` (broken upstream) |
 | **GitHub issues/PRs** | Jina read_url | Brightdata fallback | Context7 |
 | **General web (single query)** | Jina search_web (63 tokens) | Exa web_search_exa | Context7 |
 | **Parallel multi-query web** | Jina parallel_search_web (107 tokens/3 queries) | Sequential Exa web_search_exa | Context7 |
 | **Advanced filtered web** (category / date / domain / text) | Exa web_search_advanced_exa | — | — |
 | **Company research** | Exa advanced (category="company") | Jina search_web | Context7 |
-| **People / OSINT (attribute search)** | Exa advanced (category="people") | Jina search_web `site:linkedin.com` | Context7 |
+| **People / OSINT (attribute search)** | Exa advanced (category="people") | Exa advanced `includeDomains=["linkedin.com"]` | Context7 · Jina `site:` (broken upstream) |
 | **Financial reports (SEC, earnings)** | Exa advanced (category="financial report") | Exa advanced (category="pdf") | — |
 | **News / current events (date-bounded)** | Exa advanced (category="news" + startPublishedDate) | Jina search_web | Context7 |
 | **Social (tweets)** | gptr-mcp quick_search (site:x.com) | Jina search_web | Exa (no tweet category) |
-| **Academic (arXiv)** | Jina search_arxiv / parallel_search_arxiv | Exa advanced (category="research paper") | — |
+| **Academic (arXiv)** | Jina search_arxiv / parallel_search_arxiv (field syntax: `cat:`, `abs:`, `au:`; `sort="date"`) | Exa advanced (category="research paper") | — |
 | **Academic (SSRN — econ/law/finance)** | Jina search_ssrn / parallel_search_ssrn | — | — |
 | **BibTeX citations** | Jina search_bibtex | — | — |
 | **PDFs / whitepapers** | Exa advanced (category="pdf") | Jina search_web | — |
@@ -1314,7 +1318,7 @@ Use this to budget calls per rotation. Full Jina tier with Camoufox rotation ≈
 | `primer` | **0** | Free — session time/timezone context |
 | `sort_by_relevance` | **0** | Free reranker — insert before synthesis |
 | `deduplicate_strings` | **0** | Free dedup — insert before synthesis |
-| `deduplicate_images` | **0** (est.) | Free CLIP dedup |
+| `deduplicate_images` | — | Not exposed by the bundled server |
 | `classify_text` | **0** (est.) | Free embeddings classifier |
 | `guess_datetime_url` | **0** (est.) | Free metadata probe |
 | `search_web` | **63** | Dirt cheap — primary general search |
