@@ -121,9 +121,10 @@ Step 2:  mcp__gptr-mcp__deep_research(query)             (multi-hop, cross-platf
             │ on LinkedIn-specific signal (gptr doesn't index LinkedIn)
             ▼
 Step 3:  mcp__exa__web_search_advanced_exa(query, includeDomains=["linkedin.com"])
-         # NOT mcp__jina__search_web with site:linkedin.com — site-restricted Jina
-         # search returns HTTP 500 upstream in both forms (the site: operator and
-         # the site argument). See "Domain-scoped search" in the routing skill.
+         # Preferred over mcp__jina__search_web with site="linkedin.com": Exa is a
+         # real multi-domain filter, Jina's site argument takes one domain only.
+         # Jina's works (it 500'd during a ~2026-08-01 upstream incident, verified
+         # recovered 2026-08-03). See "Domain-scoped search" in the routing skill.
 ```
 
 **Triggers for this chain:**

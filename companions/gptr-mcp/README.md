@@ -122,7 +122,7 @@ The bundled [`research-workflow` skill](../../skills/research-workflow/SKILL.md)
 | Query needs cross-platform community sentiment | `mcp__gptr-mcp__deep_research` |
 | Query is generic factual/documentation/comparison | NOT gptr-mcp — use Context7 / Exa / Jina / gigaxity instead |
 
-LinkedIn-specific queries don't route here (gptr-mcp's social retriever doesn't include LinkedIn). For LinkedIn, use `mcp__exa__web_search_advanced_exa` with `includeDomains=["linkedin.com"]` — not Jina's `site:` operator, which returns HTTP 500 upstream.
+LinkedIn-specific queries don't route here (gptr-mcp's social retriever doesn't include LinkedIn). For LinkedIn, use `mcp__exa__web_search_advanced_exa` with `includeDomains=["linkedin.com"]` — a real multi-domain filter. Jina's `site` argument also works (it returned HTTP 500 during a ~2026-08-01 upstream incident, verified recovered 2026-08-03) but takes a single domain only.
 
 ## Cost notes
 
