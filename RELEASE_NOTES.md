@@ -1,5 +1,11 @@
 # Release notes
 
+## v0.9.1 (2026-08-03)
+
+Drops `google` and `reddit` from the SearXNG example config. Both were removed from SearXNG upstream between 2026.3.29 and 2026.8.1 — present in the former's engine registry, absent from the latter's — so naming them resolved to nothing. SearXNG does not error on an unknown name in `keep_only` or in an `engines:` block; it silently drops it, which is how a config rots without any signal. Found by diffing the shipped `keep_only` list against a live 2026.8.1 registry after deploying v0.9.0: 24 names in, 22 engines out. Google's removal is consistent with [discussion #5651](https://github.com/searxng/searxng/discussions/5651), where the maintainer could only get it responding through a Playwright service carrying a signed-in session cookie that expires within minutes.
+
+Config-example only, no code change — PATCH. Applied to `main` and `local-inference` in parity.
+
 ## v0.9.0 (2026-08-03)
 
 Rebuilds `companions/searxng/settings.yml.example` against upstream SearXNG 2026.8.1 and removes `bing` from the default `RESEARCH_SEARXNG_ENGINES`.
