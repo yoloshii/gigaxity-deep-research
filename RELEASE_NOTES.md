@@ -1,5 +1,15 @@
 # Release notes
 
+## v0.10.3 (2026-08-03)
+
+Completes v0.10.2. That release corrected the stale "site-restricted Jina search is broken" claim in eight files; a wider sweep found two more that phrase it differently and so escaped the first pass — `docs/concepts/fallback-chains.md` (an inline comment in the LinkedIn fallback chain) and `companions/gptr-mcp/README.md`.
+
+Both now say what the others say: prefer Exa's `includeDomains` because it is a real multi-domain filter, while Jina's `site` argument works and takes a single domain. The recommendation is unchanged — only its justification, which is now a capability argument rather than a claim that Jina is broken.
+
+Worth noting for anyone auditing similar claims: a grep for the exact phrasing used in the main routing docs found eight of ten files. The two stragglers said "returns HTTP 500 upstream" and "site-restricted Jina search returns HTTP 500" inside a code comment and a prose aside. **Search for the claim, not for the sentence.**
+
+Docs only — PATCH. Applied to `main` and `local-inference` in parity.
+
 ## v0.10.2 (2026-08-03)
 
 **Corrects v0.10.1.** That release described the Jina `search_web` fault as a standing property of the tool. It was not — it was a live upstream incident, and it has cleared.
