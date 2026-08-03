@@ -1,5 +1,13 @@
 # Release notes
 
+## v0.9.2 (2026-08-03)
+
+Documentation fix — no code change. `docs/troubleshooting.md` still told operators that a missing engine is fixed by setting `disabled: false`, which stopped being true in v0.9.0: with `use_default_settings.engines.keep_only`, an engine absent from the allow-list does not exist, and SearXNG silently drops an unknown name there rather than warning. The row now states that both places must agree.
+
+Adds two rows for the failure mode this release cycle was spent diagnosing, because neither is discoverable from a status code. A degraded SearXNG returns **HTTP 200 with no error field** whether its engines are CAPTCHA'd, rate-limited, or serving blocked-client fallback pages — so the first row points at `unresponsive_engines` (the only signal), notes that scraped engines trip at single-digit queries per minute, and points at `search.suspended_times` for how long a block lasts. The second covers the nastier variant: an engine that answers with confident but off-topic content (homepages, dictionary entries, unrelated forum threads), with the one-liner that tags each result by engine so the culprit is identifiable, and the reason deweighting does not help — RRF fuses on rank, so junk at any weight displaces good results.
+
+Docs only — PATCH. Applied to `main` and `local-inference` in parity.
+
 ## v0.9.1 (2026-08-03)
 
 Drops `google` and `reddit` from the SearXNG example config. Both were removed from SearXNG upstream between 2026.3.29 and 2026.8.1 — present in the former's engine registry, absent from the latter's — so naming them resolved to nothing. SearXNG does not error on an unknown name in `keep_only` or in an `engines:` block; it silently drops it, which is how a config rots without any signal. Found by diffing the shipped `keep_only` list against a live 2026.8.1 registry after deploying v0.9.0: 24 names in, 22 engines out. Google's removal is consistent with [discussion #5651](https://github.com/searxng/searxng/discussions/5651), where the maintainer could only get it responding through a Playwright service carrying a signed-in session cookie that expires within minutes.
