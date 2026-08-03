@@ -343,13 +343,13 @@ exa_answer_detailed(query="What are the system requirements for Bun?")
 | PDF layout extraction (figures/tables) | `mcp__jina__extract_pdf` | — |
 | Images | `mcp__jina__search_images` (needs PAID Jina balance — no free-lane equivalent) | `mcp__exa__web_search_advanced_exa` |
 | Screenshots | `mcp__jina__capture_screenshot_url` | — |
-| General web | `mcp__jina__search_web` (63 tokens) | `mcp__exa__web_search_exa` |
-| Parallel multi-query web (3-5 variants) | `mcp__jina__parallel_search_web` (107 tokens for 3 queries) | — (Exa has no parallel mode) |
+| General web | `mcp__gigaxity-deep-research__search` — 4 connectors (SearXNG + Tavily + LinkUp + Brave) RRF-fused, 0 LLM tokens | `mcp__exa__web_search_exa` |
+| Parallel multi-query web (3-5 variants) | one `mcp__gigaxity-deep-research__search` per variant | — (Jina's parallel_search_web shares the `search_web` defect below) |
 | Advanced web (category/domain/date filters) | `mcp__exa__web_search_advanced_exa` | `mcp__exa__web_search_exa` |
-| Company info | `mcp__exa__web_search_advanced_exa category="company"` | `mcp__jina__search_web "<name> company"` |
+| Company info | `mcp__exa__web_search_advanced_exa category="company"` | `mcp__gigaxity-deep-research__search "<name> company"` |
 | People / OSINT / attribute-based | `mcp__exa__web_search_advanced_exa category="people"` | `mcp__exa__web_search_advanced_exa includeDomains=["linkedin.com"]` |
 | Financial reports (SEC, earnings) | `mcp__exa__web_search_advanced_exa category="financial report"` | `mcp__exa__web_search_advanced_exa category="pdf"` |
-| News (date-bounded) | `mcp__exa__web_search_advanced_exa category="news"` with `startPublishedDate/endPublishedDate` | `mcp__jina__search_web` |
+| News (date-bounded) | `mcp__exa__web_search_advanced_exa category="news"` with `startPublishedDate/endPublishedDate` | `mcp__gigaxity-deep-research__search` |
 | GitHub repo discovery | `mcp__exa__web_search_advanced_exa category="github"` | `mcp__exa__web_search_advanced_exa includeDomains=["github.com"]` |
 | PDFs / whitepapers | `mcp__exa__web_search_advanced_exa category="pdf"` | — |
 | URL freshness inference | `mcp__jina__guess_datetime_url` | — (credibility/staleness checks) |
@@ -361,6 +361,8 @@ exa_answer_detailed(query="What are the system requirements for Bun?")
 | Quick LLM answer | `mcp__gigaxity-deep-research__ask` | — |
 
 **AVOID:** `mcp__jina__expand_query` (12k tokens/call — rewrite queries manually instead). Not exposed by the bundled server at all.
+
+**Jina `search_web` and `parallel_search_web` are BROKEN for multi-term queries — do NOT route general web search to them (measured 2026-08-03).** `s.jina.ai` locks onto ONE term in the query and returns that term's popular or navigational pages, discarding the rest of the intent, at HTTP 200 with no error field. Measured: `Claude API prompt caching` returned claude.com, claude.ai and "Download Claude" with zero results about caching; `retrieval augmented generation evaluation benchmarks` returned four dictionary definitions of "retrieval"; `vLLM versus SGLang inference throughput comparison` returned six vLLM pages, none of which mention SGLang. Reordering the query, leading with a distinctive term, and phrase-quoting all fail, so query rewriting is not a workaround. It is neither a quota nor an auth fault — **never rotate the key over it.** Route general web to `mcp__gigaxity-deep-research__search`, whose Brave connector is a keyed official API and cannot be CAPTCHA'd. Jina's `read_url`, `parallel_read_url`, the key-less arXiv/SSRN/BibTeX tools, rerank and dedup use different endpoints, are unaffected, and remain the preferred choice for their jobs.
 
 **Domain-scoped search goes through Exa, never Jina.** Do NOT route a domain restriction to `mcp__jina__search_web` — neither the `site:` operator in the query nor the `site` argument works. `s.jina.ai` proxies site-restricted queries to an internal upstream that has returned `TypeError: fetch failed` since ~2026-08-01 ([jina-ai/reader#1258](https://github.com/jina-ai/reader/issues/1258)), so both forms return HTTP 500. Dropping the restriction is not a substitute — an unrestricted `search_web("model context protocol github")` returned sketchfab.com and models.com. Use `mcp__exa__web_search_advanced_exa` with `includeDomains=[...]`, a real domain filter rather than a query-string hint. Restore the Jina route only after verifying the upstream issue is closed.
 
