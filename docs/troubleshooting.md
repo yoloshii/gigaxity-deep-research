@@ -71,6 +71,60 @@ Symptom-fix lookup table for common boot and runtime errors. Find your symptom i
 | High RAM usage | Large source content + RCS off | Enable RCS via `/synthesize/p1` endpoint |
 | Per-request latency uneven | OpenRouter routing across providers | Pin a specific provider with model's full path: `qwen/qwen3-30b-a3b-thinking-2507:openrouter/auto` |
 | First `synthesize` call after upgrade is slow | `SYNTH_CACHE_VERSION` was bumped (cache key now includes the effective output budget plus source order), invalidating prior entries. | One-time cost; subsequent calls re-cache. No action required. |
+| **Identical repeated requests are never fast — every call costs a full LLM round-trip** | The result cache is not writable. In Docker this is near-certain: the `research_cache` **named volume is created root-owned**, while the container runs as `researcher` (uid 1000), so every write raises `PermissionError`. Nothing fails and no result is wrong — you simply pay for every repeat. | See "Cache never hits" below. |
+
+## Cache never hits (Docker)
+
+**Symptom:** two identical requests each take the full synthesis time. `/tmp/research_cache` inside the
+container stays empty forever.
+
+Confirm it in one command — if this prints a `PermissionError`, that is the whole problem:
+
+```bash
+docker compose exec deepresearch python -c \
+  "from pathlib import Path; Path('/tmp/research_cache/.probe').write_text('x'); print('writable')"
+```
+
+**Cause.** `docker-compose.yml` mounts a named volume at `/tmp/research_cache`. Docker creates a named
+volume **root-owned** unless the image already has a directory at that path to seed ownership from. The
+container runs as uid 1000, so it cannot write. Releases before v0.11.0 also swallowed the error
+entirely (`except (TypeError, OSError): pass`), so nothing appeared in the logs — the cache looked like
+it was working while never storing a single entry.
+
+**Fix — new deployments.** Nothing to do. v0.11.0's Dockerfile pre-creates the directory owned by
+`researcher`, and a fresh volume inherits that ownership.
+
+**Fix — existing deployments.** The image change cannot alter a volume that already exists. Either
+recreate it (simplest; the cache is ephemeral by design, so there is nothing to preserve):
+
+```bash
+docker compose down
+docker volume rm "$(basename "$PWD")_research_cache"   # or: docker volume ls | grep research_cache
+docker compose up -d
+```
+
+or chown it in place, without downtime:
+
+```bash
+docker volume inspect <project>_research_cache --format '{{.Mountpoint}}'   # → /var/lib/docker/volumes/.../\_data
+sudo chown -R 1000:1000 /var/lib/docker/volumes/<project>_research_cache/_data
+```
+
+**Verify** — the second call should return in milliseconds:
+
+```bash
+for i in 1 2; do
+  curl -s -o /dev/null -w "call $i: %{time_total}s\n" -X POST localhost:8000/api/v1/synthesize \
+    -H 'Content-Type: application/json' \
+    -d '{"query":"test","sources":[{"origin":"web","url":"https://e/1","title":"T","content":"C","source_type":"article"}],"max_tokens":500}'
+done
+```
+
+From v0.11.0 an unwritable cache also logs a one-time `WARNING` naming the cause and the fix, so this
+stops being invisible.
+
+> Structurally-failed syntheses are deliberately **never** cached — a `# Synthesis verification FAILED`
+> response re-runs on the next call rather than being served from cache for the full TTL.
 
 ## Local inference (`local-inference` branch) errors
 

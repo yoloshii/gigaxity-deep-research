@@ -121,6 +121,7 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 | 429 rate limit from OpenRouter | Quota exceeded | Reduce `RESEARCH_DEFAULT_TOP_K`; consider local-inference branch |
 | Latency > 30 s on `synthesize` | Quality gate enabled with many sources | Lower `RESEARCH_DEFAULT_TOP_K` to 5; switch preset to `fast` |
 | Per-request `X-OpenRouter-Api-Key` header ignored | Header name typo | Exact header is `X-OpenRouter-Api-Key` (case-insensitive in HTTP, but exact spelling in alias) |
+| Repeating an identical request is never fast (Docker) | The `research_cache` named volume is root-owned; the container runs as uid 1000, so no entry is ever written. Volumes created before v0.11.0 are affected. | `docker compose down && docker volume rm <project>_research_cache && docker compose up -d`, or chown the volume's mountpoint to `1000:1000`. Details: [`docs/troubleshooting.md`](docs/troubleshooting.md) → "Cache never hits" |
 
 ---
 

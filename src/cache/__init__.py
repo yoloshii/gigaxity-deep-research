@@ -7,11 +7,15 @@ Files auto-deleted on reboot. No database, no complexity.
 
 import hashlib
 import json
+import logging
+import os
 import time
 from dataclasses import dataclass, asdict
 from functools import wraps
 from pathlib import Path
 from typing import Optional, Callable, Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -49,6 +53,8 @@ class HotCache:
         self.cache_dir.mkdir(exist_ok=True)
         self._hits = 0
         self._misses = 0
+        # Latched so an unwritable cache warns once, not once per request.
+        self._write_error_logged = False
 
     def _key(self, query: str, tier: str = "", extra: str = "") -> str:
         """Normalize query + tier + extra params to cache key."""
@@ -96,8 +102,29 @@ class HotCache:
 
         try:
             path.write_text(json.dumps(asdict(entry)))
-        except (TypeError, OSError):
-            pass  # Skip non-serializable results silently
+        except TypeError:
+            # Genuinely non-serializable result. Nothing to configure, and the
+            # caller still gets its answer — skipping is correct.
+            pass
+        except OSError as exc:
+            # NOT the same class of problem, which is why it is caught
+            # separately: this is the cache being unusable, and a cache that
+            # silently never writes is indistinguishable from one that works
+            # while costing a full LLM call on every repeat request. Warn once,
+            # with the remedy, rather than failing quietly forever.
+            if not self._write_error_logged:
+                self._write_error_logged = True
+                logger.warning(
+                    "Cache is not writable (%s: %s) — every request will be "
+                    "recomputed and no result will ever be reused. Running in "
+                    "Docker? A named volume mounted at %s is created root-owned "
+                    "by default, while this process runs as uid %d. Fix it once: "
+                    "`docker compose down && docker volume rm "
+                    "<project>_research_cache && docker compose up -d` (the image "
+                    "seeds a correctly-owned directory), or chown the existing "
+                    "volume to uid %d. See docs/troubleshooting.md.",
+                    type(exc).__name__, exc, self.cache_dir, os.getuid(), os.getuid(),
+                )
 
     def get_url(self, url: str) -> Optional[str]:
         """URL content cache (L2)."""

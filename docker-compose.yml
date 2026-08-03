@@ -41,6 +41,10 @@ services:
       RESEARCH_DEFAULT_TOP_K: "10"
       RESEARCH_RRF_K: "60"
     volumes:
+      # The image pre-creates /tmp/research_cache owned by uid 1000, so a fresh
+      # named volume inherits that ownership and the container can write to it.
+      # A volume created by an image older than v0.11.0 is root-owned and the
+      # cache silently never writes — docs/troubleshooting.md, "Cache never hits".
       - research_cache:/tmp/research_cache
     networks:
       - research-net

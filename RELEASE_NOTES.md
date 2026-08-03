@@ -1,5 +1,48 @@
 # Release notes
 
+## v0.11.0 (2026-08-04)
+
+**The result cache never worked in Docker, and said nothing about it.**
+
+`docker-compose.yml` mounts a named volume at `/tmp/research_cache`. Docker creates a named volume
+**root-owned** unless the image already has a directory at that path to seed ownership from — and the
+container runs as `researcher` (uid 1000). So every `cache.set` raised `PermissionError`, and
+`except (TypeError, OSError): pass` swallowed it. No error, no log line, no wrong answer: just a cache
+that stored nothing while looking healthy, and a full LLM round-trip for every repeated request.
+
+Found on a deployment whose cache volume had **0 entries after 7 months**.
+
+Three changes:
+
+- **`Dockerfile`** pre-creates `/tmp/research_cache` owned by `researcher` before dropping to `USER`. A
+  fresh named volume seeds its ownership from the image, so new deployments are correct with no action.
+- **`src/cache/__init__.py`** splits the two failure classes that were conflated. `TypeError` (a
+  genuinely non-serializable result) still passes silently — correct, nothing to configure. `OSError`
+  now logs a one-time `WARNING` naming the cause, the uid, and both remedies. The latch keeps it to one
+  line, not one per request.
+- **`docs/troubleshooting.md`** gains a "Cache never hits (Docker)" section: a one-command probe, the
+  recreate and in-place-chown fixes, and a verification loop. Cross-linked from the performance table
+  and the `CLAUDE.md`/`AGENTS.md` troubleshooting matrix.
+
+**Existing deployments need one manual step** — an image change cannot re-own a volume that already
+exists. Either `docker volume rm <project>_research_cache` and let it be recreated, or chown its
+mountpoint to `1000:1000`. The cache is ephemeral by design, so nothing is lost either way.
+
+MINOR, not patch: results that were always freshly computed are now genuinely served from cache within
+their TTL. That is a real behavioural change for anyone who has been running without one, even though
+the intent was always for the cache to work.
+
+Structurally-failed syntheses remain **excluded** from the cache — a `# Synthesis verification FAILED`
+response re-runs next call instead of being pinned for the full TTL.
+
+**Also fixes the Docker build itself, which was broken on both published branches.** `pyproject.toml`
+declares `readme = "README.md"`, so the build backend needs that file present at install time — but
+`.dockerignore` excluded it via `*.md`, and `docker build` failed at `uv pip install -e .`. Two lines
+(`COPY pyproject.toml README.md ./`, `!README.md`) restore it. Bundled here because the cache fix is
+unreachable without it: you cannot hit a cache bug in an image that will not build.
+
+Applied to `main` and `local-inference` in parity.
+
 ## v0.10.4 (2026-08-03)
 
 Third and final pass on the same stale claim. v0.10.2 fixed eight files, v0.10.3 found two more, and a deliberately over-broad sweep found five instances left: four table cells reading ``Jina `site:` (broken upstream)`` in a **second** tool-selection matrix further down `skills/research-workflow/SKILL.md` — a table distinct from the one v0.10.2 corrected — plus one line in `docs/guides/free-tier-strategy.md`.
