@@ -20,7 +20,7 @@ services:
 
       # SearXNG Configuration
       RESEARCH_SEARXNG_HOST: "${SEARXNG_HOST:-http://host.docker.internal:8888}"
-      RESEARCH_SEARXNG_ENGINES: "brave,bing,duckduckgo,startpage,mojeek,wikipedia"
+      RESEARCH_SEARXNG_ENGINES: "brave,duckduckgo,startpage,mojeek,wikipedia"
       RESEARCH_SEARXNG_CATEGORIES: "general"
       RESEARCH_SEARXNG_LANGUAGE: "en"
       RESEARCH_SEARXNG_SAFESEARCH: "0"

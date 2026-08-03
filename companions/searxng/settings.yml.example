@@ -1,10 +1,8 @@
 # SearXNG settings for Gigaxity Deep Research
 #
 # Tuned for use as a JSON API backend feeding the parent project's research
-# connector. Engine selection, weights, and timeouts are validated against a
-# long-running test instance and re-checked against upstream SearXNG activity
-# through 2026-05-04. Adjust per your jurisdiction — engines blocked from one
-# network may work fine from another.
+# connector. Engine selection, weights and timeouts were re-validated against
+# upstream SearXNG on 2026-08-03 (release 2026.8.1).
 #
 # Setup:
 #   1. Copy this file to settings.yml
@@ -14,8 +12,52 @@
 # Most-common gotcha: many public/default SearXNG installs disable the JSON
 # format. The parent project requires it. The `formats: [html, json]` block
 # under `search:` is what unlocks `?format=json` queries.
+#
+# Second-most-common gotcha, and the reason this file uses `keep_only` below:
+# with a bare `use_default_settings: true`, an `engines:` block does NOT define
+# the engine set. Upstream merges it into the ~250 stock engines *by name*, so
+# every engine you do not mention keeps its default state. A curated-looking
+# list then runs alongside ~79 unaudited default-enabled engines. See
+# https://docs.searxng.org/admin/settings/settings.html#use-default-settings
+#
+# Adjust per your jurisdiction — engines blocked from one network often work
+# fine from another. Verify yours rather than trusting this file; see
+# "Health check" at the bottom.
 
-use_default_settings: true
+# `keep_only` makes this an allow-list: engines absent from it are removed
+# outright. To add an engine, list it BOTH here and (if you want a non-default
+# weight or timeout) in the `engines:` block further down.
+use_default_settings:
+  engines:
+    keep_only:
+      # general web
+      - brave
+      - duckduckgo
+      - mojeek
+      - startpage
+      - wikipedia
+      - wikidata
+      - wolframalpha
+      - qwant
+      - bing
+      - google
+      - google news
+      # science / academic
+      - arxiv
+      - google scholar
+      - semantic scholar
+      - pubmed
+      - openairepublications
+      # technical
+      - github
+      - stackoverflow
+      - askubuntu
+      - superuser
+      - mdn
+      - pypi
+      # social / media (focus-mode coverage)
+      - reddit
+      - youtube
 
 general:
   debug: false
@@ -30,7 +72,14 @@ server:
   # Generate with: openssl rand -hex 32
   secret_key: "placeholder-change-me-to-a-long-random-string-before-exposure"
   base_url: "http://localhost:8888"
-  limiter: false               # set true if exposing publicly
+  # `limiter` throttles requests INBOUND to your instance. Its upstream purpose
+  # is stopping other people's bots from riding your instance and burning your
+  # server IP's reputation with the engines. For a private JSON API backend the
+  # only client is your own research connector, so turning it on would
+  # rate-limit the traffic this instance exists to serve. Leave it false and
+  # pace/cache on the CALLER side instead. Set it true the moment the instance
+  # becomes publicly reachable.
+  limiter: false
   image_proxy: false
   http_protocol_version: "1.0"
   method: "POST"
@@ -69,51 +118,54 @@ search:
 
 engines:
   # ============================================
-  # Tier 1: PRIMARY (weight 5) — independent indices, reliable
+  # Tier 1: PRIMARY (weight 5) — independent indices
   # ============================================
-
-  - name: brave
-    disabled: false
-    weight: 5
-    timeout: 4.0
-
-  - name: wikipedia
-    disabled: false
-    weight: 5
-    timeout: 3.0
 
   - name: mojeek
     disabled: false
     weight: 5
     timeout: 5.0
 
-  # ============================================
-  # Tier 2: SECONDARY (weight 2-3) — Bing-syndicated, useful for breadth
-  # ============================================
-
-  - name: bing
+  - name: wikipedia
     disabled: false
-    weight: 3
+    weight: 5
+    timeout: 3.0
+
+  - name: brave
+    # Independent index, and the strongest general engine when reachable.
+    # Scraped, so it rate-limits under sustained automated load — observed
+    # "Suspended: too many requests" on an instance doing roughly six queries
+    # a minute. If you drive this backend hard, move Brave to its official API
+    # (see "Durable lanes" at the bottom) rather than raising the weight.
+    disabled: false
+    weight: 5
     timeout: 4.0
 
+  # ============================================
+  # Tier 2: SECONDARY (weight 3-4)
+  # ============================================
+
   - name: duckduckgo
+    # Best-measured general engine for research-shaped queries (2026-08-03):
+    # returned relevant academic sources where every other general engine on
+    # the test instance returned noise. Also CAPTCHAs fastest — six rapid
+    # queries was enough to trip it. Pace the caller; do not compensate by
+    # re-enabling bing.
     disabled: false
-    weight: 3
+    weight: 4
     timeout: 4.0
 
   - name: startpage
+    # Google-syndicated. CAPTCHAs from datacenter/VPS IPs, usually fine from
+    # residential egress. Verify on your network before relying on it.
     disabled: false
     weight: 3
     timeout: 6.0
 
-  - name: qwant
-    # Cloudflare-blocked from many residential IPs as of early 2026.
-    # If your network can reach it, set disabled: false and weight: 3.
-    disabled: true
-
-  # ============================================
-  # SPECIALIZED — focus-mode coverage
-  # ============================================
+  - name: wikidata
+    disabled: false
+    weight: 3
+    timeout: 4.0
 
   - name: wolframalpha
     engine: wolframalpha_noapi
@@ -121,17 +173,36 @@ engines:
     weight: 4
     timeout: 8.0
 
-  - name: reddit
-    disabled: false
-    weight: 3
-    timeout: 4.0
+  - name: bing
+    # DISABLED 2026-08-03 after direct measurement. Bing served bot-block
+    # fallback content — Microsoft property pages ("Microsoft Official Home
+    # Page", "Sign in to your account", "Outlook") in response to an academic
+    # query, and unrelated Chinese forum threads to another — while returning
+    # HTTP 200 with no error signal. RRF fuses on rank, so junk at any weight
+    # displaces good results; deweighting is not a fix.
+    #
+    # IP-reputation dependent, so test before assuming it applies to you:
+    #   curl -s 'http://localhost:8888/search?q=retrieval+augmented+generation+benchmarks&format=json' \
+    #     | python3 -c 'import sys,json;[print(r.get("engines"),r["title"][:70]) for r in json.load(sys.stdin)["results"][:10]]'
+    # If the bing-tagged rows are on-topic, set disabled: false and weight: 3.
+    disabled: true
 
-  - name: youtube
-    disabled: false
-    weight: 3
-    timeout: 4.0
+  - name: qwant
+    # Cloudflare-blocked from many residential IPs. Qwant supports
+    # `use_official_api` with an `api_key`; that lane does not CAPTCHA and is
+    # the durable way to run it. Without a key, leave this disabled.
+    disabled: true
+
+  # ============================================
+  # SCIENCE / ACADEMIC
+  # ============================================
 
   - name: arxiv
+    disabled: false
+    weight: 4
+    timeout: 6.0
+
+  - name: semantic scholar
     disabled: false
     weight: 4
     timeout: 6.0
@@ -141,6 +212,16 @@ engines:
     disabled: false
     weight: 4
     timeout: 8.0
+
+  - name: pubmed
+    disabled: false
+    weight: 3
+    timeout: 6.0
+
+  - name: openairepublications
+    disabled: false
+    weight: 3
+    timeout: 6.0
 
   # ============================================
   # TECHNICAL — code/dev focus
@@ -156,51 +237,110 @@ engines:
     weight: 4
     timeout: 4.0
 
+  - name: mdn
+    disabled: false
+    weight: 3
+    timeout: 4.0
+
+  - name: askubuntu
+    disabled: false
+    weight: 2
+    timeout: 4.0
+
+  - name: superuser
+    disabled: false
+    weight: 2
+    timeout: 4.0
+
+  - name: pypi
+    disabled: false
+    weight: 2
+    timeout: 4.0
+
   # ============================================
-  # DISABLED — degraded or rate-limited at the time of writing
+  # SOCIAL / MEDIA — focus-mode coverage
+  # ============================================
+
+  - name: reddit
+    disabled: false
+    weight: 3
+    timeout: 4.0
+
+  - name: youtube
+    disabled: false
+    weight: 3
+    timeout: 4.0
+
+  # ============================================
+  # KEPT AVAILABLE BUT OFF — flip if your egress supports it
   # ============================================
 
   - name: google
-    # Google web search routinely returns CAPTCHA on aggregator traffic.
-    # Brave + Bing + DuckDuckGo + Mojeek cover the same ground without it.
+    # Google reliably CAPTCHAs aggregator traffic from datacenter IPs.
+    # Upstream got it working only through a Playwright scrape service
+    # carrying a signed-in session cookie, and the maintainer notes that
+    # cookie "expires really quickly" (searxng discussion #5651). Not viable
+    # unattended.
     disabled: true
 
   - name: google news
     engine: google_news
-    # Broken upstream since March 2026 (searxng issue #5852, HTML rewrite
-    # plus protobuf-encrypted URLs). PR #5984 is a draft POC as of mid-April
-    # 2026 but blocked by consent-cookie 302 redirects on server IPs.
+    # Broke in March 2026 when Google changed the News HTML and moved article
+    # hrefs to protobuf-encrypted payloads (searxng issue #5852). FIXED
+    # upstream: PR #5984 merged, issue closed 2026-05-17. Requires an image at
+    # least that recent — check `__SEARXNG_VERSION` inside the container.
+    # Left off by default because it still depends on server-IP reputation;
+    # enable it and confirm non-zero results before relying on it.
     disabled: true
 
-  - name: google images
-    engine: google_images
-    disabled: true
-
-  - name: karmasearch
-    # Brave-mirror engine added in PR #5871 (Mar 2026). Referer-header
-    # bypass for Cloudflare landed in PR #5953 (Apr 5, 2026) but was
-    # defeated within a week — issue #5976 confirms HTTP 403 from all
-    # tested IPs including Tor exits. Keep disabled until a durable fix
-    # ships upstream.
-    disabled: true
-
-  - name: karmasearch images
-    disabled: true
-
-  - name: karmasearch videos
-    disabled: true
-
-  - name: karmasearch news
-    disabled: true
-
-  - name: yandex
-    disabled: true
-
-  - name: wikidata
-    disabled: true
+# Removed 2026-08-03:
+#
+#   karmasearch (+ images/videos/news) — the engine was DELETED from SearXNG in
+#   PR #6213 on 2026-06-07, after Cloudflare 403s proved unbeatable from every
+#   tested IP including Tor exits (issue #5976). Entries naming it are dead
+#   config, not a disabled engine.
+#
+#   google images, yandex — dropped rather than listed-and-disabled; with
+#   `keep_only` above, omission already removes them.
+#
+# `aol` is deliberately absent from `keep_only`: upstream enables it by
+# default, it sits in the `general` category, and it returns HTTP errors.
 
 doi_resolvers:
   oadoi.org: "https://oadoi.org/"
   doi.org: "https://doi.org/"
 
 default_doi_resolver: "oadoi.org"
+
+# ============================================
+# Health check — silent degradation is the real failure mode
+# ============================================
+#
+# SearXNG returns HTTP 200 with partial or junk results when upstream engines
+# CAPTCHA or block; nothing in the status code tells you. The response carries
+# an `unresponsive_engines` field naming every engine that failed:
+#
+#   curl -s 'http://localhost:8888/search?q=test&format=json' \
+#     | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["unresponsive_engines"]);print(d["number_of_results"])'
+#
+# Typical entries: ["brave","Suspended: too many requests"],
+# ["startpage","Suspended: CAPTCHA"], ["duckduckgo","CAPTCHA"].
+#
+# Alert when the healthy general-category pool drops below about three
+# engines. Below that, one misbehaving engine dominates the RRF fusion and
+# results collapse topically while still returning 200.
+#
+# ============================================
+# Durable lanes — for sustained automated load
+# ============================================
+#
+# Scraped engines lose the anti-bot arms race by design; upstream has removed
+# engines outright when a provider's blocking became permanent. If this backend
+# serves real query volume, put at least one engine on an official API — no
+# XPath to break, no CAPTCHA risk from server IPs:
+#
+#   - Brave Search API (free tier available)
+#   - qwant, mwmbl, core, tagesschau (support use_official_api + api_key)
+#
+# The alternatives are rotating egress IPs (residential proxies or multiple
+# VPS) or accepting lower throughput.

@@ -4,7 +4,12 @@ A one-command Docker setup for the SearXNG search aggregator that the parent pro
 
 This companion **does not vendor SearXNG source code** — SearXNG is an [AGPL-3.0 project](https://github.com/searxng/searxng) maintained separately. We bundle only a working `docker-compose.yml` and a `settings.yml.example` tuned for use as a JSON API backend.
 
-The included `settings.yml.example` carries engine weights, timeouts, and a curated enable/disable list validated against a long-running test instance and re-checked against upstream SearXNG activity through 2026-05-04. It avoids the most common stand-up gotchas: JSON format disabled, Google returning CAPTCHA on aggregator traffic, and Cloudflare-blocked engines wedging the result fan-in. Adjust per your jurisdiction — engines blocked from one network may work fine from another.
+The included `settings.yml.example` carries engine weights, timeouts, and a curated allow-list, re-validated against upstream SearXNG 2026.8.1 on 2026-08-03. It avoids the most common stand-up gotchas: JSON format disabled, Google returning CAPTCHA on aggregator traffic, and Cloudflare-blocked engines wedging the result fan-in. Adjust per your jurisdiction — engines blocked from one network may work fine from another.
+
+Two things in that file are load-bearing and easy to get wrong if you write your own:
+
+- **It uses `use_default_settings.engines.keep_only`, not a bare `use_default_settings: true`.** With the bare form, an `engines:` block does not define your engine set — upstream merges it into the ~250 stock engines *by name*, so every engine you don't mention keeps its default state. A curated-looking list then runs alongside ~79 unaudited default-enabled engines, several of which sit in the `general` category. `keep_only` makes it an actual allow-list.
+- **A degraded SearXNG returns HTTP 200, not an error.** When upstream engines CAPTCHA or start serving bot-block pages, results silently collapse in quality with a success status. The `unresponsive_engines` field in the JSON response is the signal to monitor; see the health-check section at the bottom of `settings.yml.example`.
 
 ## Quick start
 
