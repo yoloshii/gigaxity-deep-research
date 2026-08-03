@@ -1,5 +1,15 @@
 # Release notes
 
+## v0.10.1 (2026-08-03)
+
+Routing fix in the bundled `skills/research-workflow/SKILL.md` — no code change. The skill still named `mcp__jina__search_web` as the primary for general web search, and as the fallback for company info and date-bounded news. That routes agents at a tool which, measured the same day, does not return search results for multi-term queries: `s.jina.ai` locks onto one term and serves that term's popular or navigational pages, discarding the rest of the intent, at HTTP 200 with no error field. `Claude API prompt caching` returned claude.com and "Download Claude" with nothing about caching; `retrieval augmented generation evaluation benchmarks` returned four dictionary definitions of "retrieval"; `vLLM versus SGLang inference throughput comparison` returned six vLLM pages, none of which mention SGLang.
+
+General web now routes to `mcp__gigaxity-deep-research__search` — four connectors RRF-fused at zero LLM tokens, one of which (Brave, added in v0.10.0) is a keyed official API that cannot be CAPTCHA'd. The parallel-multi-query row drops `parallel_search_web`, which shares the defect.
+
+The added guidance states plainly that reordering, leading with a distinctive term, and phrase-quoting all fail, so query rewriting is not a workaround; and that the fault is neither quota nor auth, so a key rotation will not help — a distinction worth spelling out because the symptom returns HTTP 200 and reads like a normal thin result set. Jina's `read_url`, `parallel_read_url`, the key-less arXiv/SSRN/BibTeX tools, rerank and dedup use different endpoints, are unaffected, and remain the preferred choice for their jobs.
+
+Docs only — PATCH. Applied to `main` and `local-inference` in parity.
+
 ## v0.10.0 (2026-08-03)
 
 Adds **Brave Search as a fourth connector** — `src/connectors/brave.py`, RRF-fused alongside SearXNG, Tavily and LinkUp, configured by `RESEARCH_BRAVE_API_KEY`. Optional like the other keyed connectors: absent key means the connector reports unconfigured and drops out of fusion silently.
