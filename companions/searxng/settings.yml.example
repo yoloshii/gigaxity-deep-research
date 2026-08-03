@@ -40,7 +40,6 @@ use_default_settings:
       - wolframalpha
       - qwant
       - bing
-      - google
       - google news
       # science / academic
       - arxiv
@@ -56,7 +55,6 @@ use_default_settings:
       - mdn
       - pypi
       # social / media (focus-mode coverage)
-      - reddit
       - youtube
 
 general:
@@ -261,11 +259,6 @@ engines:
   # SOCIAL / MEDIA — focus-mode coverage
   # ============================================
 
-  - name: reddit
-    disabled: false
-    weight: 3
-    timeout: 4.0
-
   - name: youtube
     disabled: false
     weight: 3
@@ -274,14 +267,6 @@ engines:
   # ============================================
   # KEPT AVAILABLE BUT OFF — flip if your egress supports it
   # ============================================
-
-  - name: google
-    # Google reliably CAPTCHAs aggregator traffic from datacenter IPs.
-    # Upstream got it working only through a Playwright scrape service
-    # carrying a signed-in session cookie, and the maintainer notes that
-    # cookie "expires really quickly" (searxng discussion #5651). Not viable
-    # unattended.
-    disabled: true
 
   - name: google news
     engine: google_news
@@ -302,6 +287,14 @@ engines:
 #
 #   google images, yandex — dropped rather than listed-and-disabled; with
 #   `keep_only` above, omission already removes them.
+#
+#   google (web) and reddit — REMOVED FROM UPSTREAM between 2026.3.29 and
+#   2026.8.1. Both are present in the 2026.3.29 engine registry and absent from
+#   2026.8.1's, so naming them resolves to nothing. SearXNG does not error on an
+#   unknown name in `keep_only`, it just drops it — which is exactly why a config
+#   can rot silently. Google's removal is consistent with discussion #5651, where
+#   the maintainer could only make it respond through a Playwright service
+#   carrying a signed-in session cookie that expires within minutes.
 #
 # `aol` is deliberately absent from `keep_only`: upstream enables it by
 # default, it sits in the `general` category, and it returns HTTP errors.
