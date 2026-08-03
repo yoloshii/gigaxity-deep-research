@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     # SearXNG Configuration
     searxng_host: str = Field(default="http://localhost:8888", description="SearXNG instance URL")
     searxng_engines: str = Field(
-        default="brave,bing,duckduckgo,startpage,mojeek,wikipedia",
+        default="brave,duckduckgo,startpage,mojeek,wikipedia",
         description="Comma-separated search engines (matches the bundled SearXNG settings.yml.example default-enabled list)",
     )
     searxng_categories: str = Field(default="general", description="Search categories")

@@ -34,7 +34,7 @@ Hosted endpoints (OpenRouter and similar):
 | Variable | Default | Required? | Notes |
 |---|---|---|---|
 | `RESEARCH_SEARXNG_HOST` | `http://localhost:8888` | **Yes** | URL of your SearXNG instance |
-| `RESEARCH_SEARXNG_ENGINES` | `brave,bing,duckduckgo,startpage,mojeek,wikipedia` | No | Comma-separated SearXNG engine names. Matches the bundled `companions/searxng/settings.yml.example` enabled list. Google is disabled by default in the bundled SearXNG settings (broken on aggregator traffic since Oct 2025). |
+| `RESEARCH_SEARXNG_ENGINES` | `brave,duckduckgo,startpage,mojeek,wikipedia` | No | Comma-separated SearXNG engine names. Matches the bundled `companions/searxng/settings.yml.example` enabled list. Google is disabled by default in the bundled SearXNG settings (broken on aggregator traffic since Oct 2025). |
 | `RESEARCH_SEARXNG_CATEGORIES` | `general` | No | Comma-separated SearXNG categories |
 | `RESEARCH_SEARXNG_LANGUAGE` | `en` | No | ISO 639-1 code |
 | `RESEARCH_SEARXNG_SAFESEARCH` | `0` | No | 0=off, 1=moderate, 2=strict |

@@ -67,7 +67,7 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 | `RESEARCH_LLM_MAX_TOKENS` | `16384` | |
 | `RESEARCH_LLM_TIMEOUT` | `120` | Seconds |
 | `RESEARCH_SEARXNG_HOST` | `http://localhost:8888` | Primary search source — required |
-| `RESEARCH_SEARXNG_ENGINES` | `brave,bing,duckduckgo,startpage,mojeek,wikipedia` | Matches the bundled SearXNG `settings.yml.example` enabled list |
+| `RESEARCH_SEARXNG_ENGINES` | `brave,duckduckgo,startpage,mojeek,wikipedia` | Matches the bundled SearXNG `settings.yml.example` enabled list |
 | `RESEARCH_TAVILY_API_KEY` | *(empty)* | Optional additional connector — runs in parallel with SearXNG, RRF-fused |
 | `RESEARCH_LINKUP_API_KEY` | *(empty)* | Optional additional connector — runs in parallel with SearXNG, RRF-fused |
 | `RESEARCH_DEFAULT_TOP_K` | `10` | Results per source |
