@@ -81,7 +81,7 @@ The `research-workflow` skill encodes the routing logic that keeps each tool use
 - **Multi-query parallel web** → `mcp__jina__parallel_search_web` (~107 tokens for 3 queries — better unit economics than three sequential calls)
 - **Bulk URL reading** → `mcp__jina__parallel_read_url` first; substitute `mcp__brightdata_fallback__scrape_as_markdown` only for blocked URLs
 - **Academic search (arXiv / SSRN / BibTeX)** → `mcp__jina__search_arxiv`, `search_ssrn`, `search_bibtex` — all key-less and free, so they never touch the Jina allowance. Send arXiv **field syntax** (`cat:cs.CL AND abs:"..."`), not the user's question verbatim
-- **Domain-scoped search** → `mcp__exa__web_search_advanced_exa` with `includeDomains=[...]`, never Jina's `site:` (broken upstream)
+- **Domain-scoped search** → `mcp__exa__web_search_advanced_exa` with `includeDomains=[...]` — a real multi-domain filter; Jina's `site` works but takes one domain only
 - **Reranking / dedup before synthesis** → `mcp__jina__sort_by_relevance` and `mcp__jina__deduplicate_strings` (both 0 tokens)
 - **Synthesis with citations** → `mcp__gigaxity-deep-research__synthesize` (one OpenRouter call per session)
 

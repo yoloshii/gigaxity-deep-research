@@ -1,5 +1,15 @@
 # Release notes
 
+## v0.10.4 (2026-08-03)
+
+Third and final pass on the same stale claim. v0.10.2 fixed eight files, v0.10.3 found two more, and a deliberately over-broad sweep found five instances left: four table cells reading ``Jina `site:` (broken upstream)`` in a **second** tool-selection matrix further down `skills/research-workflow/SKILL.md` — a table distinct from the one v0.10.2 corrected — plus one line in `docs/guides/free-tier-strategy.md`.
+
+All now read ``Jina `site` (single domain only)``, which is the real distinction: Exa's `includeDomains` takes a list, Jina's `site` takes one domain. That reason does not expire.
+
+**The pattern across all three passes is the finding.** Each sweep was built from the wording of the files already fixed, so each one found the instances that shared that wording and missed the rest. Three roundtrips for one claim. The reliable method is to grep for the *entity plus a negative-sentiment window* (`Jina.{0,20}site.{0,20}(broken|500|dead)`) rather than any remembered sentence, and to accept that the first two passes will look complete when they are not.
+
+Docs only — PATCH. Applied to `main` and `local-inference` in parity.
+
 ## v0.10.3 (2026-08-03)
 
 Completes v0.10.2. That release corrected the stale "site-restricted Jina search is broken" claim in eight files; a wider sweep found two more that phrase it differently and so escaped the first pass — `docs/concepts/fallback-chains.md` (an inline comment in the LinkedIn fallback chain) and `companions/gptr-mcp/README.md`.
