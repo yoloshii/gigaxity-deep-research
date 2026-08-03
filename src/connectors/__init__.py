@@ -4,6 +4,7 @@ from .base import SearchResult, Source, Connector
 from .searxng import SearXNGConnector
 from .tavily import TavilyConnector
 from .linkup import LinkUpConnector
+from .brave import BraveConnector
 
 __all__ = [
     "SearchResult",
@@ -12,4 +13,5 @@ __all__ = [
     "SearXNGConnector",
     "TavilyConnector",
     "LinkUpConnector",
+    "BraveConnector",
 ]

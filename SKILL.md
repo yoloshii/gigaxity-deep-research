@@ -227,7 +227,7 @@ All POST endpoints accept the optional header `X-LLM-Api-Key: <key>` to override
 | LLM client | `src/llm_client.py` (OpenRouter on `main`, generic OpenAI-compat on `local-inference` branch) |
 | Discovery | `src/discovery/` |
 | Synthesis | `src/synthesis/` |
-| Connectors | `src/connectors/` (SearXNG, Tavily, LinkUp) |
+| Connectors | `src/connectors/` (SearXNG, Tavily, LinkUp, Brave) |
 | Config | `src/config.py` (pydantic settings, `RESEARCH_*` env vars) |
 
 ## Error Handling

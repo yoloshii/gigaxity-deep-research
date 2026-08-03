@@ -52,6 +52,9 @@ Hosted endpoints (OpenRouter and similar):
 | `RESEARCH_TAVILY_API_KEY` | *(empty)* | No | Tavily — additional parallel source (https://tavily.com) |
 | `RESEARCH_TAVILY_SEARCH_DEPTH` | `advanced` | No | `basic` or `advanced` |
 | `RESEARCH_LINKUP_API_KEY` | *(empty)* | No | LinkUp — additional parallel source (https://linkup.so) |
+| `RESEARCH_BRAVE_API_KEY` | *(empty)* | No | Brave Search — additional parallel source (https://brave.com/search/api/). Official Brave index over a keyed API, so unlike SearXNG's scraped engines it cannot be served a CAPTCHA under automated load. Free tier ~1,000 queries/month, recurring |
+| `RESEARCH_BRAVE_COUNTRY` | *(empty)* | No | Optional ISO country code for geo-targeting, e.g. `us` |
+| `RESEARCH_BRAVE_SAFESEARCH` | `off` | No | `off`, `moderate`, or `strict` |
 | `RESEARCH_LINKUP_DEPTH` | `standard` | No | `standard` or `deep` |
 
 When the corresponding API key is empty, the connector is disabled. When set, the connector runs in parallel with SearXNG and contributes to RRF fusion — it is **not** a failover-on-error fallback.
