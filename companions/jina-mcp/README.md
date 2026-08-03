@@ -119,17 +119,20 @@ unless you have paid balance.
 `search_jina_blog` needs `JINA_GHOST_KEY`, a Ghost Content API key. Without it,
 that one tool says so and nothing else is affected.
 
-## Known upstream breakage
+## Past upstream incident — site-restricted search (resolved)
 
-Site-restricted search fails regardless of client. `s.jina.ai` proxies both the
-`X-Site` header and the `site:` operator to `svip`, which currently returns
-`TypeError: fetch failed`. The `site` argument on `search_web` is wired and will
-start working when Jina fixes it; until then, leave it empty and send
-domain-scoped searches to Exa's `web_search_advanced_exa` with
-`includeDomains=[...]`, a real filter rather than a query-string hint. Simply
-dropping the restriction is not a substitute — an unrestricted search for
-"model context protocol github" returns sketchfab.com and models.com. Tracked at
+From ~1 August 2026, site-restricted search failed regardless of client:
+`s.jina.ai` proxied both the `X-Site` header and the `site:` operator to `svip`,
+which returned `TypeError: fetch failed`. **Retested 3 August 2026 — working
+again**, and general search quality recovered in the same window. Tracked at
 [jina-ai/reader#1258](https://github.com/jina-ai/reader/issues/1258).
+
+The `site` argument on `search_web` is wired and usable. If it starts returning
+500s again, that is the same incident recurring rather than a client fault — no
+key rotation will help. Exa's `web_search_advanced_exa` with `includeDomains=[...]`
+remains the better choice when you need more than one domain, since it is a real
+filter rather than a query-string hint; simply dropping the restriction is not a
+substitute.
 
 ## Configuration
 

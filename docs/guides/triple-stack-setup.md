@@ -142,7 +142,7 @@ Bundled in this repo with an install script that clones upstream — see [`../..
 
 What it does: surfaces real-world opinions, troubleshooting threads, and community sentiment from Reddit, X/Twitter, and YouTube — content that web search and documentation lookup miss. Routed automatically by the `research-workflow` skill when a query benefits from lived-experience knowledge.
 
-LinkedIn is **not** part of `SOCIAL_OPENAI_DOMAINS` (the upstream retriever doesn't support LinkedIn well). For LinkedIn-specific queries, use `mcp__exa__web_search_advanced_exa` with `includeDomains=["linkedin.com"]` — a real domain filter. Do **not** route it to Jina: site-restricted Jina search is broken upstream ([reader#1258](https://github.com/jina-ai/reader/issues/1258)).
+LinkedIn is **not** part of `SOCIAL_OPENAI_DOMAINS` (the upstream retriever doesn't support LinkedIn well). For LinkedIn-specific queries, use `mcp__exa__web_search_advanced_exa` with `includeDomains=["linkedin.com"]` — a real domain filter. Jina's `site` argument also works ([reader#1258](https://github.com/jina-ai/reader/issues/1258) resolved, verified 2026-08-03) but takes a single domain only.
 
 ## Install the routing skill
 
@@ -193,7 +193,7 @@ If routing happens correctly, the stack is wired.
 | Jina calls fail with 401 | Bearer token expired or wrong | Regenerate at https://jina.ai dashboard |
 | Jina search returns `Internal Server Error` while `read_url` works | You are on the hosted `mcp.jina.ai` server, whose search lane refuses trial credits | Switch to the bundled [`companions/jina-mcp/`](../../companions/jina-mcp/) server. Do **not** rotate the key — a new trial key fails identically |
 | Jina search says `Not enough credits` but your balance looks fine | `JINA_SEARCH_ENDPOINT=vip` on a trial key — that lane needs a paid `regular_balance` | Unset it (defaults to `standard`). Run `show_api_key` to see both balances |
-| `search_web` with a `site` filter 500s | Upstream: `s.jina.ai` proxies site-restricted queries to a degraded backend ([reader#1258](https://github.com/jina-ai/reader/issues/1258)) | Leave `site` empty. For a real domain filter use `mcp__exa__web_search_advanced_exa` with `includeDomains=[...]` — dropping the restriction is not a substitute |
+| `search_web` with a `site` filter 500s | Upstream incident — `s.jina.ai` proxied site-restricted queries to a degraded backend ([reader#1258](https://github.com/jina-ai/reader/issues/1258)). **Resolved: verified working 2026-08-03.** Recurrence would look the same | Retest before assuming it is broken. If it does 500, use `mcp__exa__web_search_advanced_exa` with `includeDomains=[...]` — dropping the restriction is not a substitute |
 | `brightdata_fallback` errors on every URL | `.env` in `cwd` missing or wrong creds | Re-check Brightdata zone setup |
 | `gigaxity-deep-research` calls work but other MCPs don't | One specific MCP misconfigured | Run `/mcp` and check the failing MCP's status |
 

@@ -359,7 +359,7 @@ If the header is absent: relay the subagent's full output as normal.
 | Company info / company research | mcp__exa__web_search_advanced_exa with `category="company"` | mcp__jina__search_web |
 | People / OSINT / attribute-based | mcp__exa__web_search_advanced_exa with `category="people"` | mcp__jina__search_web |
 | Financial reports (SEC, earnings) | mcp__exa__web_search_advanced_exa with `category="financial report"` | — |
-| News (date-bounded) | mcp__exa__web_search_advanced_exa with `category="news"` | mcp__jina__search_web (unrestricted — Jina `site:` is broken upstream) |
+| News (date-bounded) | mcp__exa__web_search_advanced_exa with `category="news"` | mcp__jina__search_web |
 | GitHub repo discovery | mcp__exa__web_search_advanced_exa with `category="github"` | mcp__exa__web_search_advanced_exa with `includeDomains=["github.com"]` |
 | PDFs / whitepapers (search) | mcp__exa__web_search_advanced_exa with `category="pdf"` | — |
 | URL subpage crawl (multiple pages from one site) | mcp__exa__crawling_exa with `subpages` / `subpageTarget` | — (Jina has no subpage mode) |
@@ -384,7 +384,9 @@ If the header is absent: relay the subagent's full output as normal.
 
 **AVOID:** `mcp__jina__expand_query` — 12,000 tokens/call. Rewrite query variants in the prompt instead. Not exposed by the bundled server at all.
 
-**Domain-scoped search goes through Exa, never Jina.** Do NOT route a domain restriction to `mcp__jina__search_web` — neither the `site:` operator in the query nor the `site` argument works. `s.jina.ai` proxies site-restricted queries to an internal upstream returning `TypeError: fetch failed` since ~2026-08-01 ([jina-ai/reader#1258](https://github.com/jina-ai/reader/issues/1258)); both forms return HTTP 500. Dropping the restriction is not a substitute — unrestricted `search_web("model context protocol github")` returned sketchfab.com and models.com. Use `mcp__exa__web_search_advanced_exa` with `includeDomains=[...]`. Restore the Jina route only after verifying the upstream issue is closed.
+**Prefer Exa for domain-scoped search.** `mcp__exa__web_search_advanced_exa` with `includeDomains=[...]` is a real multi-domain filter rather than a query-string hint; Jina's `site` argument takes one domain only. Both work — Jina's `site` and the `site:` operator returned HTTP 500 during a ~2026-08-01 upstream incident ([jina-ai/reader#1258](https://github.com/jina-ai/reader/issues/1258)) and were verified working again on 2026-08-03.
+
+**A Jina search fault is transient until a retest proves otherwise.** The same incident window also degraded general search ranking — `s.jina.ai` locked onto one query term and returned that term's popular pages at HTTP 200 with no error field. It read as a permanent ranking defect because reordering, distinctive-term-first and phrase-quoting all failed; a retest the same day returned correct results on every affected query, with no key rotation. **The absence of a query-rewriting workaround does not distinguish a permanent defect from a current outage.** On junk or off-topic results: wait, retest, then conclude — and never rotate the key over it, since the symptom is neither a quota nor an auth fault.
 
 **Exa MCP 3.2.0 caveat:** the `type="deep"` parameter previously documented for `web_search_exa` does NOT exist in the current MCP. The deprecated `deep_researcher_start` / `deep_researcher_check` have no MCP replacement either. For deep multi-hop research, use the chain `mcp__gigaxity-deep-research__discover` → `mcp__jina__parallel_read_url` → `mcp__gigaxity-deep-research__synthesize`.
 
@@ -403,7 +405,7 @@ When the user supplies a specific URL, route by URL type:
 | PDF files | dedicated PDF reader (e.g. pdf_reader MCP if installed) | mcp__jina__extract_pdf |
 | URL subpage crawl (multiple pages from one site) | mcp__exa__crawling_exa with subpages | — |
 | Reddit / X / YouTube discussion or community sentiment | mcp__gptr-mcp__quick_search | mcp__exa__web_search_advanced_exa with `includeDomains=["reddit.com"]` |
-| LinkedIn (gptr-mcp's social retriever excludes LinkedIn) | mcp__exa__web_search_advanced_exa with `includeDomains=["linkedin.com"]` | — (Jina `site:` is broken upstream) |
+| LinkedIn (gptr-mcp's social retriever excludes LinkedIn) | mcp__exa__web_search_advanced_exa with `includeDomains=["linkedin.com"]` | mcp__jina__search_web with `site="linkedin.com"` |
 
 ---
 
