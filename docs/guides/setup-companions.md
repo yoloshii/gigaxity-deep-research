@@ -230,9 +230,9 @@ After Claude Code restart, four tools become callable: `mcp__gptr-mcp__quick_sea
 
 The config above runs the stock `tavily` retriever. The `social_openai` (Reddit + YouTube) and `twitterapi` (native X/Twitter) retrievers are a first-party add-on shipped in this repo — they are **not** part of a vanilla GPT Researcher install. Enable them once per **[`companions/gptr-mcp/CUSTOM_RETRIEVERS.md`](../../companions/gptr-mcp/CUSTOM_RETRIEVERS.md)** (clone the library at `v3.5.0`, drop in the two packages, apply a 3-file registry patch, install editable into the venv). Then set in the `env` block: `RETRIEVER=social_openai,twitterapi,tavily`, `SOCIAL_OPENAI_DOMAINS=reddit.com,youtube.com`, `SOCIAL_OPENAI_MODEL=gpt-4o`, plus `TWITTERAPI_IO_KEY` (paid — omit `twitterapi` from `RETRIEVER` if you don't have one).
 
-⚠️ Pointing `RETRIEVER` at `social_openai`/`twitterapi` **before** enabling them makes GPT Researcher silently fall back to Tavily — no error, no social results. Run the verify step in CUSTOM_RETRIEVERS.md. LinkedIn isn't covered by `social_openai`; for LinkedIn-specific queries use `mcp__exa__web_search_advanced_exa` with `includeDomains=["linkedin.com"]` (Jina's `site:` is broken upstream).
+⚠️ Pointing `RETRIEVER` at `social_openai`/`twitterapi` **before** enabling them makes GPT Researcher silently fall back to Tavily — no error, no social results. Run the verify step in CUSTOM_RETRIEVERS.md. LinkedIn isn't covered by `social_openai`; for LinkedIn-specific queries use `mcp__exa__web_search_advanced_exa` with `includeDomains=["linkedin.com"]`.
 
-If you skip gptr-mcp, the routing skill falls back to `mcp__exa__web_search_advanced_exa` with `includeDomains=["reddit.com"]` etc. — workable but with less social-aware ranking. It does **not** fall back to Jina: site-restricted Jina search is broken upstream ([reader#1258](https://github.com/jina-ai/reader/issues/1258)).
+If you skip gptr-mcp, the routing skill falls back to `mcp__exa__web_search_advanced_exa` with `includeDomains=["reddit.com"]` etc. — workable but with less social-aware ranking. Exa is preferred over Jina's `site` argument here because it is a real multi-domain filter; Jina's works again after the 2026-08-01 upstream incident ([reader#1258](https://github.com/jina-ai/reader/issues/1258)) but takes one domain only.
 
 ## Verify the full stack
 

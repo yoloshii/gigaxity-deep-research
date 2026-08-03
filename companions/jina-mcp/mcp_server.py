@@ -446,8 +446,9 @@ def search_web(query: str, num: int = 10, site: str = "", tbs: str = "",
     Args:
         query: Search terms.
         num: Results to return (capped at 20 upstream).
-        site: Restrict to one domain, e.g. 'github.com'. NOTE: site-restricted
-            search currently fails upstream — leave empty unless you need it.
+        site: Restrict to one domain, e.g. 'github.com'. Returned HTTP 500
+            upstream during the ~2026-08-01 incident; verified working again
+            on 2026-08-03. Retest before assuming it is broken.
         tbs: Time filter — qdr:h, qdr:d, qdr:w, qdr:m, qdr:y.
         gl: Country code for geo-targeting, e.g. 'us'.
         hl: UI language code, e.g. 'en'.

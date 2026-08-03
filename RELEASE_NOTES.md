@@ -1,5 +1,21 @@
 # Release notes
 
+## v0.10.2 (2026-08-03)
+
+**Corrects v0.10.1.** That release described the Jina `search_web` fault as a standing property of the tool. It was not — it was a live upstream incident, and it has cleared.
+
+Retested the same evening after an MCP restart. Every query v0.10.1 cites as broken now returns correct results: `retrieval augmented generation evaluation benchmarks` returns IEEE, arXiv, EvidentlyAI, NVIDIA and IBM RAG-benchmark sources rather than dictionary definitions; `vLLM versus SGLang inference throughput comparison` returns six relevant results that all mention SGLang; `Claude API prompt caching` returns the official prompt-caching documentation. A control query never previously tested returned correctly too. Site-restricted search recovered in the same window — `site=github.com` now returns on-domain relevant results, so the `jina-ai/reader#1258` HTTP 500 has also resolved. No key rotation was performed at any point.
+
+Both faults almost certainly belonged to the same server-side incident window as the `svip.jina.ai` credit gate documented in v0.8.0.
+
+The methodological point is the one worth carrying: during the incident, reordering the query, leading with a distinctive term and phrase-quoting all failed, and that was read as proof of a permanent ranking defect. It is not proof of anything — a live outage produces exactly that signature. **The absence of a query-rewriting workaround does not distinguish a permanent defect from a current outage.** Only a retest separates them.
+
+`skills/research-workflow/SKILL.md` replaces the defect note with an incident note carrying that lesson, restores Jina `search_web` as a healthy fallback, and lifts the blanket ban on its `site` argument. General web stays on `mcp__gigaxity-deep-research__search`, now stated on its actual merit — four RRF-fused sources with content snippets at zero LLM tokens, with Brave as a keyed API that cannot be CAPTCHA'd — rather than as a workaround for a broken tool. `companions/jina-mcp/mcp_server.py` drops the `site` docstring's claim of a permanent upstream failure.
+
+Nothing in v0.9.0 through v0.10.0 is affected: the SearXNG `keep_only` rebuild, the removal of Bing, and the Brave connector were each measured independently of Jina and stand unchanged.
+
+Docs only — PATCH. Applied to `main` and `local-inference` in parity.
+
 ## v0.10.1 (2026-08-03)
 
 Routing fix in the bundled `skills/research-workflow/SKILL.md` — no code change. The skill still named `mcp__jina__search_web` as the primary for general web search, and as the fallback for company info and date-bounded news. That routes agents at a tool which, measured the same day, does not return search results for multi-term queries: `s.jina.ai` locks onto one term and serves that term's popular or navigational pages, discarding the rest of the intent, at HTTP 200 with no error field. `Claude API prompt caching` returned claude.com and "Download Claude" with nothing about caching; `retrieval augmented generation evaluation benchmarks` returned four dictionary definitions of "retrieval"; `vLLM versus SGLang inference throughput comparison` returned six vLLM pages, none of which mention SGLang.

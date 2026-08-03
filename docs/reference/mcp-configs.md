@@ -117,7 +117,7 @@ stdio transport. Bundled in this repo at [`companions/jina-mcp/`](../../companio
 
 19 tools total. Two are deliberately **not** carried over from the hosted server: `expand_query` (12,000 tokens per call — rewrite query variants in the prompt instead) and `deduplicate_images`.
 
-**Known upstream breakage:** the `site` argument on `search_web` currently 500s — `s.jina.ai` proxies site-restricted queries to a degraded backend ([reader#1258](https://github.com/jina-ai/reader/issues/1258)), and the `site:` operator inside the query text fails the same way. Leave it empty and route domain-scoped searches to `mcp__exa__web_search_advanced_exa` with `includeDomains=[...]`; simply dropping the restriction is not a substitute.
+**Past upstream incident (resolved):** the `site` argument on `search_web` returned HTTP 500 from ~2026-08-01 — `s.jina.ai` proxied site-restricted queries to a degraded backend ([reader#1258](https://github.com/jina-ai/reader/issues/1258)), and the `site:` operator inside the query text failed the same way. **Verified working again 2026-08-03.** Should it recur, route domain-scoped searches to `mcp__exa__web_search_advanced_exa` with `includeDomains=[...]` — a real multi-domain filter, and simply dropping the restriction is not a substitute.
 
 ## 5. gigaxity-deep-research (this repo)
 
