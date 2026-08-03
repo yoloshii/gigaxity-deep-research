@@ -1281,18 +1281,18 @@ Rationale: Jina's free 10M trial tier absorbs high-frequency calls cheaply, and 
 |------|---------|-----------|-------|
 | **Mid-task factual lookup** | exa_answer (1-2s, 94% SimpleQA) | gigaxity-deep-research ask | Synthesis tools |
 | **API docs** | Context7 | Exa get_code_context | — |
-| **Code examples / patterns** | Exa get_code_context | Exa advanced `includeDomains=["github.com"]` | Context7 · Jina `site:` (broken upstream) |
+| **Code examples / patterns** | Exa get_code_context | Exa advanced `includeDomains=["github.com"]` | Context7 · Jina `site` (single domain only) |
 | **Repository docs** | Context7 | Jina read_url | — |
-| **GitHub repo discovery** | Exa advanced (category="github") | Exa advanced `includeDomains=["github.com"]` | Jina `site:` (broken upstream) |
+| **GitHub repo discovery** | Exa advanced (category="github") | Exa advanced `includeDomains=["github.com"]` | Jina `site` (single domain only) |
 | **GitHub issues/PRs** | Jina read_url | Brightdata fallback | Context7 |
 | **General web (single query)** | Jina search_web (63 tokens) | Exa web_search_exa | Context7 |
 | **Parallel multi-query web** | Jina parallel_search_web (107 tokens/3 queries) | Sequential Exa web_search_exa | Context7 |
 | **Advanced filtered web** (category / date / domain / text) | Exa web_search_advanced_exa | — | — |
 | **Company research** | Exa advanced (category="company") | Jina search_web | Context7 |
-| **People / OSINT (attribute search)** | Exa advanced (category="people") | Exa advanced `includeDomains=["linkedin.com"]` | Context7 · Jina `site:` (broken upstream) |
+| **People / OSINT (attribute search)** | Exa advanced (category="people") | Exa advanced `includeDomains=["linkedin.com"]` | Context7 · Jina `site` (single domain only) |
 | **Financial reports (SEC, earnings)** | Exa advanced (category="financial report") | Exa advanced (category="pdf") | — |
 | **News / current events (date-bounded)** | Exa advanced (category="news" + startPublishedDate) | Jina search_web | Context7 |
-| **Social (tweets)** | gptr-mcp quick_search (`twitterapi` retriever) | Exa advanced `includeDomains=["x.com"]` | Jina `site:` (broken upstream) · Exa `category` (no tweet category) |
+| **Social (tweets)** | gptr-mcp quick_search (`twitterapi` retriever) | Exa advanced `includeDomains=["x.com"]` | Jina `site` (single domain only) · Exa `category` (no tweet category) |
 | **Academic (arXiv)** | Jina search_arxiv / parallel_search_arxiv (field syntax: `cat:`, `abs:`, `au:`; `sort="date"`) | Exa advanced (category="research paper") | — |
 | **Academic (SSRN — econ/law/finance)** | Jina search_ssrn / parallel_search_ssrn (OpenAlex, key-less, citation counts) | Exa advanced (category="research paper") | — |
 | **BibTeX citations** | Jina search_bibtex (DBLP → Semantic Scholar, key-less) | Exa advanced (category="research paper") | — |
