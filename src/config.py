@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     linkup_api_key: str = Field(default="", description="LinkUp API key")
     linkup_depth: str = Field(default="standard", description="Search depth: standard or deep")
 
+    # Brave Search Configuration
+    brave_api_key: str = Field(default="", description="Brave Search API key")
+    brave_country: str = Field(default="", description="Optional ISO country code for geo-targeting, e.g. 'us'")
+    brave_safesearch: str = Field(default="off", description="Safe search: off, moderate, or strict")
+
     # OpenRouter LLM Configuration
     llm_api_base: str = Field(default="https://openrouter.ai/api/v1", description="LLM API base URL")
     llm_api_key: str = Field(default="", description="OpenRouter API key")

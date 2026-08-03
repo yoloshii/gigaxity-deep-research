@@ -16,7 +16,7 @@ The MCP server exposes **two primitives** plus **four deep-research tools** — 
 
 | Tool | Use for | Token cost (typical) |
 |---|---|---|
-| `mcp__gigaxity-deep-research__search` | Raw multi-source aggregation (SearXNG + Tavily + LinkUp + RRF). No LLM call. | 0 LLM tokens; search-API quotas only |
+| `mcp__gigaxity-deep-research__search` | Raw multi-source aggregation (SearXNG + Tavily + LinkUp + Brave + RRF). No LLM call. | 0 LLM tokens; search-API quotas only |
 | `mcp__gigaxity-deep-research__research` | Combined search + synthesis with citations in a single call. The simple pipeline. | ~3000–8000 |
 
 **Deep-research tools**
@@ -70,6 +70,9 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 | `RESEARCH_SEARXNG_ENGINES` | `brave,duckduckgo,startpage,mojeek,wikipedia` | Matches the bundled SearXNG `settings.yml.example` enabled list |
 | `RESEARCH_TAVILY_API_KEY` | *(empty)* | Optional additional connector — runs in parallel with SearXNG, RRF-fused |
 | `RESEARCH_LINKUP_API_KEY` | *(empty)* | Optional additional connector — runs in parallel with SearXNG, RRF-fused |
+| `RESEARCH_BRAVE_API_KEY` | *(empty)* | Optional additional connector — official Brave index, keyed API (no CAPTCHA risk). Free tier ~1,000 queries/month |
+| `RESEARCH_BRAVE_COUNTRY` | *(empty)* | Optional ISO country code for geo-targeting, e.g. `us` |
+| `RESEARCH_BRAVE_SAFESEARCH` | `off` | `off`, `moderate`, or `strict` |
 | `RESEARCH_DEFAULT_TOP_K` | `10` | Results per source |
 | `RESEARCH_RRF_K` | `60` | RRF fusion constant |
 | `RESEARCH_HOST` | `127.0.0.1` | REST mode only. Default loopback; bind `0.0.0.0` only behind an authenticated reverse proxy. |
@@ -94,8 +97,11 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 ❌ Pass the same OpenRouter key in every request body
 ✅ Set RESEARCH_LLM_API_KEY in env, override per-request only when multi-tenant
 
-❌ Treat Tavily and LinkUp as failover-on-error for SearXNG
-✅ SearXNG, Tavily, and LinkUp all run in parallel via `asyncio.gather` and get RRF-fused. Tavily and LinkUp are optional **additional** parallel sources, not fallbacks — they fire whenever their key is configured. SearXNG is the only one that's required (the others silently drop out when their key is empty).
+❌ Treat Tavily, LinkUp and Brave as failover-on-error for SearXNG
+✅ SearXNG, Tavily, LinkUp and Brave all run in parallel via `asyncio.gather` and get RRF-fused. The three keyed connectors are optional **additional** parallel sources, not fallbacks — they fire whenever their key is configured. SearXNG is the only one that's required (the others silently drop out when their key is empty).
+
+❌ Rely on SearXNG alone for general web search under automated load
+✅ Configure at least one keyed connector. SearXNG's engines are scraped, so they CAPTCHA under sustained automation and fail *silently* — HTTP 200 with degraded results. Brave is the cheapest durable lane: official index, keyed API, ~1,000 free queries/month.
 
 ❌ Run REST mode bound to 0.0.0.0 on a shared/exposed machine
 ✅ Bind to 127.0.0.1 unless behind an authenticated reverse proxy
@@ -127,7 +133,7 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 | LLM client | `src/llm_client.py` | OpenRouter on `main`, generic OpenAI-compat on `local-inference` branch |
 | Discovery | `src/discovery/` | Routing, expansion, decomposition, focus modes |
 | Synthesis | `src/synthesis/` | Quality gate, contradictions, presets, outline, RCS |
-| Connectors | `src/connectors/` | SearXNG, Tavily, LinkUp |
+| Connectors | `src/connectors/` | SearXNG, Tavily, LinkUp, Brave |
 | Config | `src/config.py` | All `RESEARCH_*` env vars; pydantic settings |
 
 ---

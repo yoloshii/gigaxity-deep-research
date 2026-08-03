@@ -25,6 +25,10 @@ services:
       RESEARCH_SEARXNG_LANGUAGE: "en"
       RESEARCH_SEARXNG_SAFESEARCH: "0"
 
+      # Brave Search Configuration (optional)
+      RESEARCH_BRAVE_API_KEY: "${BRAVE_API_KEY:-}"
+      RESEARCH_BRAVE_SAFESEARCH: "off"
+
       # Tavily Configuration (optional)
       RESEARCH_TAVILY_API_KEY: "${TAVILY_API_KEY:-}"
       RESEARCH_TAVILY_SEARCH_DEPTH: "advanced"
