@@ -13,3 +13,4 @@ build
 venv
 tests
 *.md
+!README.md
