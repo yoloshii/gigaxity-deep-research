@@ -87,6 +87,10 @@ MODEL_CONTEXT_WINDOWS: dict[str, int] = {
     # 131072-token window.
     "qwen/qwen3-30b-a3b-thinking-2507": 131072,
     "Qwen/Qwen3-30B-A3B-Thinking-2507": 131072,
+    # z.ai GLM-5.2 (OpenAI-compatible coding endpoint): 1M-token context
+    # window per z.ai's published spec. Without an entry a GLM deployment is
+    # budgeted as an unknown 32K model, which starves its source formatting.
+    "glm-5.2": 1_000_000,
 }
 
 
@@ -106,15 +110,29 @@ _REASONING_MODEL_MARKERS = (
     "qwq",
     "reasoning",
     "thinking",
+    # Gemma models emit an explicit chain-of-thought before the answer, so a
+    # flat budget gets eaten by CoT and structured output never lands in
+    # `content`. Substring-matching classifies any Gemma id correctly.
+    "gemma",
+    # z.ai GLM's thinking mode (on by default on the coding endpoint) streams
+    # its chain-of-thought to `reasoning_content` and leaves `content` empty
+    # until the reasoning finishes; a too-small budget truncates inside the
+    # CoT and no answer ever lands (verified live: a 300-token outline call
+    # returned finish_reason=length with 0 content chars). Substring-matching
+    # "glm" gives every GLM id the reasoning headroom so the answer survives.
+    "glm",
 )
 
 
 def is_reasoning_model(model: str) -> bool:
     """Heuristic: does this model emit chain-of-thought before its answer?
 
-    False negatives are safe (model gets the base budget, the prior behavior);
-    false positives are safe (model gets a higher max_tokens ceiling it simply
-    will not use).
+    A false negative is NOT free: an unrecognized reasoning model keeps the
+    flat base budget, spends it on chain-of-thought, and every structured
+    stage degrades to its deterministic fallback (visible via the stage
+    degradations, but a quality loss on every call). Add a marker when a new
+    reasoning-model family appears. False positives are safe (the model gets
+    a higher max_tokens ceiling it simply will not use).
     """
     m = (model or "").lower()
     return any(marker in m for marker in _REASONING_MODEL_MARKERS)
@@ -241,6 +259,7 @@ async def call_with_extraction(
     *,
     temperature: float = 0.7,
     top_p: Optional[float] = None,
+    retry_on_truncation: bool = True,
 ) -> LLMOutput:
     """Make a chat completion and extract an LLMOutput, honoring the mode.
 
@@ -248,6 +267,11 @@ async def call_with_extraction(
     (finish_reason == "length") and max_tokens is below the configured ceiling
     (settings.llm_max_tokens), retry once at the ceiling. Other modes do not
     retry - their callers handle a short or unparseable response themselves.
+
+    retry_on_truncation=False disables that ceiling retry for FINAL_ANSWER
+    callers whose budget boundary is deliberate - e.g. the discovery preview,
+    which must fall back to "preview unavailable" rather than escalate a
+    cosmetic overview to a full-ceiling completion.
     """
     create_kwargs = {
         "model": model,
@@ -264,6 +288,7 @@ async def call_with_extraction(
 
     if (
         mode == ExtractionMode.FINAL_ANSWER
+        and retry_on_truncation
         and output.truncated
         and max_tokens < settings.llm_max_tokens
     ):

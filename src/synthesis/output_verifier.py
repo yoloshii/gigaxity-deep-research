@@ -15,6 +15,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 
+from ..degradation import StageDegradation
 from ..llm_utils import LLMOutput
 from .citations import (
     detect_legacy_markers,
@@ -74,6 +75,11 @@ class VerdictDiagnostics:
     contracrow_result: Optional[dict] = None
     coverage_grid_summary: Optional[dict] = None
     bm25_mismatch_info: Optional[dict] = None
+    # JSON-safe StageDegradation.to_dict() records from structured pipeline
+    # stages (outline, critique, landscape, gaps, source scoring, expansion,
+    # preview) — the machine-readable channel behind the stage-degradation
+    # soft warnings.
+    stage_degradations: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -357,6 +363,7 @@ def verify_synthesis_output(
     *,
     query_entities: Optional[list[str]] = None,
     sources_text: Optional[str] = None,
+    stage_degradations: Optional[list[StageDegradation]] = None,
 ) -> SynthesisVerdict:
     """Verify a completed synthesis before it is cached or relayed to a caller.
 
@@ -382,6 +389,14 @@ def verify_synthesis_output(
         sources_text: optional concatenated lowercase text (title + content)
             of all retained sources, used for the entity-coverage check.
             Pre-lowercased to avoid per-call cost.
+        stage_degradations: StageDegradation records carried by structured
+            pipeline stages (outline / critique / expansion / ...). Each is
+            surfaced on BOTH channels — a human soft warning and a
+            machine-readable VerdictWarning — plus the
+            diagnostics.stage_degradations slot. Advisory, never a hard
+            failure: the stage already substituted its deterministic
+            fallback; cache eligibility is the caller's decision
+            (finalize_synthesis sets it explicitly).
     """
     verdict = SynthesisVerdict()
     has_content = bool(content and content.strip())
@@ -628,6 +643,22 @@ def verify_synthesis_output(
                 f"{len(contradiction_result.surfaced)} contradiction(s) detected "
                 "- verify the synthesis surfaces them"
             )
+
+    # Stage degradations: a structured stage starved/truncated/rejected its
+    # model output and substituted its deterministic fallback. Advisory on
+    # both channels (human soft warning + machine VerdictWarning) plus the
+    # diagnostics slot — never a hard failure, because the fallback already
+    # produced usable output and the caller decides cache eligibility.
+    for deg in stage_degradations or []:
+        verdict.soft_warnings.append(
+            f"{deg.stage} stage degraded ({deg.code.value}): {deg.message}"
+        )
+        verdict.warnings.append(VerdictWarning(
+            code=f"stage_degradation_{deg.stage}",
+            message=f"{deg.code.value}: {deg.message}",
+            severity="warning",
+        ))
+        verdict.diagnostics.stage_degradations.append(deg.to_dict())
 
     # Phase 0 envelope: derive `verdict_class` from the hard_failures shape.
     # "calibrated_gap" is reserved for Phase 1 (structural entity-section

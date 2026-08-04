@@ -171,9 +171,21 @@ Exploratory expansion + knowledge-gap detection.
   ],
   "synthesis_preview": "...",
   "recommended_deep_dives": ["https://..."],
-  "connectors_used": ["searxng", "tavily"]
+  "connectors_used": ["searxng", "tavily"],
+  "degradations": []
 }
 ```
+
+Each entry in `sources` also carries `scoring_status` (v0.11.1): `"llm_scored"` for a validated
+model scoring record, `"retrieval_fallback"` for a source ranked by raw retrieval score (beyond the
+15-source scoring limit, or the scoring parse was rejected).
+
+`degradations` (v0.11.1) lists structured stages that substituted a deterministic fallback because
+the model output was reasoning-starved, truncated, or malformed — empty on a clean run. Shape:
+`{"stage": "landscape", "code": "truncated", "parse_failed": true, "fallback_used": true,
+"message": "...", "truncated": true, "reasoning_only": false, "finish_reason": "length"}`.
+A degraded discovery result is not cached, so the next identical request re-attempts the degraded
+stage instead of serving the fallback from cache.
 
 ---
 

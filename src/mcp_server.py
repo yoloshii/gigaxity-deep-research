@@ -271,6 +271,14 @@ async def discover(
         lines.append(f"*Gap focus: {', '.join(focus_config.gap_categories)}*")
     lines.append(f"*Search backends configured: {aggregator.get_active_connectors()}*")
 
+    # Degraded-stage footer: a structured stage (landscape / gaps / scoring /
+    # expansion / preview) substituted its deterministic fallback. Surfaced so
+    # the caller never mistakes a degraded run for a clean one.
+    if getattr(result, "degradations", None):
+        lines.append("\n⚠️ *Degraded stages:*")
+        for d in result.degradations:
+            lines.append(f"- *{d.stage} ({d.code.value}): {d.message}*")
+
     return "\n".join(lines)
 
 

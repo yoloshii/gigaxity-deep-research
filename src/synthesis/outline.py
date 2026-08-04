@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from ..config import settings
+from ..degradation import StageDegradation, degradation_from_output
 from ..llm_utils import LLMOutput, ExtractionMode, call_with_extraction, combine_llm_outputs, derive_effective_budget
 from .aggregator import PreGatheredSource, SynthesisStyle
 from .citations import CITATION_FORMAT_GUIDE, EVIDENCE_DISCIPLINE
@@ -32,6 +33,10 @@ class CritiqueResult:
     """Issues found during critique."""
     issues: list[str]
     has_critical: bool = False
+    # Critique output was unusable (starved/truncated/malformed). issues=[]
+    # with parse_failed=True means "critique unavailable", NOT "no issues" —
+    # conflating them silently skips the refine pass.
+    parse_failed: bool = False
 
 
 @dataclass
@@ -44,6 +49,79 @@ class OutlinedSynthesis:
     refined: bool = False
     word_count: int = 0
     llm_output: Optional[LLMOutput] = None  # provenance/truncation signal from the synthesis calls
+    degradations: list[StageDegradation] = field(default_factory=list)
+
+
+# Stage grammars (lenient-parsed-callsites design, rev 7). Structural, not
+# punctuation heuristics: every non-empty line must be a complete record.
+# Payload bounds may be tuned against a fixture corpus; the grammars are fixed.
+OUTLINE_MIN_SECTIONS = 3
+OUTLINE_MAX_SECTIONS = 6
+OUTLINE_MAX_HEADING_CHARS = 200
+
+SYNTHETIC_CRITIQUE_ISSUE = (
+    "Critique unavailable - do a general pass: verify factual claims carry "
+    "citations, citations match the sources, and explanations are clear."
+)
+
+
+def parse_outline_records(text: str) -> Optional[list[str]]:
+    """Parse `SECTION: <heading>` records; None = grammar rejected.
+
+    Accepts exactly OUTLINE_MIN_SECTIONS..OUTLINE_MAX_SECTIONS records with
+    no other non-empty lines; payloads non-empty, case-fold unique, and
+    length-bounded. An outline is never legitimately empty, so blank input
+    is a rejection, and a heading count outside the bounds is a rejection —
+    a chain-of-thought trace split into lines must not pass as headings.
+    """
+    lines = [ln.strip() for ln in (text or "").splitlines()]
+    records = [ln for ln in lines if ln]
+    if not records:
+        return None
+    headings: list[str] = []
+    seen: set[str] = set()
+    for record in records:
+        if not record.startswith("SECTION:"):
+            return None
+        heading = record[len("SECTION:"):].strip()
+        if not heading or len(heading) > OUTLINE_MAX_HEADING_CHARS:
+            return None
+        folded = heading.casefold()
+        if folded in seen:
+            return None
+        seen.add(folded)
+        headings.append(heading)
+    if not (OUTLINE_MIN_SECTIONS <= len(headings) <= OUTLINE_MAX_SECTIONS):
+        return None
+    return headings
+
+
+def parse_critique_records(text: str) -> Optional[list[str]]:
+    """Parse critique output; [] = clean NO_ISSUES verdict, None = rejected.
+
+    NO_ISSUES is matched against the WHOLE normalized response (quotes and a
+    trailing period tolerated) — substring matching let "NO_ISSUES" inside
+    arbitrary chatter count as a clean verdict. Otherwise every non-empty
+    line must be a complete `ISSUE: <text>` record.
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    sentinel = raw.strip('"\'').rstrip('.').strip().upper()
+    if sentinel == "NO_ISSUES":
+        return []
+    issues: list[str] = []
+    for ln in raw.splitlines():
+        ln = ln.strip()
+        if not ln:
+            continue
+        if not ln.startswith("ISSUE:"):
+            return None
+        payload = ln[len("ISSUE:"):].strip()
+        if not payload:
+            return None
+        issues.append(payload)
+    return issues if issues else None
 
 
 class OutlineGuidedSynthesizer:
@@ -68,7 +146,10 @@ Available sources cover:
 {source_summary}
 
 Create 3-6 section headings that would best structure a {style} response.
-Format: One heading per line, no numbers or bullets."""
+Format: one record per line, each exactly:
+SECTION: <heading>
+
+Output only SECTION: records - no numbering, no bullets, no other text."""
 
     SECTION_PROMPT = f"""Write the "{{section}}" section for this research synthesis.
 
@@ -108,7 +189,11 @@ Identify any issues:
 6. Claims resting on weak sources (forum/social/community) as their only support
 7. Inference or single-source assertions presented as settled fact
 
-Format: One issue per line, or respond with "NO_ISSUES" if the draft is good."""
+Format: one record per line, each exactly:
+ISSUE: <one issue>
+
+Output only ISSUE: records. If the draft is good, respond with exactly:
+NO_ISSUES"""
 
     REFINE_PROMPT = f"""Refine this synthesis to address the identified issues.
 
@@ -177,8 +262,12 @@ Provide the improved synthesis:"""
         effective = derive_effective_budget(max_tokens, self.model)
         per_section_budget = max(1, effective // 4)
 
+        degradations: list[StageDegradation] = []
+
         # Step 1: Generate outline
-        outline = await self._generate_outline(query, sources, style)
+        outline, outline_deg = await self._generate_outline(query, sources, style)
+        if outline_deg:
+            degradations.append(outline_deg)
 
         # Step 2: Fill each section
         sections = {}
@@ -195,12 +284,27 @@ Provide the improved synthesis:"""
         draft = self._assemble(outline.sections, sections)
 
         # Step 4: Critique
-        critique = await self._critique(draft, query, sources)
+        critique, critique_deg = await self._critique(draft, query, sources)
+        if critique_deg:
+            degradations.append(critique_deg)
 
         # Step 5: Refine if needed
         refined = False
         refine_output = None
-        if critique.issues and self.max_refinement_rounds > 0:
+        if critique.parse_failed:
+            # Critique unusable: run exactly ONE general refinement with a
+            # synthetic issue rather than silently skipping the pass that
+            # rescues a degraded draft. An explicit max_refinement_rounds == 0
+            # still wins and preserves the draft (the degradation reports it).
+            if self.max_refinement_rounds > 0:
+                refine_output = await self._refine(
+                    draft, [SYNTHETIC_CRITIQUE_ISSUE], sources, effective,
+                    guidance=guidance, contradiction_notes=contradiction_notes,
+                )
+                if refine_output.text:
+                    draft = refine_output.text
+                    refined = True
+        elif critique.issues and self.max_refinement_rounds > 0:
             refine_output = await self._refine(
                 draft, critique.issues, sources, effective,
                 guidance=guidance, contradiction_notes=contradiction_notes,
@@ -227,6 +331,7 @@ Provide the improved synthesis:"""
             refined=refined,
             word_count=len(draft.split()),
             llm_output=llm_output,
+            degradations=degradations,
         )
 
     async def _generate_outline(
@@ -234,8 +339,15 @@ Provide the improved synthesis:"""
         query: str,
         sources: list[PreGatheredSource],
         style: SynthesisStyle,
-    ) -> SynthesisOutline:
-        """Generate outline from query and sources."""
+    ) -> tuple[SynthesisOutline, Optional[StageDegradation]]:
+        """Generate outline from query and sources.
+
+        PARSE_REQUIRED + the SECTION: grammar; on rejection fall back to the
+        deterministic heuristic outline and report a degradation. The budget
+        is reasoning-aware: a flat 300 starved glm-5.2's chain-of-thought
+        (finish_reason=length, 0 content chars) and LENIENT then handed CoT
+        fragments back as section headings.
+        """
         source_summary = self._summarize_sources(sources)
 
         prompt = self.OUTLINE_PROMPT.format(
@@ -244,20 +356,23 @@ Provide the improved synthesis:"""
             style=style.value,
         )
 
-        output = await self._call_llm(prompt, max_tokens=300, mode=ExtractionMode.LENIENT)
-        response = output.text
-        sections = [
-            s.strip() for s in response.strip().split("\n")
-            if s.strip() and not s.strip().startswith("#")
-        ]
+        output = await self._call_llm(
+            prompt,
+            max_tokens=derive_effective_budget(300, self.model),
+            mode=ExtractionMode.PARSE_REQUIRED,
+        )
+        sections = parse_outline_records(output.text)
+        if sections is None:
+            fallback = generate_outline_heuristic(query, style)
+            return fallback, degradation_from_output(
+                "outline",
+                output,
+                parse_failed=True,
+                fallback_used=True,
+                message="outline output unusable; heuristic outline substituted",
+            )
 
-        # Ensure reasonable number of sections
-        if len(sections) < 2:
-            sections = ["Overview", "Details", "Conclusion"]
-        elif len(sections) > 8:
-            sections = sections[:8]
-
-        return SynthesisOutline(sections=sections)
+        return SynthesisOutline(sections=sections), None
 
     async def _fill_section(
         self,
@@ -295,8 +410,18 @@ Provide the improved synthesis:"""
         draft: str,
         query: str,
         sources: list[PreGatheredSource],
-    ) -> CritiqueResult:
-        """Critique the draft for issues."""
+    ) -> tuple[CritiqueResult, Optional[StageDegradation]]:
+        """Critique the draft for issues.
+
+        PARSE_REQUIRED + the ISSUE:/NO_ISSUES grammar. Reasoning-aware
+        budget: design Q2 kept this flat-500 pending instrumentation;
+        the harness (scripts/instrument_stage_budgets.py, 2026-08-04,
+        glm-5.2) then showed 100% truncation at 500 — every call spent the
+        whole budget on chain-of-thought and blanked. A failed critique is
+        parse_failed=True, never issues=[] — "no issues" must stay
+        distinguishable from "critique unusable", because issues=[] silently
+        skips the refine pass that rescues a degraded draft.
+        """
         source_summary = self._summarize_sources(sources)
 
         prompt = self.CRITIQUE_PROMPT.format(
@@ -305,16 +430,30 @@ Provide the improved synthesis:"""
             source_summary=source_summary,
         )
 
-        output = await self._call_llm(prompt, max_tokens=500, mode=ExtractionMode.LENIENT)
-        response = output.text
+        output = await self._call_llm(
+            prompt,
+            max_tokens=derive_effective_budget(500, self.model),
+            mode=ExtractionMode.PARSE_REQUIRED,
+        )
+        issues = parse_critique_records(output.text)
+        if issues is None:
+            return (
+                CritiqueResult(issues=[], has_critical=False, parse_failed=True),
+                degradation_from_output(
+                    "critique",
+                    output,
+                    parse_failed=True,
+                    fallback_used=True,
+                    message=(
+                        "critique output unusable; general refinement pass substituted"
+                        if self.max_refinement_rounds > 0
+                        else "critique output unusable; draft preserved unrefined"
+                    ),
+                ),
+            )
 
-        if "NO_ISSUES" in response.upper():
-            return CritiqueResult(issues=[], has_critical=False)
-
-        issues = [
-            line.strip() for line in response.split("\n")
-            if line.strip() and not line.strip().startswith("#")
-        ]
+        if not issues:
+            return CritiqueResult(issues=[], has_critical=False), None
 
         # Check for critical issues
         critical_keywords = ["missing", "uncited", "incorrect", "wrong"]
@@ -323,7 +462,7 @@ Provide the improved synthesis:"""
             for issue in issues
         )
 
-        return CritiqueResult(issues=issues, has_critical=has_critical)
+        return CritiqueResult(issues=issues, has_critical=has_critical), None
 
     async def _refine(
         self,

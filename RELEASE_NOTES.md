@@ -1,5 +1,96 @@
 # Release notes
 
+## v0.11.1 (2026-08-04)
+
+**On a reasoning model, every structured discovery/outline stage could silently parse garbage — or crash.**
+
+A reasoning model spends output tokens on chain-of-thought before its answer. Under a flat per-stage
+budget the chain-of-thought consumes the whole budget, `content` comes back empty or truncated, and the
+stage either handed a reasoning trace to its parser (`LENIENT` extraction) or accepted wrong-shaped
+text: the outline parser took any 2-8 non-`#` lines as section headings (measured on GLM-5.2: 8
+chain-of-thought fragments became the outline), the critique matched `NO_ISSUES` as a substring, gap
+parsing had no valid "no gaps" representation, source scoring silently default-filled every unparsed
+source, and expansion counted zero parsed variants as success. Patch release; two additive public
+fields (`DiscoverResponse.degradations`, `ScoredSourceSchema.scoring_status`), no signature or env-var
+changes. Design locked by a 7-turn adversarial DESIGN review (codex session `019fc995`, cleared
+verbatim "Zero remaining findings — ship as is").
+
+### Two pre-existing live bugs fixed first
+
+- **`Explorer.discover()` raised `AttributeError` on any gap-filling round with a non-empty gap
+  list**: it read `fill_result.new_sources` / `.gaps_filled`, but `GapFillingResult`'s fields are
+  `merged_sources` / `gaps_addressed`. REST defaults `fill_gaps=True` and supplies a `GapFiller`, so
+  any `/discover` that reached gap-filling with detected gaps crashed before scoring — masked whenever
+  the gap parse returned empty, i.e. masked by the very starvation defect this release fixes.
+- **The original query was searched twice and a generated expansion variant discarded**:
+  `ExpandedQuery.variants` includes the original first (public contract) and `_gather_sources` seeds
+  the original itself, so `N=3` executed original·original·v1·v2. Explorer now selects
+  case-fold-distinct non-original variants; an e2e test asserts the aggregator receives the original
+  exactly once across the complete, partial, and heuristic-fallback expansion paths.
+
+### The repair: three layers per stage
+
+1. **Reasoning-aware budgets** at every stage's operation boundary via the existing
+   `derive_effective_budget` helper (bases unchanged: outline 300, critique 500, landscape 500, gaps
+   800, scoring 1500, expansion 500, preview 200). Non-reasoning models are unaffected. `"glm"` and
+   `"gemma"` join `_REASONING_MODEL_MARKERS`, and GLM-5.2 gets a `MODEL_CONTEXT_WINDOWS` entry (1M) so
+   a GLM deployment is no longer budgeted as an unknown 32K model. The budget decisions were gated on
+   measurement: `scripts/instrument_stage_budgets.py` (new, live-LLM) runs every stage's production
+   prompt at its production budget and reports finish_reason / usage / extraction / parse outcome /
+   latency / fallback frequency — its first run showed critique, landscape, gaps, expansion, and the
+   preview truncating on 100% of calls (scoring 33%) at the old flat budgets on GLM-5.2, and 0%
+   after the change, with actual usage ~600-1800 tokens per call.
+2. **`PARSE_REQUIRED` extraction** for every parsed stage. The user-facing preview (never parsed) uses
+   `FINAL_ANSWER` with a new `retry_on_truncation=False` knob on `call_with_extraction`: a truncated
+   preview reports "Synthesis preview unavailable." instead of escalating to a full-ceiling retry.
+3. **Structural record grammars with named failure states** — the load-bearing layer, because
+   `PARSE_REQUIRED` only rejects reasoning-only/truncated responses and any other string still reaches
+   the parser. Outline: exactly 3-6 `SECTION: <heading>` records, unique, length-bounded. Critique:
+   whole-response `NO_ISSUES` or only `ISSUE: <text>` records; an unusable critique is
+   `parse_failed=True` — never a silent `issues=[]`, which would skip the refine pass — and triggers
+   exactly one general refinement on a synthetic issue (an explicit `max_refinement_rounds=0` still
+   wins). Landscape: exactly one each of the four records, `NONE` for a legitimately-empty optional
+   category. Gaps: complete blocks with `IMPORTANCE`/`SEARCH` constrained, plus a new whole-response
+   `NO_GAPS` sentinel. Scoring: records keyed by injected `SOURCE_INDEX` (never URL echo), exact
+   duplicate-free coverage of the first `SCORING_LIMIT` (15) sources; relevance stays computed from
+   retrieval score × validated gap coverage × priority, never model-authored; a rejected parse keeps
+   retrieval order with one degradation and is not cached, and deep-dive recommendations never top up
+   from fallback-scored sources. Expansion: exactly-N distinct variants (case-folded, distinct from
+   the original), fewer-than-N is recorded partial success, zero is a rejection, and the heuristic
+   expander now runs on a blank response, not only on a transport exception.
+
+### Degradations are first-class and never cached
+
+A shared `StageDegradation` record (`src/degradation.py`) carries stage, primary code
+(`truncated` > `reasoning_only` > `malformed` > `empty`, plus `partial` and `transport_error`),
+`parse_failed`, `fallback_used`, a sanitized message, structured secondary flags, and the raw
+`finish_reason`. It rides on `OutlinedSynthesis`, `DiscoveryResult`, and `ExpandedQuery`, and
+propagates everywhere: verifier `soft_warnings`, machine-readable `VerdictWarning`s, a new
+`diagnostics.stage_degradations` slot, `DiscoverResponse.degradations`, and a ⚠️ footer on MCP
+`discover` output. Degraded results are not cached: synthesis via `finalize_synthesis`'s
+`cache_eligible` (set explicitly; ordinary advisory warnings still cache), discovery via an explicit
+skip. `SYNTH_CACHE_VERSION` bumps 6→7 (outline/critique output changes for an unchanged key), and
+discovery keys are now versioned at all (`DISCOVER_CACHE_VERSION` v2) carrying the model and every
+behaviour dimension — the old key held only `focus_mode` + `identify_gaps`.
+
+### Tests
+
+120 new regression tests (119 + 1 deliberate skip) across six files — per stage: mocked
+reasoning-only, mocked truncated-but-non-empty (a distinct extraction path), and mocked
+plausible-but-wrong-shape, asserting the explicit failure state and the deterministic fallback. Full
+sweep: 766 pass / 53 skip / 0 fail on both `main` and `local-inference`.
+
+### What did not change
+
+The deterministic relevance formula and scorer contract; Explorer's fail-hard transport boundary for
+structured stages (the optional preview deliberately catches transport errors and reports
+unavailable); every budget base; `ExpandedQuery`'s original-first contract; preset thresholds; the
+`[N]` citation contract; all `RESEARCH_*` environment variables.
+
+Applied to `main` and `local-inference` in parity.
+
+---
+
 ## v0.11.0 (2026-08-04)
 
 **The result cache never worked in Docker, and said nothing about it.**

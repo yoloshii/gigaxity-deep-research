@@ -215,6 +215,27 @@ class ScoredSourceSchema(BaseModel):
         default=2,
         description="1=fetch first, 2=if time, 3=optional"
     )
+    scoring_status: str = Field(
+        default="llm_scored",
+        description=(
+            "llm_scored = validated model scoring record; retrieval_fallback "
+            "= raw retrieval score (beyond the scoring limit, or the scoring "
+            "parse was rejected)"
+        ),
+    )
+
+
+class StageDegradationSchema(BaseModel):
+    """A structured pipeline stage that fell back deterministically."""
+
+    stage: str = Field(..., description="outline | critique | landscape | gaps | source_scoring | expansion | preview")
+    code: str = Field(..., description="reasoning_only | truncated | empty | malformed | partial | transport_error")
+    parse_failed: bool
+    fallback_used: bool
+    message: str = Field(..., description="Sanitized summary — never a raw provider error")
+    truncated: bool = False
+    reasoning_only: bool = False
+    finish_reason: str | None = None
 
 
 class DiscoverResponse(BaseModel):
@@ -233,6 +254,14 @@ class DiscoverResponse(BaseModel):
         description="URLs worth fetching with Jina parallel_read"
     )
     connectors_used: list[str]
+    degradations: list[StageDegradationSchema] = Field(
+        default_factory=list,
+        description=(
+            "Structured stages that substituted a deterministic fallback "
+            "(reasoning-starved, truncated, or malformed model output). "
+            "Empty on a clean run."
+        ),
+    )
 
 
 # =============================================================================

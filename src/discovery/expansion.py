@@ -15,11 +15,26 @@ Key insight: "quantum memory" expands to:
 5. "quantum computing memory challenges" (problem-oriented)
 """
 
+import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
 from ..config import settings
-from ..llm_utils import ExtractionMode, call_with_extraction
+from ..degradation import (
+    StageDegradation,
+    degradation_from_output,
+    partial_degradation,
+    transport_degradation,
+)
+from ..llm_utils import (
+    ExtractionMode,
+    LLMOutput,
+    call_with_extraction,
+    derive_effective_budget,
+)
+from .explorer import split_record_blocks
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -28,6 +43,54 @@ class ExpandedQuery:
     original: str
     variants: list[str] = field(default_factory=list)
     angles: list[str] = field(default_factory=list)  # What each variant explores
+    # Backward-compatible carrier: partial expansion, blank-response fallback
+    # and transport fallback surface here (previously invisible to callers).
+    degradations: list[StageDegradation] = field(default_factory=list)
+
+
+_EXPANSION_FIELDS = ("VARIANT", "ANGLE")
+
+
+def parse_expansion_records(
+    text: str,
+    n: int,
+    original: str,
+) -> Optional[tuple[list[str], list[str]]]:
+    """Parse VARIANT/ANGLE blocks; None = grammar rejected.
+
+    The accepted grammar is exactly `n` complete blocks whose variants are
+    distinct from each other and from the original after case-folded
+    normalization. Duplicates are dropped rather than counted — structurally
+    valid duplicates must never turn zero effective variants into "success"
+    — so the outcome can be short: fewer than `n` distinct variants is the
+    caller's usable partial success, zero is a rejection (None), and more
+    than `n` blocks is a rejection.
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    blocks = split_record_blocks(raw)
+    if not blocks or len(blocks) > n:
+        return None
+    variants: list[str] = []
+    angles: list[str] = []
+    seen = {original.strip().casefold()}
+    for block in blocks:
+        if set(block) != set(_EXPANSION_FIELDS):
+            return None
+        variant = block["VARIANT"]
+        angle = block["ANGLE"]
+        if not variant or not angle:
+            return None
+        folded = variant.strip().casefold()
+        if folded in seen:
+            continue
+        seen.add(folded)
+        variants.append(variant)
+        angles.append(angle)
+    if not variants:
+        return None
+    return variants, angles
 
 
 class QueryExpander:
@@ -51,22 +114,24 @@ class QueryExpander:
         ])
     """
 
-    EXPANSION_PROMPT = """Generate 4 diverse search query variants for this topic.
+    EXPANSION_PROMPT = """Generate exactly {n} diverse search query variants for this topic.
 
 Original query: {query}
 
-Each variant should explore a DIFFERENT angle:
-1. Technical synonyms (different terminology, same concept)
-2. Specific applications (concrete use cases)
-3. Problem-oriented (challenges, limitations, issues)
-4. Comparative (alternatives, competing approaches)
+Each variant should explore a DIFFERENT angle, such as:
+- Technical synonyms (different terminology, same concept)
+- Specific applications (concrete use cases)
+- Problem-oriented (challenges, limitations, issues)
+- Comparative (alternatives, competing approaches)
 
-Format:
+Output one complete block per variant, blocks separated by a line containing
+only "---", each block exactly:
 VARIANT: [query text]
 ANGLE: [what this explores]
 ---
 
-Generate exactly 4 variants. Keep each under 10 words."""
+Generate exactly {n} variants, each under 10 words, each different from the
+original query and from each other. Output only these blocks."""
 
     def __init__(
         self,
@@ -103,70 +168,57 @@ Generate exactly 4 variants. Keep each under 10 words."""
         """
         num_variants = num_variants or self.default_num_variants
 
-        # Always include original
-        variants = [query]
-        angles = ["original query"]
-
         if not self.llm_client:
-            # Fallback: simple expansion without LLM
+            # Heuristic-only by configuration — normal operation, not a
+            # degradation.
             return self._heuristic_expand(query, num_variants)
 
+        prompt = self.EXPANSION_PROMPT.format(query=query, n=num_variants)
         try:
-            prompt = self.EXPANSION_PROMPT.format(query=query)
-            response = await self._call_llm(prompt)
+            output = await self._call_llm(prompt)
+        except Exception:
+            logger.warning("expansion LLM call failed", exc_info=True)
+            fallback = self._heuristic_expand(query, num_variants)
+            fallback.degradations.append(transport_degradation(
+                "expansion",
+                "expansion call failed; heuristic expansion substituted",
+            ))
+            return fallback
 
-            # Parse variants from response
-            parsed_variants, parsed_angles = self._parse_expansion(response, query)
+        parsed = parse_expansion_records(output.text, num_variants, query)
+        if parsed is None:
+            # Blank, malformed, over-count, or zero distinct variants: the
+            # heuristic fallback runs on ALL of these — previously it sat in
+            # the except block only, so a blank response yielded "no
+            # variants" while the fallback was unreachable.
+            fallback = self._heuristic_expand(query, num_variants)
+            fallback.degradations.append(degradation_from_output(
+                "expansion",
+                output,
+                parse_failed=True,
+                fallback_used=True,
+                message="expansion output unusable; heuristic expansion substituted",
+            ))
+            return fallback
 
-            # Add parsed variants (excluding duplicates of original)
-            for variant, angle in zip(parsed_variants, parsed_angles):
-                if variant.lower() != query.lower() and variant not in variants:
-                    variants.append(variant)
-                    angles.append(angle)
-
-            # Limit to requested number
-            variants = variants[:num_variants + 1]
-            angles = angles[:num_variants + 1]
-
-        except Exception as e:
-            # On error, fall back to heuristic expansion
-            return self._heuristic_expand(query, num_variants)
+        parsed_variants, parsed_angles = parsed
+        degradations: list[StageDegradation] = []
+        if len(parsed_variants) < num_variants:
+            # Usable partial success — fewer distinct variants than asked
+            # for, no fallback taken. Recorded so partial coverage is
+            # visible; zero variants is a rejection, never "success".
+            degradations.append(partial_degradation(
+                "expansion",
+                f"{len(parsed_variants)} of {num_variants} variants usable",
+            ))
 
         return ExpandedQuery(
             original=query,
-            variants=variants,
-            angles=angles,
+            # Always include original first (public contract).
+            variants=[query] + parsed_variants,
+            angles=["original query"] + parsed_angles,
+            degradations=degradations,
         )
-
-    def _parse_expansion(
-        self,
-        response: str,
-        original_query: str,
-    ) -> tuple[list[str], list[str]]:
-        """Parse expansion response into variants and angles."""
-        variants = []
-        angles = []
-
-        blocks = response.split("---")
-        for block in blocks:
-            block = block.strip()
-            if not block or "VARIANT:" not in block:
-                continue
-
-            variant = ""
-            angle = ""
-            for line in block.split("\n"):
-                line = line.strip()
-                if line.startswith("VARIANT:"):
-                    variant = line.replace("VARIANT:", "").strip()
-                elif line.startswith("ANGLE:"):
-                    angle = line.replace("ANGLE:", "").strip()
-
-            if variant:
-                variants.append(variant)
-                angles.append(angle or "unspecified angle")
-
-        return variants, angles
 
     def _heuristic_expand(self, query: str, num_variants: int) -> ExpandedQuery:
         """
@@ -203,14 +255,19 @@ Generate exactly 4 variants. Keep each under 10 words."""
         """
         return self._heuristic_expand(query, num_variants or self.default_num_variants)
 
-    async def _call_llm(self, prompt: str) -> str:
-        """Call LLM for expansion (LENIENT extraction - uses raw text)."""
-        output = await call_with_extraction(
+    async def _call_llm(self, prompt: str) -> LLMOutput:
+        """Call LLM for expansion.
+
+        PARSE_REQUIRED — expansion parses its output — and the full
+        LLMOutput is returned so a blank response stays classifiable
+        (truncated vs reasoning-only vs empty). Reasoning-aware budget: the
+        Q2 harness (scripts/instrument_stage_budgets.py, 2026-08-04,
+        glm-5.2) showed 100% truncation at a flat 500."""
+        return await call_with_extraction(
             self.llm_client,
             self.model,
             [{"role": "user", "content": prompt}],
-            500,
-            ExtractionMode.LENIENT,
+            derive_effective_budget(500, self.model),
+            ExtractionMode.PARSE_REQUIRED,
             temperature=0.7,  # Higher temp for diversity
         )
-        return output.text

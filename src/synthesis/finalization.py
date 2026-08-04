@@ -65,8 +65,11 @@ class FinalizedSynthesis:
     when the verdict passed AND there are no soft warnings, otherwise it is
     the annotated form (`annotate_with_verdict` output). REST surfaces that
     embed a structured `verification` field still emit raw content alongside
-    `safe_content` for the in-band fallback. `cache_eligible` mirrors
-    `verdict.passed` — a hard-failed result must not be cached, period.
+    `safe_content` for the in-band fallback. `cache_eligible` is
+    `verdict.passed AND no stage degradations` — a hard-failed result must
+    not be cached, period, and a degraded-stage result (fallback outline,
+    unusable critique, ...) must be re-evaluated each call rather than served
+    from cache as if it were clean.
 
     `extras` carries surface-specific shape that the common normalization
     can't express directly: outline `sections` dict, outline `outline.sections`
@@ -289,6 +292,10 @@ def finalize_synthesis(
         query_entities = extract_query_entities(query)
     sources_text = _sources_text_lower(sources)
 
+    # StageDegradation carrier (OutlinedSynthesis today; duck-typed so any
+    # future result shape that grows the field is picked up unchanged).
+    stage_degradations = list(getattr(result, "degradations", None) or [])
+
     verdict = verify_synthesis_output(
         content=content,
         llm_output=llm_output,
@@ -297,6 +304,7 @@ def finalize_synthesis(
         contradiction_result=contradiction_result,
         query_entities=query_entities,
         sources_text=sources_text,
+        stage_degradations=stage_degradations,
     )
 
     if verdict.passed and not verdict.soft_warnings:
@@ -314,7 +322,11 @@ def finalize_synthesis(
         style_used=style_used,
         llm_output=llm_output,
         verdict=verdict,
-        cache_eligible=verdict.passed,
+        # A stage degradation makes the result non-cacheable EXPLICITLY —
+        # never derived from generic soft-warning presence, so the
+        # established policy for unrelated advisory warnings (which pass
+        # through verdict.passed) is untouched.
+        cache_eligible=verdict.passed and not stage_degradations,
         surface=surface,
         extras=extras,
     )
