@@ -91,6 +91,19 @@ mcp = FastMCP(
 # ── HTTP plumbing ────────────────────────────────────────────────────────────
 
 
+class _Failure(str):
+    """Diagnosed failure text that also carries the raw HTTP evidence."""
+
+    status: int
+    body: str
+
+    def __new__(cls, text: str, status: int, body: str):
+        obj = super().__new__(cls, text)
+        obj.status = status
+        obj.body = body
+        return obj
+
+
 def _diagnose(status: int, body: str) -> str:
     """Turn a failure into an ACTIONABLE message.
 
@@ -162,7 +175,7 @@ def _request(
             return True, resp.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
         raw = exc.read().decode("utf-8", errors="replace")
-        return False, _diagnose(exc.code, raw)
+        return False, _Failure(_diagnose(exc.code, raw), status=exc.code, body=raw)
     except urllib.error.URLError as exc:
         return False, f"Network error contacting {urllib.parse.urlparse(url).netloc}: {exc.reason}"
     except Exception as exc:  # noqa: BLE001 - surface anything to the agent
@@ -191,6 +204,24 @@ def _fan_out(fn, items: list) -> list:
 # ── Search backends ──────────────────────────────────────────────────────────
 
 
+def _is_zero_results(payload) -> bool:
+    """s.jina.ai encodes an empty SERP as HTTP 422 AssertionFailureError /
+    status 42206 (observed 2026-08-04) instead of an empty data array."""
+    if not isinstance(payload, _Failure) or payload.status != 422:
+        return False
+    try:
+        body = json.loads(payload.body)
+    except (json.JSONDecodeError, TypeError):
+        return False
+    if not isinstance(body, dict):
+        return False
+    return (
+        body.get("status") == 42206
+        and body.get("name") == "AssertionFailureError"
+        and "no search results available" in str(body.get("message", "")).lower()
+    )
+
+
 def _search_web(query: str, num: int, site: str | None, tbs: str | None,
                 gl: str | None, hl: str | None) -> str:
     """One web search.
@@ -213,6 +244,10 @@ def _search_web(query: str, num: int, site: str | None, tbs: str | None,
 
     ok, payload = _json_request(url, headers=headers)
     if not ok:
+        if _is_zero_results(payload):
+            return (f"No results for {query!r} — the query matched nothing upstream "
+                    f"(s.jina.ai 422/42206 zero-results signature). Broaden the "
+                    f"query or loosen quotes/filters and retry.")
         return f"Search failed for {query!r}: {payload}"
 
     # standard returns {"data": [...]}, vip returns {"results": [...]}
