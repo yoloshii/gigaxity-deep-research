@@ -222,14 +222,11 @@ class Explorer:
                 gaps=gaps,
                 max_iterations=1,  # Single iteration for speed
             )
-            # Merge gap-filling sources
-            seen_urls = {s.url for s in sources}
-            for source in fill_result.new_sources:
-                if source.url not in seen_urls:
-                    sources.append(source)
-                    seen_urls.add(source.url)
+            # Merge gap-filling sources (merged_sources is already URL-deduped,
+            # originals first — GapFillingResult has no new_sources/gaps_filled)
+            sources = fill_result.merged_sources
             # Update gaps with remaining unfilled ones
-            gaps = [g for g in gaps if g.gap not in fill_result.gaps_filled]
+            gaps = [g for g in gaps if g.gap not in fill_result.gaps_addressed]
 
         # Step 5: Score sources against gaps
         scored_sources = await self._score_sources(query, sources, gaps)
