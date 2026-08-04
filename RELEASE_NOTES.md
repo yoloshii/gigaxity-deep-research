@@ -1,5 +1,37 @@
 # Release notes
 
+## v0.11.2 (2026-08-04)
+
+**`s.jina.ai` reports an empty SERP as an error; the bundled Jina companion now says "no results" instead of "Search failed".**
+
+An agent tool-health report flagged a `parallel_search_web` query as degraded over an HTTP 422. Probed
+directly, that 422 is `s.jina.ai`'s zero-results contract: an empty SERP comes back as
+`AssertionFailureError` / status 42206 (`No search results available for query …`) rather than an empty
+`data` array — deterministic, and in practice reached mainly through a long exact-phrase quote, since an
+unquoted query fuzzy-matches to something. A semantically valid "nothing matched" answer therefore
+rendered as a tool failure, and health scanners mislabeled it degradation.
+
+`companions/jina-mcp/mcp_server.py` now carries the raw HTTP evidence through its failure path — a
+`_Failure(str)` subclass adds `status` + `body` to the diagnosed text with zero caller ripple — and
+`_search_web` classifies the full signature (HTTP 422 **and** parsed-object `status == 42206` **and**
+`name == "AssertionFailureError"` **and** the message) as a benign `No results for …` line with a
+broaden-the-query hint. The classifier fails closed: truncated bodies, valid-but-non-object JSON
+(`null`, `[]`), other 422s, and 401/402 bodies that merely echo the phrase all keep today's full
+`Search failed` diagnostic. 19 regression tests (`tests/test_jina_companion_zero_results.py`) cover that
+matrix, including a mixed parallel batch with input order preserved. The companion README documents the
+contract, and the bundled `skills/research-workflow/SKILL.md` gains the scoped health-classifier
+exclusions (trigger rules, recovery tree, and a dated note beside the 2026-08-03 incident lessons) so
+subagents stop flagging tool health on this signature alone. `CLAUDE.md` / `AGENTS.md` carry the same
+lesson in the pasteable instruction block, kept byte-identical per branch.
+
+PATCH (0.11.1 → 0.11.2): companion behavior fix plus docs; the parent server's six MCP tools, verifier
+gates, citation shapes, and cache keys are untouched, and no Python source under `src/` changed. Design
+adversarially reviewed to closure (three findings plus one classifier crash bug folded) in codex session
+`019fc995` turns 8-10, cleared verbatim "Zero remaining findings — ship as is."
+
+Full sweep: 785 pass / 53 skip / 0 fail on both `main` and `local-inference`. Applied to `main` and
+`local-inference` in parity.
+
 ## v0.11.1 (2026-08-04)
 
 **On a reasoning model, every structured discovery/outline stage could silently parse garbage — or crash.**

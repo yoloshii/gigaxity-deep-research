@@ -389,6 +389,8 @@ If the header is absent: relay the subagent's full output as normal.
 
 **A Jina search fault is transient until a retest proves otherwise.** The same incident window also degraded general search ranking — `s.jina.ai` locked onto one query term and returned that term's popular pages at HTTP 200 with no error field. It read as a permanent ranking defect because reordering, distinctive-term-first and phrase-quoting all failed; a retest the same day returned correct results on every affected query, with no key rotation. **The absence of a query-rewriting workaround does not distinguish a permanent defect from a current outage.** On junk or off-topic results: wait, retest, then conclude — and never rotate the key over it, since the symptom is neither a quota nor an auth fault.
 
+**One Jina search 4xx is deterministic and benign — 422 `AssertionFailureError` status 42206 means ZERO RESULTS.** `s.jina.ai` encodes an empty SERP as HTTP 422 with that exact signature rather than an empty list, typically reached through a long exact-phrase quote (observed 2026-08-04). The bundled companion (v0.11.2+) classifies it and returns a plain `No results for …` line; on other deployments broaden the query or loosen quotes and retry — never flag tool health on this signature alone.
+
 **Exa MCP 3.2.0 caveat:** the `type="deep"` parameter previously documented for `web_search_exa` does NOT exist in the current MCP. The deprecated `deep_researcher_start` / `deep_researcher_check` have no MCP replacement either. For deep multi-hop research, use the chain `mcp__gigaxity-deep-research__discover` → `mcp__jina__parallel_read_url` → `mcp__gigaxity-deep-research__synthesize`.
 
 ---
