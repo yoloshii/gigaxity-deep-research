@@ -634,14 +634,36 @@ def verify_synthesis_output(
                 "- contradictions may exist but were not reliably checked"
             )
         elif contradiction_result.parse_failed:
-            verdict.soft_warnings.append(
-                "contradiction detection could not be parsed - contradictions "
-                "may exist but were not surfaced"
-            )
+            # Two different causes, two different next moves: an off-format
+            # reply is a prompt/model-behavior question, an unparseable one is
+            # a grammar question. One message for both sent readers hunting a
+            # parser bug whenever the model simply answered in prose.
+            if contradiction_result.no_structured_output:
+                verdict.soft_warnings.append(
+                    "contradiction detection returned no structured output "
+                    "(the model did not emit the requested format) - "
+                    "contradictions may exist but were not surfaced"
+                )
+            else:
+                verdict.soft_warnings.append(
+                    "contradiction detection could not be parsed - contradictions "
+                    "may exist but were not surfaced"
+                )
         elif contradiction_result.surfaced:
             verdict.soft_warnings.append(
                 f"{len(contradiction_result.surfaced)} contradiction(s) detected "
                 "- verify the synthesis surfaces them"
+            )
+
+        # Independent of the branches above: the detector reported findings AND
+        # a "no contradictions" declaration in the same response. The findings
+        # are retained, but the reader is told the detector disagreed with
+        # itself so the count is not taken at face value.
+        if contradiction_result.ambiguous_output:
+            verdict.soft_warnings.append(
+                "contradiction detection returned both findings and a "
+                "'no contradictions' declaration - the detector output was "
+                "self-contradictory; treat the findings as unconfirmed"
             )
 
     # Stage degradations: a structured stage starved/truncated/rejected its

@@ -1,5 +1,62 @@
 # Release notes
 
+## v0.12.0 (2026-08-05)
+
+**A markdown-heavy model could lose its entire contradiction list to formatting, and the warning said the parser broke when it hadn't.**
+
+Three of four `contracrow` passes reported "contradiction detection could not be parsed — contradictions
+may exist but were not surfaced". The preset's whole purpose is surfacing disagreement, so it was
+silently losing its reason to exist, and the failure was visible only to someone reading the verifier
+notes.
+
+The cause was not the v0.3.3 budget starvation this resembles. `_parse_contradictions` derived each
+field key from the raw text left of the first colon, so any decoration on a label produced a key that
+matched nothing — `**TOPIC:**` → `**TOPIC`, `1. TOPIC:` → `1. TOPIC`, `- TOPIC:` → `- TOPIC`,
+`| TOPIC: |` → `| TOPIC`. Every field of an otherwise valid block came back empty, the topic/position
+guard dropped the block, and `detect()` reported `parse_failed=True` on a good response. The detection
+prompt never forbade decoration, so the model was not misbehaving — the deployed model had changed.
+Probing the real parser with eight realistic shapes, plain / preamble+plain / fenced-code parsed while
+bold / numbered / bulleted / table all failed.
+
+`_normalize_field_key` now strips emphasis, inline code, list markers, numbering, headings, blockquotes
+and table pipes from both ends of a label before matching (internal underscores survive, so
+`POSITION_A` is unharmed), `_normalize_field_value` strips the emphasis a bold label leaves at the head
+of its value, and the field map is restricted to the seven labels the prompt asks for. The block gate is
+now the presence of a parsed `TOPIC` rather than a literal `"TOPIC:"` substring, which `**TOPIC**: x`
+does not contain. The prompt additionally tells the model to write labels bare — belt and braces; the
+parser does not depend on it.
+
+Two further defects in the same path. A model that correctly found nothing and said so in prose, without
+the literal `NO_CONTRADICTIONS` token, also reported `parse_failed=True` — so the warning could not
+distinguish "the parser choked" from "there genuinely were no contradictions". `detect()` now reads both
+signals before deciding: parsed blocks and a standalone sentinel line. `no_structured_output`
+distinguishes a response that never attempted the format from one whose format could not be read, and
+`ambiguous_output` marks a response carrying findings **and** a "no contradictions" declaration —
+findings retained, flagged unconfirmed, because neither signal may override the other silently. The
+sentinel is matched only as a standalone line: an unanchored search also matches "There are no
+contradictions in the dates. However, source 1 says 10 while source 2 says 20", which would report a
+real disagreement as clean. A block echoing the prompt's own `TOPIC: [what they disagree about]`
+placeholder back is dropped, matched against that exact field's placeholder only — `[API availability]`
+and `[RFC 9110]` are ordinary topics, and so is `[source number]`, which belongs to a different field.
+
+70 new bug-first tests in `tests/test_contradiction_parse_normalization.py`: fourteen label shapes,
+mixed decoration within one block, multi-block, the sentinel variants and the prose near-misses that
+must NOT read as clean, bracketed-topic regressions, the echo guard, a drift test asserting the
+placeholder table still matches the prompt verbatim, and four tests calling `verify_synthesis_output`
+directly so an inverted or unwired warning branch cannot pass.
+
+MINOR (0.11.2 → 0.12.0): the contradiction detector's observable output changes. Responses that
+previously reported `parse_failed` now yield findings, the parse-failure soft warning splits into two
+distinct strings, and a third self-contradiction warning is new — consumers keying on the old wording
+must update. `ContradictionDetectionResult` gains two defaulted fields. The six MCP tool names and
+surfaces, REST shapes, `[N]` citation contract, preset thresholds and cache keys are untouched.
+Adversarially reviewed to closure across five turns in codex session `019f32a9` — nine findings folded,
+including a High where the loose sentinel would have read a stated disagreement as clean — cleared
+verbatim "Zero remaining findings — ship as is."
+
+Full sweep: 855 pass / 53 skip / 0 fail on both `main` and `local-inference`. Applied to `main` and
+`local-inference` in parity.
+
 ## v0.11.2 (2026-08-04)
 
 **`s.jina.ai` reports an empty SERP as an error; the bundled Jina companion now says "no results" instead of "Search failed".**

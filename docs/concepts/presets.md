@@ -64,6 +64,8 @@ Two-pass:
 
 Use when: comparing tools, libraries, approaches, or any question where the answer is "it depends and here's why."
 
+Check the `*Verification notes:*` line before treating the conflict list as complete. Contradiction detection is advisory, never a gate: when it degrades, the synthesis still passes and the list is silently shorter than reality. Any note beginning `contradiction detection …` means non-exhaustive — the [`mcp-tools.md` advisory table](../reference/mcp-tools.md) says which failure fired and whether it is a grammar problem, a model-behavior problem, or a self-contradictory response. This matters most on `contracrow` precisely because surfacing disagreement is the reason to choose it.
+
 ### `academic`
 
 Two-pass:

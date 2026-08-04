@@ -12,6 +12,7 @@ contracrow setting from PaperQA2:
 - Flag claims that need additional verification
 """
 
+import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
@@ -34,6 +35,104 @@ _CHARS_PER_TOKEN = 4  # codebase-wide tokenization estimate (chars/4 ~= tokens)
 _DETECTOR_PROMPT_OVERHEAD_TOKENS = 320  # DETECTION_PROMPT template + instructions
 _DETECTOR_SOURCE_CHAR_FLOOR = 1500  # small sets get >= the old cap when affordable
 _DETECTOR_SOURCE_CHAR_CEILING = 8000  # one huge source can't blow the input budget
+
+# The labels DETECTION_PROMPT asks for. Only these are read out of a block, so
+# restricting the parse to them keeps an incidental prose line ("Note: ...")
+# from landing in the field map.
+_KNOWN_FIELDS = frozenset({
+    "TOPIC", "POSITION_A", "SOURCE_A", "POSITION_B", "SOURCE_B",
+    "SEVERITY", "RESOLUTION",
+})
+
+# Decoration a model wraps a label in: emphasis, inline code, list markers,
+# table pipes, headings, blockquotes. Stripped from both ends before matching.
+_KEY_DECORATION = " \t*_|>#-+•·`"
+_LIST_NUMBERING = re.compile(r"^\d+[.)]\s*")
+
+# The "nothing found" sentinel, as models actually emit it: the underscore gets
+# normalized to a space and the token gets wrapped in emphasis or inline code.
+# Matched ONLY as a standalone line. An unanchored search also matches ordinary
+# prose - "There are no contradictions in the dates. However, source 1 says 10
+# while source 2 says 20." would be reported as a clean result, turning a real
+# disagreement into silence (codex T1 High).
+_NO_CONTRADICTIONS_LINE = re.compile(r"^NO[_\s]*CONTRADICTIONS$", re.IGNORECASE)
+
+# The literal placeholder text DETECTION_PROMPT shows for each field. A model
+# that echoes the format block back instead of filling it in is not reporting a
+# contradiction, so such a block is dropped.
+#
+# Matched EXACTLY and PER FIELD, never as "any bracketed value" and never
+# against the pooled set: models routinely keep the brackets and replace the
+# contents, so `[API availability]` and `[RFC 9110]` are ordinary topics
+# (codex T2 Medium) - and so, for that matter, is a topic that happens to read
+# `[source number]`, which is another field's placeholder, not TOPIC's
+# (codex T3 Low). `test_template_placeholders_match_the_prompt` fails if any
+# pair drifts from the prompt.
+_TEMPLATE_PLACEHOLDERS = {
+    "TOPIC": "[what they disagree about]",
+    "POSITION_A": "[first position - quote or paraphrase]",
+    "SOURCE_A": "[source number]",
+    "POSITION_B": "[opposing position]",
+    "SOURCE_B": "[source number]",
+    "SEVERITY": "[minor/moderate/major]",
+    "RESOLUTION": "[how to reconcile, if possible]",
+}
+
+
+def _normalize_field_key(raw: str) -> str:
+    """A field label -> its canonical key, tolerant of markdown decoration.
+
+    The label is unambiguous whatever the model wraps it in, so the decoration
+    is stripped rather than the block dropped. Previously the key came straight
+    off the raw text left of the colon, so `**TOPIC:**` produced `**TOPIC`,
+    matched nothing, and every field of an otherwise valid block came back
+    empty - the block was then rejected for a missing topic and detect()
+    reported parse_failed on a good response (the live GLM-5.2 symptom).
+
+    Internal underscores survive: only leading/trailing decoration is removed,
+    so `POSITION_A` and `_POSITION_A_` both normalize to `POSITION_A`.
+    """
+    key = raw.strip(_KEY_DECORATION)
+    key = _LIST_NUMBERING.sub("", key)
+    return key.strip(" \t*_").upper()
+
+
+def _normalize_field_value(raw: str) -> str:
+    """A field value with the label's trailing decoration removed.
+
+    `**TOPIC:** x` splits at the first colon, which leaves the emphasis that
+    closed the LABEL at the head of the VALUE (`** x`). Table cells arrive
+    pipe-wrapped, inline-code labels backtick-wrapped. Strip both ends; the
+    text between is untouched.
+    """
+    return raw.strip().strip("*_| \t`").strip()
+
+
+def _is_no_contradictions_sentinel(response: str) -> bool:
+    """True if some LINE of the response *is* the sentinel.
+
+    Line-scoped on purpose: containing the words is not declaring them (see
+    _NO_CONTRADICTIONS_LINE).
+    """
+    return any(
+        _NO_CONTRADICTIONS_LINE.match(line.strip(_KEY_DECORATION + ".:"))
+        for line in response.splitlines()
+    )
+
+
+def _has_structured_marker(response: str) -> bool:
+    """True if any line carries a label the detection prompt asked for.
+
+    Separates a reply that attempted the structured format from one that never
+    did (prose, a refusal, the model's own shape). Both yield zero
+    contradictions; only the first is a grammar failure.
+    """
+    for line in response.splitlines():
+        if ":" not in line:
+            continue
+        if _normalize_field_key(line.split(":", 1)[0]) in _KNOWN_FIELDS:
+            return True
+    return False
 
 
 class ContradictionSeverity(str, Enum):
@@ -100,6 +199,18 @@ class ContradictionDetectionResult:
     parse_failed: bool = False    # detector output could not be parsed
     fallback_used: bool = False   # heuristic detector was used instead of the LLM
     error: Optional[str] = None   # exception text if detection raised
+    # Set with parse_failed when the response carried NO field label at all -
+    # the model never attempted the structured format (prose, refusal, its own
+    # shape) rather than emitting a format that could not be parsed. Both are
+    # advisory, but collapsing them made every off-format reply read as a
+    # broken parser, which sent readers hunting a grammar bug that wasn't there.
+    no_structured_output: bool = False
+    # The response carried BOTH parsed contradiction blocks AND a standalone
+    # "no contradictions" declaration - it disagrees with itself. The blocks are
+    # retained (discarding them loses real information) but the caller is told
+    # the source was self-contradictory: neither signal can be trusted to
+    # override the other unconditionally.
+    ambiguous_output: bool = False
 
     @property
     def surfaced(self) -> list[Contradiction]:
@@ -148,6 +259,10 @@ SOURCE_B: [source number]
 SEVERITY: [minor/moderate/major]
 RESOLUTION: [how to reconcile, if possible]
 ---
+
+Write each label exactly as shown: bare, at the start of its own line, followed
+by a colon. Do NOT wrap the labels in bold or italics, do NOT prefix them with
+bullets or numbers, and do NOT put them in a table.
 
 Focus on MAJOR contradictions that would affect the answer.
 If no contradictions found, respond with: NO_CONTRADICTIONS"""
@@ -222,19 +337,36 @@ If no contradictions found, respond with: NO_CONTRADICTIONS"""
         # PARSE_REQUIRED: an empty response is not a valid "no contradictions"
         # answer - the model never produced the structured output.
         if not response.strip():
-            return ContradictionDetectionResult(contradictions=[], parse_failed=True)
+            return ContradictionDetectionResult(
+                contradictions=[], parse_failed=True, no_structured_output=True
+            )
 
-        if "NO_CONTRADICTIONS" in response:
+        # Read BOTH signals before deciding. Neither unconditional precedence is
+        # sound: sentinel-first drops real findings when the model also writes
+        # the words somewhere, blocks-first blesses a retraction or an echoed
+        # template as a finding. So parse, check the sentinel, and treat their
+        # coexistence as what it is - a self-contradictory response (codex T1).
+        contradictions = self._parse_contradictions(response)
+        sentinel = _is_no_contradictions_sentinel(response)
+
+        if contradictions:
+            return ContradictionDetectionResult(
+                contradictions=contradictions,
+                ambiguous_output=sentinel,
+            )
+
+        if sentinel:
             return ContradictionDetectionResult(contradictions=[])
 
-        contradictions = self._parse_contradictions(response)
-        if not contradictions:
-            # Non-empty response, no NO_CONTRADICTIONS marker, yet nothing
-            # parsed - the structured format was not understood. Surface it as
-            # a parse failure instead of silently reporting zero contradictions.
-            return ContradictionDetectionResult(contradictions=[], parse_failed=True)
-
-        return ContradictionDetectionResult(contradictions=contradictions)
+        # Nothing parsed and nothing claiming a clean result. Still advisory,
+        # never a silent zero - but split the two causes: a reply that carries
+        # no field label at all never attempted the format, while one that does
+        # emitted a format we could not parse. Only the second is a grammar bug.
+        return ContradictionDetectionResult(
+            contradictions=[],
+            parse_failed=True,
+            no_structured_output=not _has_structured_marker(response),
+        )
 
     def _format_sources(self, sources: list, query: str = "") -> str:
         """Format sources for the detection prompt.
@@ -289,15 +421,26 @@ If no contradictions found, respond with: NO_CONTRADICTIONS"""
 
         for block in blocks:
             block = block.strip()
-            if not block or "TOPIC:" not in block:
+            if not block:
                 continue
 
-            # Extract fields
+            # Extract fields. Keys are normalized (see _normalize_field_key) so
+            # a decorated label still matches, and restricted to the labels the
+            # prompt asked for so an incidental "Note: ..." line cannot land in
+            # the map. The block gate is the presence of a parsed TOPIC rather
+            # than a literal "TOPIC:" substring - `**TOPIC**: x` carries the
+            # label but not that substring.
             fields = {}
             for line in block.split("\n"):
-                if ":" in line:
-                    key, value = line.split(":", 1)
-                    fields[key.strip().upper()] = value.strip()
+                if ":" not in line:
+                    continue
+                raw_key, value = line.split(":", 1)
+                key = _normalize_field_key(raw_key)
+                if key in _KNOWN_FIELDS:
+                    fields[key] = _normalize_field_value(value)
+
+            if "TOPIC" not in fields:
+                continue
 
             try:
                 severity_str = fields.get("SEVERITY", "moderate").lower()
@@ -317,6 +460,13 @@ If no contradictions found, respond with: NO_CONTRADICTIONS"""
                 # Render path would emit "- **Unknown** (moderate):  vs " — no
                 # signal for the reader (codex Turn 7 v0.2.2).
                 if not topic or not position_a or not position_b:
+                    continue
+
+                # Reject a block that is the prompt's own template echoed back
+                # rather than filled in. TOPIC's own placeholder only - a
+                # bracketed topic, or one matching a DIFFERENT field's
+                # placeholder, is a legitimate topic.
+                if topic.lower() == _TEMPLATE_PLACEHOLDERS["TOPIC"]:
                     continue
 
                 contradictions.append(Contradiction(
