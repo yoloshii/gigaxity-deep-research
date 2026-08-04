@@ -570,6 +570,18 @@ This output is not a reliable synthesis:
 
 Soft warnings append `*Verification notes: <warning>*` at the end of the output and are advisory; the synthesis is usable — relay it, but flag the caveat in your final answer. **Do NOT retry or fall back on a soft warning.** Entity-coverage caveats live here (demoted from the old hard-fail in v0.5.0): when the synthesis discusses a query entity that no retained source covers verbatim, the verifier appends a graduated note and the synthesis **STILL PASSES** — `treat those cited claims as UNVERIFIED` for a cited-adjacent uncovered entity, a lighter "frames the gap" note when the entity's sentence explicitly acknowledges the gap ("no source available for X", "not documented"), a `surface-form variant` note for a known alias/version form (a source saying `dockerd` for "Docker Engine", `wsl2` for "WSL"), and an `emphasis/framing` note for shouted ALL-CAPS query framing. Because passing outputs are the ones cached, **`passed=True` (or a cache hit) no longer implies entity-coverage is clean** — inspect `soft_warnings` / the `*Verification notes:*` line, surface the caveat, then move on; treat it as guidance, not a failure.
 
+**Contradiction-detector notes are the soft-warning class most often misread (v0.12.0).** Any note beginning `contradiction detection …` means the conflict list is **NON-EXHAUSTIVE** — detection never gates the synthesis, so a degraded run passes and simply reports fewer disagreements than exist. On `contracrow` that silently removes the reason you picked the preset. **Never report "no contradictions were found" when one of these is present** — say the check degraded, and which:
+
+| Note | Meaning | Your move |
+|---|---|---|
+| `could not be parsed` | Labels emitted, block unreadable — a grammar problem. | Worth reporting upstream. |
+| `returned no structured output` | The model never attempted the format (prose, refusal, own shape). NOT a parser bug. | Re-run once or accept the gap. |
+| `returned both findings and a 'no contradictions' declaration` | The response contradicted itself; findings retained but unconfirmed. | Present the conflicts as candidates, not established. |
+| `used the degraded heuristic detector` | No LLM client — keyword-pair heuristic. | Low confidence by construction. |
+| `failed and fell back to a heuristic (<error>)` | The detector call raised; cause in the error. | Transport/config issue. |
+
+Still a soft warning: relay the synthesis, surface the caveat, do NOT retry or fall back on it alone. (v0.12.0 also made the parser tolerate markdown-decorated labels — `**TOPIC:**`, `- TOPIC:`, `1. TOPIC:`, `` `TOPIC`: `` — so a markdown-heavy model no longer loses its whole contradiction list to formatting.)
+
 ### Gate Early-Return (distinct from verifier hard-fail)
 
 `synthesize` can also short-circuit at the **pre-synthesis relevance gate**, before the synthesizer runs. As of v0.6.0 a rejection only short-circuits when the source set is *entirely* below the fail-open floor (`RESEARCH_FAIL_OPEN_MIN_SOURCE_SCORE`, default 0.3 = the REJECT threshold); if even one source clears the floor the gate **fails open** instead (covered after the two refusal cases). The two refusal cases:
