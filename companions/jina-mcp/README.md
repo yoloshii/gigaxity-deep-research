@@ -60,6 +60,14 @@ made the original outage take days to diagnose. Failures here name what the
 server said and what to do about it — `show_api_key` will even tell you whether a
 failure is genuine exhaustion or an unfunded lane.
 
+**Zero results is not an error.** `s.jina.ai` encodes an empty SERP as HTTP 422
+`AssertionFailureError` / status 42206 (`No search results available for query …`)
+instead of an empty list — observed 2026-08-04, with a long exact-phrase quote as
+the practical trigger, since unquoted queries fuzzy-match to something. The server
+verifies that full signature and returns a plain `No results for …` line with a
+broaden-the-query hint, so a raw `Search failed … HTTP 422` means a *different*
+422 and the body it reports is the real evidence.
+
 ## Install
 
 ```bash
@@ -73,7 +81,6 @@ Register in `~/.claude.json`:
 {
   "mcpServers": {
     "jina": {
-      "type": "stdio",
       "command": "python3",
       "args": ["/absolute/path/to/companions/jina-mcp/mcp_server.py"],
       "env": { "JINA_API_KEY": "jina_your_key_here" }
@@ -119,20 +126,14 @@ unless you have paid balance.
 `search_jina_blog` needs `JINA_GHOST_KEY`, a Ghost Content API key. Without it,
 that one tool says so and nothing else is affected.
 
-## Past upstream incident — site-restricted search (resolved)
+## Known upstream breakage
 
-From ~1 August 2026, site-restricted search failed regardless of client:
-`s.jina.ai` proxied both the `X-Site` header and the `site:` operator to `svip`,
-which returned `TypeError: fetch failed`. **Retested 3 August 2026 — working
-again**, and general search quality recovered in the same window. Tracked at
+Site-restricted search fails regardless of client. `s.jina.ai` proxies both the
+`X-Site` header and the `site:` operator to `svip`, which currently returns
+`TypeError: fetch failed`. The `site` argument on `search_web` is wired and will
+start working when Jina fixes it; until then, leave it empty and filter results
+yourself. Tracked at
 [jina-ai/reader#1258](https://github.com/jina-ai/reader/issues/1258).
-
-The `site` argument on `search_web` is wired and usable. If it starts returning
-500s again, that is the same incident recurring rather than a client fault — no
-key rotation will help. Exa's `web_search_advanced_exa` with `includeDomains=[...]`
-remains the better choice when you need more than one domain, since it is a real
-filter rather than a query-string hint; simply dropping the restriction is not a
-substitute.
 
 ## Configuration
 
