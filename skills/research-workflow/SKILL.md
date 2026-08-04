@@ -128,7 +128,7 @@ Emit the health header if ANY of the following occurred during the run, even if 
 
 - Any error envelope per the signature table
 - Any fallback chain invocation (the `ON FAIL →` chain was triggered because the primary tool failed)
-- Empty result on a non-trivial query that was expected to return content (skip for known degraded-empty patterns like gptr-mcp Reddit slugs per Anti-Pattern #6)
+- Empty result on a non-trivial query that was expected to return content (skip for known degraded-empty patterns like gptr-mcp Reddit slugs per Anti-Pattern #6, or Jina search 422/42206 zero-results — a benign no-results signature, not a fault)
 - Visible timeout signal (Jina parallel calls past the configured `timeout`)
 - Persisted-output handling skipped (per Tool Output Persistence — agent didn't `Read(path)` on a `<persisted-output>` wrapper)
 
@@ -165,7 +165,8 @@ Auth (401)?
   NO ↓
 
 Empty result on non-trivial query?
-  YES → is this a known degraded-empty pattern? (e.g. gptr-mcp Reddit slugs per Anti-Pattern #6)
+  YES → is this a known degraded-empty pattern? (e.g. gptr-mcp Reddit slugs per Anti-Pattern #6,
+        Jina search 422/42206 zero-results — benign, not a fault)
         YES → not an error; continue
         NO → retry once with reformulated query
              → if still empty, flag DEGRADED in health header
@@ -363,6 +364,8 @@ exa_answer_detailed(query="What are the system requirements for Bun?")
 **AVOID:** `mcp__jina__expand_query` (12k tokens/call — rewrite queries manually instead). Not exposed by the bundled server at all.
 
 **A Jina search fault is TRANSIENT until a retest proves otherwise — never encode one as permanent, and never rotate the key over it.** On 2026-08-03 two Jina search faults appeared together and both cleared the same day with zero rotations: `s.jina.ai` locked onto ONE query term and returned that term's popular or navigational pages at HTTP 200 with no error field (`retrieval augmented generation evaluation benchmarks` → four dictionary definitions of "retrieval"; `vLLM versus SGLang inference throughput comparison` → six vLLM pages, none mentioning SGLang), and site-restricted search returned HTTP 500 via [jina-ai/reader#1258](https://github.com/jina-ai/reader/issues/1258). Both belonged to the same server-side incident window as the `svip.jina.ai` credit gate. During that window, reordering the query, leading with a distinctive term, and phrase-quoting all failed — so **the absence of a query-rewriting workaround is not evidence that a fault is permanent.** It reads identically to a live incident. On junk or off-topic results: wait, retest, and only then conclude.
+
+**One Jina search 4xx is deterministic and benign — 422 `AssertionFailureError` status 42206 means ZERO RESULTS (observed 2026-08-04).** `s.jina.ai` encodes an empty SERP as HTTP 422 with that exact signature (`No search results available for query …`) rather than an empty list; the practical trigger is a long exact-phrase quote, since unquoted queries fuzzy-match to something. The bundled `companions/jina-mcp/` server verifies the full signature and returns a plain `No results for …` line with a broaden-the-query hint — do not flag tool health on it, and a raw `Search failed … HTTP 422` therefore indicates a *different* 422. Scoped to `search_web`/`parallel_search_web`; other `mcp__jina__*` tools are unaffected.
 
 **General web routing.** Primary is `mcp__gigaxity-deep-research__search` — four RRF-fused connectors (SearXNG + Tavily + LinkUp + Brave) with content snippets, 0 LLM tokens, and Brave is a keyed official API that cannot be CAPTCHA'd. That is a coverage-and-durability choice, not a workaround: `mcp__jina__search_web` is healthy and is a fine cheap single-source fallback. Jina's `read_url`, `parallel_read_url`, the key-less arXiv/SSRN/BibTeX tools, rerank and dedup run on different endpoints and were never affected.
 
