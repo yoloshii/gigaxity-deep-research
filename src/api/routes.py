@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Header
 from typing import Annotated
 from ..llm_client import get_llm_client, LLMClient
 from ..llm_utils import get_llm_content, derive_effective_budget
-from ..cache import cache, build_synthesis_cache_extra
+from ..cache import cache, build_discover_cache_extra, build_synthesis_cache_extra
 from .schemas import (
     # Existing
     SearchRequest,
@@ -23,6 +23,7 @@ from .schemas import (
     KnowledgeGapSchema,
     KnowledgeLandscapeSchema,
     ScoredSourceSchema,
+    StageDegradationSchema,
     # Synthesis
     SynthesizeRequest,
     SynthesizeResponse,
@@ -611,10 +612,24 @@ async def discover(
 
     This sets the table for targeted research expansion.
     """
-    # Check cache - include focus_mode and identify_gaps in key
+    # Check cache. The key carries DISCOVER_CACHE_VERSION plus every
+    # behaviour-affecting dimension — the pre-versioned key held only
+    # focus_mode + identify_gaps, so results computed under a different
+    # model / top_k / expansion / gap-filling / routing configuration
+    # collided onto one entry.
     focus_mode = getattr(request, 'focus_mode', None)
     identify_gaps = getattr(request, 'identify_gaps', True)
-    cache_extra = f"focus_mode={focus_mode}:identify_gaps={identify_gaps}"
+    use_routing = getattr(request, 'use_adaptive_routing', True)
+    fill_gaps = getattr(request, 'fill_gaps', True)
+    cache_extra = build_discover_cache_extra(
+        model=settings.llm_model,
+        top_k=request.top_k,
+        expand_searches=request.expand_searches,
+        fill_gaps=fill_gaps,
+        use_adaptive_routing=use_routing,
+        focus_mode=focus_mode,
+        identify_gaps=identify_gaps,
+    )
     cached_result = cache.get(request.query, tier="discover", extra=cache_extra)
     if cached_result:
         cached_result["_cached"] = True
@@ -633,10 +648,6 @@ async def discover(
     router_component = None
     expander_component = None
     gap_filler_component = None
-
-    # Check if using enhanced request with P0 options
-    use_routing = getattr(request, 'use_adaptive_routing', True)
-    fill_gaps = getattr(request, 'fill_gaps', True)
 
     if use_routing:
         router_component = ConnectorRouter()
@@ -704,16 +715,23 @@ async def discover(
                 gaps_addressed=s.gaps_addressed,
                 unique_value=s.unique_value,
                 recommended_priority=s.recommended_priority,
+                scoring_status=s.scoring_status,
             )
             for s in result.sources
         ],
         synthesis_preview=result.synthesis_preview,
         recommended_deep_dives=result.recommended_deep_dives,
         connectors_used=aggregator.get_active_connectors(),
+        degradations=[
+            StageDegradationSchema(**d.to_dict()) for d in result.degradations
+        ],
     )
 
-    # Cache the response
-    cache.set(request.query, response.model_dump(), tier="discover", extra=cache_extra)
+    # Cache the response — unless a stage degraded. A fallback landscape /
+    # gap analysis / scoring / expansion must be re-attempted on the next
+    # call, never served from cache as if it were a clean run.
+    if not result.degradations:
+        cache.set(request.query, response.model_dump(), tier="discover", extra=cache_extra)
     return response
 
 

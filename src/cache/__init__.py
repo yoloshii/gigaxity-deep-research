@@ -179,7 +179,29 @@ cache = HotCache()
 # SECTION/REFINE prompts) - source-authority hierarchy + fact/inference/
 # uncertainty separation + single-source flagging (v0.6.3). This changes
 # synthesis prose for the same inputs, so pre-v6 entries must not be served.
-SYNTH_CACHE_VERSION = "6"
+# v7: structured-output hardening (lenient-parsed-callsites rev 7) - the
+# outline stage moved to a reasoning-aware budget + a strict SECTION: grammar
+# with a heuristic fallback, and critique to a whole-response NO_ISSUES /
+# ISSUE: grammar with a synthetic-issue refinement on failure. Outline and
+# critique output change for an unchanged key, so pre-v7 entries must not be
+# served. (Degraded-stage results are additionally non-cacheable via
+# finalize_synthesis cache_eligible; this bump invalidates clean pre-v7
+# entries.)
+SYNTH_CACHE_VERSION = "7"
+
+# Discovery cache key versioning, introduced alongside the v7 synthesis bump.
+# The pre-versioned discovery key carried only focus_mode + identify_gaps -
+# NOT the model or the behaviour dimensions - so results computed under a
+# different model, top_k, expansion, gap-filling, or routing configuration
+# collided onto one entry. Bump whenever discovery output can change for an
+# unchanged key.
+# v2: first versioned key (v1 = the implicit unversioned era). Adds model,
+# top_k, expand_searches, fill_gaps, and adaptive routing to the key; the
+# discovery pipeline simultaneously gained strict stage grammars, deterministic
+# fallbacks, scoring_status, the exactly-once original search, and the
+# degradations field - all of which change discovery output for an unchanged
+# pre-v2 key.
+DISCOVER_CACHE_VERSION = "2"
 
 
 def _source_field(source: Any, field: str) -> str:
@@ -218,6 +240,31 @@ def build_synthesis_cache_extra(
     return (
         f"v={SYNTH_CACHE_VERSION}:model={model}:max_tokens={max_tokens}"
         f":mode={mode}:src={fingerprint}"
+    )
+
+
+def build_discover_cache_extra(
+    *,
+    model: str,
+    top_k: int,
+    expand_searches: bool,
+    fill_gaps: bool,
+    use_adaptive_routing: bool,
+    focus_mode: Optional[str],
+    identify_gaps: bool,
+) -> str:
+    """Build the cache `extra` discriminator for a discovery result.
+
+    Carries DISCOVER_CACHE_VERSION plus every behaviour-affecting request
+    dimension: the model (stage grammars and budgets are model-sensitive),
+    top_k, search expansion, gap filling, adaptive routing, and the
+    focus-mode / identify_gaps pair the pre-versioned key already had.
+    """
+    return (
+        f"v={DISCOVER_CACHE_VERSION}:model={model}:top_k={top_k}"
+        f":expand={expand_searches}:fill_gaps={fill_gaps}"
+        f":routing={use_adaptive_routing}:focus_mode={focus_mode}"
+        f":identify_gaps={identify_gaps}"
     )
 
 
