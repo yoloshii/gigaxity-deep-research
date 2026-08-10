@@ -1307,7 +1307,7 @@ Rationale: Jina's free 10M trial tier absorbs high-frequency calls cheaply, and 
 | **People / OSINT (attribute search)** | Exa advanced (category="people") | Exa advanced `includeDomains=["linkedin.com"]` | Context7 · Jina `site` (single domain only) |
 | **Financial reports (SEC, earnings)** | Exa advanced (category="financial report") | Exa advanced (category="pdf") | — |
 | **News / current events (date-bounded)** | Exa advanced (category="news" + startPublishedDate) | Jina search_web | Context7 |
-| **Social (tweets)** | gptr-mcp quick_search (`twitterapi` retriever) | Exa advanced `includeDomains=["x.com"]` | Jina `site` (single domain only) · Exa `category` (no tweet category) |
+| **Social (tweets)** | gptr-mcp `deep_research` — the only tool that fans out to the `twitterapi` retriever | Exa advanced `includeDomains=["x.com"]` | gptr-mcp `quick_search` for tweet CONTENT (reaches `retrievers[0]` only — see below) · Jina `site` (single domain only) · Exa `category` (no tweet category) |
 | **Academic (arXiv)** | Jina search_arxiv / parallel_search_arxiv (field syntax: `cat:`, `abs:`, `au:`; `sort="date"`) | Exa advanced (category="research paper") | — |
 | **Academic (SSRN — econ/law/finance)** | Jina search_ssrn / parallel_search_ssrn (OpenAlex, key-less, citation counts) | Exa advanced (category="research paper") | — |
 | **BibTeX citations** | Jina search_bibtex (DBLP → Semantic Scholar, key-less) | Exa advanced (category="research paper") | — |
@@ -1335,6 +1335,25 @@ Rationale: Jina's free 10M trial tier absorbs high-frequency calls cheaply, and 
 | **Deep multi-hop async research** | gigaxity-deep-research `discover` → Jina `parallel_read_url` → `synthesize` | — | Exa `type="deep"` (not exposed in MCP 3.2.0) |
 
 **AVOID entirely:** `mcp__jina__expand_query` (12k tokens/call). Rewrite query variants in the prompt.
+
+**`quick_search` reaches ONE retriever — X/Twitter is unreachable from it.** `GPTResearcher.quick_search()`
+uses **`self.retrievers[0]` only**. With the documented `RETRIEVER=social_openai,twitterapi,tavily`, that is
+**always `social_openai`**, so `quick_search` **never invokes the `twitterapi` retriever** regardless of
+`TWITTERAPI_IO_KEY` being set and funded. Only `deep_research` fans out across every configured retriever.
+Consequences:
+
+- **X/Twitter via `quick_search` = href-only web-search passthrough** — no tweet text, no engagement, no
+  author metadata. For real tweet objects use `deep_research` (10-100× the cost) or query TwitterAPI.io
+  directly.
+- **YouTube via `quick_search` is metadata-only** for the same reason: `social_openai` special-cases
+  **Reddit only**; every other domain passes through with no `raw_content`, and YouTube comments are
+  JS-rendered, so the bare href yields nothing citable.
+- **Reddit is the one enriched lane** — its `raw_content` carries real Arctic Shift comment text, off-IP.
+
+```
+❌ quick_search for "what are people saying on X about <topic>" → expect tweets
+✅ quick_search for Reddit discussion (enriched); deep_research when X tweet objects are actually required
+```
 
 ---
 

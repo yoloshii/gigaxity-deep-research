@@ -303,9 +303,14 @@ def _num(v: Any) -> Optional[int]:
 
 
 def _engagement_line(tw: Dict[str, Any]) -> str:
+    # `bookmarkCount` sits beside likes deliberately. advanced_search returns it
+    # in the tweet object, and on long-form/high-intent posts it commonly runs
+    # ~2.5x likes — it is the closest public proxy for "worth returning to", so
+    # dropping it understates salience by the strongest signal available.
     bits = []
     for key, label in (
-        ("likeCount", "likes"), ("retweetCount", "RTs"),
+        ("likeCount", "likes"), ("bookmarkCount", "bookmarks"),
+        ("retweetCount", "RTs"),
         ("replyCount", "replies"), ("quoteCount", "quotes"),
         ("viewCount", "views"),
     ):

@@ -292,6 +292,20 @@ class TestFormat(unittest.TestCase):
         self.assertIn("5 RTs", item["raw_content"])
         self.assertNotIn("1 likes", item["raw_content"])  # True must not become "1 likes"
 
+    def test_bookmark_count_rendered(self):
+        # bookmarkCount is present in the advanced_search tweet object and is the
+        # strongest available intent signal — it must reach raw_content, not be
+        # silently discarded at render time.
+        item = format_tweet(_tweet(likeCount=391, bookmarkCount=951))
+        self.assertIn("391 likes", item["raw_content"])
+        self.assertIn("951 bookmarks", item["raw_content"])
+
+    def test_bookmark_count_absent_is_omitted_not_zeroed(self):
+        # A tweet object without the field must not render "0 bookmarks" — absent
+        # and zero are different facts.
+        item = format_tweet(_tweet(likeCount=10))
+        self.assertNotIn("bookmarks", item["raw_content"])
+
 
 class TestReplies(unittest.TestCase):
     def test_append_replies_dedups_and_bounds(self):
