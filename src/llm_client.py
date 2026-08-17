@@ -3,10 +3,12 @@
 Simple AsyncOpenAI wrapper for OpenRouter with per-request API key support.
 """
 
+import asyncio
 import logging
 import httpx
 from typing import Optional, List, Dict, Any
 from openai import AsyncOpenAI
+from . import progress
 from .config import settings
 
 logger = logging.getLogger(__name__)
@@ -89,16 +91,53 @@ class OpenRouterClient:
         max_tokens = max_tokens if max_tokens is not None else settings.llm_max_tokens
 
         logger.debug(f"Request with model: {current_model}")
-        response = await self._client.chat.completions.create(
-            model=current_model,
-            messages=messages,
-            temperature=temperature,
-            top_p=top_p,
-            max_tokens=max_tokens,
-            **kwargs,
-        )
-        self.last_model_used = current_model
-        return response
+
+        # Every LLM call this server makes funnels through here — MCP tools, REST
+        # routes, the synthesis engine and library callers all reach the SDK via
+        # this method — so it is the one place that can bound and report on all
+        # of them. See `src/progress.py` for why silence is the problem.
+        #
+        # The nesting is load-bearing, not stylistic:
+        #   * the heartbeat is cancelled in an INNER `finally`, before settlement,
+        #     so no heartbeat can land after "returned"/"failed" and break the
+        #     monotonic ordering MCP requires;
+        #   * cleanup uses `asyncio.gather(..., return_exceptions=True)` rather
+        #     than `try: await hb; except CancelledError: pass` — the latter also
+        #     swallows a cancellation delivered to THIS task while it waits, and
+        #     the request would then carry on to settlement as if nothing had
+        #     happened;
+        #   * settlement lives in `except Exception` / `else`, never `finally`, so
+        #     an external `CancelledError` (a BaseException) matches neither and
+        #     performs no transport I/O — cancellation is neither delayed nor
+        #     masked;
+        #   * a FAILED call reports too. Reporting only on success left a hole: a
+        #     failed chain gets swallowed by a broad `except Exception` upstream
+        #     and is followed by another silent call.
+        await progress.tick("model call started")
+        heartbeat = progress.start_heartbeat()
+        cap = settings.llm_wall_clock_cap
+        try:
+            try:
+                async with asyncio.timeout(cap if cap > 0 else None):
+                    response = await self._client.chat.completions.create(
+                        model=current_model,
+                        messages=messages,
+                        temperature=temperature,
+                        top_p=top_p,
+                        max_tokens=max_tokens,
+                        **kwargs,
+                    )
+            finally:
+                if heartbeat is not None:
+                    heartbeat.cancel()
+                    await asyncio.gather(heartbeat, return_exceptions=True)
+        except Exception:
+            await progress.tick("model call failed")
+            raise
+        else:
+            await progress.tick("model call returned")
+            self.last_model_used = current_model
+            return response
 
     @property
     def chat(self):

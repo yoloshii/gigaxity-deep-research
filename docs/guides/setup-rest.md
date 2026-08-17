@@ -86,6 +86,13 @@ The REST surface mirrors the six MCP tools (two primitives plus four deep-resear
 
 The HTTP MCP transport (mounted at `/mcp`) exposes the same six tools as the stdio MCP. The two enhanced synthesis variants are **REST-only** — callers who need them hit the HTTP endpoint directly.
 
+> ⚠️ **No progress notifications on this transport.** The stdio MCP emits `notifications/progress`
+> during long calls (see [reference/mcp-tools.md](../reference/mcp-tools.md#progress-notifications)).
+> The HTTP MCP surface forwards tool calls into the REST routes and does not run that adapter, so a
+> client enforcing an idle deadline can still abort a long `synthesize` mid-flight here. Use the
+> stdio transport if that matters, or set `RESEARCH_LLM_WALL_CLOCK_CAP` so a stalled call fails as a
+> reportable error rather than a silent abort.
+
 Full schemas: [reference/rest-api.md](../reference/rest-api.md).
 
 ## Multi-tenant via per-request keys

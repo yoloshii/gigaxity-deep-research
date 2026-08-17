@@ -1,5 +1,69 @@
 # Release notes
 
+## v0.13.0 (2026-08-18)
+
+**A long synthesis was indistinguishable from a hung connection, so clients killed it mid-flight.**
+
+The server emitted nothing while it worked. MCP clients typically run two deadlines on a tool call —
+a hard wall-clock cap that progress notifications do not extend, and an idle cap that a notification
+does reset — so a synthesis that reported nothing ran the idle timer uninterrupted for its whole
+duration. The client gave up first. Because it gave up mid-call, this server never reached the point
+of reporting a failure either: the caller saw a bare transport abort with no diagnosis, and a retry
+of the identical request would often succeed in seconds.
+
+The five tools that make an LLM call — `research`, `ask`, `discover`, `synthesize`, `reason` — now
+emit `notifications/progress` when the client sends a `progressToken`: an opening notification, one
+on either side of every model call, and a `model call still running` heartbeat every
+`RESEARCH_PROGRESS_HEARTBEAT_INTERVAL` seconds (default 30) while a call is in flight. `search` is
+deliberately excluded — it makes no LLM call, so it would emit an opening notification and then
+nothing, which is more misleading than silence.
+
+The heartbeat is the part that matters. Notifications on either side of a call cannot subdivide the
+call itself, and a non-streaming completion is silent for its entire duration — on a slow endpoint
+that single call *is* the whole exposure.
+
+Instrumentation lives in `llm_client.chat_completion` rather than in the tools, because every LLM
+call in the process funnels through that one method. Progress therefore also covers the synthesis
+engine and per-source concurrent work, which the tool layer cannot see.
+
+> **stdio transport only.** The HTTP MCP surface at `/mcp` is served by `FastApiMCP`, which forwards
+> tool calls into the REST routes and does not run the progress adapter. Those calls emit no
+> progress notifications. Documented in
+> [`docs/reference/mcp-tools.md`](docs/reference/mcp-tools.md#progress-notifications) and
+> [`docs/guides/setup-rest.md`](docs/guides/setup-rest.md); an adapter for that transport is a
+> follow-up.
+
+Two new knobs, both off or inert by default:
+
+- `RESEARCH_LLM_WALL_CLOCK_CAP` (default `0`, disabled) — an absolute ceiling in seconds for one
+  model call including the SDK's retry chain. It is a **server-wide resource policy**, applying
+  uniformly to MCP, REST and library callers; a caller-dependent ceiling would mean identical work
+  timing out on one surface and not another. It is off by default because the right ceiling depends
+  on the endpoint: a hosted model's generation time is bounded, a slow local server's is not, and a
+  ceiling that kills healthy local generation is a worse failure than having none. `480` is a
+  reasonable starting profile for a hosted endpoint.
+- `RESEARCH_PROGRESS_SEND_TIMEOUT` (default `10`) — bounds a single notification. The reporter holds
+  its serialization lock across the send, so a transport that *hangs* rather than errors would
+  otherwise block every concurrent call, turning the reporting machinery into the stall it exists to
+  prevent.
+
+`RESEARCH_LLM_MAX_RETRIES` also arrives in this release, defaulting to the OpenAI SDK's own `2` so
+behaviour is unchanged. It exposes a count that was previously unreachable without editing source.
+The SDK retries read-timeouts exactly as it retries 429s, so the count multiplies
+`RESEARCH_LLM_TIMEOUT`: one stalled connection costs roughly `(retries + 1) x timeout` of silent
+retrying. Lowering it shortens that stall **and gives up a recovery attempt** — a request whose first
+attempts time out and whose last succeeds works today and fails at `0` — so it is opt-in rather than
+tightened by default.
+
+`RESEARCH_LLM_TIMEOUT`'s documentation is corrected while nearby: it is an httpx **operation**
+timeout, not a wall-clock bound on the call. httpx reapplies the read timeout to every individual
+network read, so a slowly-trickling response outlasts it, and the SDK sleeps between retries outside
+those windows. `RESEARCH_LLM_WALL_CLOCK_CAP` is the setting that actually bounds a call.
+
+**Behaviour change:** clients that send a `progressToken` now receive notifications where previously
+they received none. Clients that do not send one are unaffected — `Context.report_progress` no-ops
+without a token. No default timeout, retry count or model selection changes in this release.
+
 ## v0.12.0 (2026-08-05)
 
 **A markdown-heavy model could lose its entire contradiction list to formatting, and the warning said the parser broke when it hadn't.**
