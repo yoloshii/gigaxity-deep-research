@@ -312,7 +312,7 @@ Standard FastAPI / OpenAPI status codes:
 | 429 | Rate limited (forwarded from upstream) |
 | 500 | Internal error |
 | 503 | No search connectors configured |
-| 504 | LLM timeout |
+| 504 | LLM timeout — a per-operation timeout (`RESEARCH_LLM_TIMEOUT`) or, when enabled, the whole-call ceiling `RESEARCH_LLM_WALL_CLOCK_CAP` |
 
 Error body shape (FastAPI default):
 
