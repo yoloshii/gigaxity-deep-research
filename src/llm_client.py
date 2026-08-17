@@ -52,6 +52,13 @@ class LLMClient:
             base_url=self.base_url,
             api_key=self.api_key or "not-configured",
             timeout=timeout,
+            # (llm_max_retries + 1) attempts. The SDK retries read-timeouts the
+            # same way it retries 429s, so this multiplies `llm_timeout`: one
+            # stalled upstream connection costs that product in silent retrying,
+            # which is how a chain outlives an MCP client's abort deadline while
+            # the server never gets to report a failure. Defaults to the SDK's
+            # own value, so behaviour is unchanged unless a deployment sets it.
+            max_retries=settings.llm_max_retries,
         )
 
         # Track which model was last used
