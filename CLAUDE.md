@@ -67,6 +67,9 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 | `RESEARCH_LLM_MAX_TOKENS` | `16384` | |
 | `RESEARCH_LLM_TIMEOUT` | `120` | Per-request seconds. An httpx *operation* timeout, not a wall-clock bound on the call |
 | `RESEARCH_LLM_MAX_RETRIES` | `2` | SDK retries per request → `(value + 1)` attempts. Multiplies the timeout above, since read-timeouts retry like 429s. Lowering it shortens a stalled chain and gives up a recovery attempt |
+| `RESEARCH_LLM_WALL_CLOCK_CAP` | `0` (disabled) | Absolute ceiling in seconds for one model call including its retry chain. Server-wide: applies to MCP, REST and library callers. Off by default — a slow local endpoint can legitimately exceed any fixed ceiling |
+| `RESEARCH_PROGRESS_HEARTBEAT_INTERVAL` | `30` | Seconds between "still running" progress notifications during a model call. A call shorter than one interval emits none |
+| `RESEARCH_PROGRESS_SEND_TIMEOUT` | `10` | Seconds one notification may take before reporting is disabled for that request |
 | `RESEARCH_SEARXNG_HOST` | `http://localhost:8888` | Primary search source — required |
 | `RESEARCH_SEARXNG_ENGINES` | `brave,duckduckgo,startpage,mojeek,wikipedia` | Matches the bundled SearXNG `settings.yml.example` enabled list |
 | `RESEARCH_TAVILY_API_KEY` | *(empty)* | Optional additional connector — runs in parallel with SearXNG, RRF-fused |

@@ -6,6 +6,31 @@ The stdio surface returns **markdown strings**, not JSON, so the agent can pipe 
 
 The tools split into **two primitives** (raw and combined behavior in one call) plus **four deep-research tools** (drive each step independently).
 
+## Progress notifications
+
+Every tool that makes an LLM call — `research`, `ask`, `discover`, `synthesize`, `reason` — emits
+`notifications/progress` while it works, provided your client sends a `progressToken` with the
+request. `search` does not: it makes no LLM call.
+
+You get an opening notification when the tool starts, one on either side of every model call, and a
+`model call still running` heartbeat every `RESEARCH_PROGRESS_HEARTBEAT_INTERVAL` seconds while a
+call is in flight. Messages are prefixed with the tool name (`synthesize: model call started`). The
+`progress` value increases monotonically; `total` is not sent, because the number of model calls a
+synthesis will make is not known when it begins.
+
+This matters because MCP clients typically enforce an **idle** deadline that a progress notification
+resets. A long synthesis that emits nothing looks indistinguishable from a hung connection, and the
+client aborts it mid-flight while the server is still working.
+
+> ⚠️ **stdio transport only.** The HTTP MCP surface mounted at `/mcp` (see
+> [`../guides/setup-rest.md`](../guides/setup-rest.md)) is served by `FastApiMCP`, which forwards
+> tool calls into the REST routes and does not run the progress adapter — those calls emit **no**
+> progress notifications. If your client enforces an idle deadline, use the stdio transport, or set
+> `RESEARCH_LLM_WALL_CLOCK_CAP` so a stalled call fails as a reportable error instead of a silent
+> abort.
+
+---
+
 ## Common parameter
 
 Every tool accepts an optional `api_key: str | None = None` parameter. When set, it overrides `RESEARCH_LLM_API_KEY` for that call only — used in multi-tenant deployments to bill each user's calls to their own LLM endpoint account. `search` accepts the parameter for surface consistency but ignores it (no LLM call).

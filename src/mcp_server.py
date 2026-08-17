@@ -8,6 +8,7 @@ Usage:
     python -m src.mcp_server
 """
 
+import functools
 import os
 from typing import Literal
 
@@ -15,9 +16,11 @@ from typing import Literal
 os.environ["FASTMCP_LOG_LEVEL"] = "ERROR"
 
 from fastmcp import FastMCP
+from fastmcp.server.dependencies import get_context
 import fastmcp
 fastmcp.settings.log_level = "ERROR"
 
+from . import progress
 from .config import settings
 from .llm_client import get_llm_client
 from .llm_utils import get_llm_content, derive_effective_budget
@@ -67,6 +70,63 @@ def _get_llm_client(api_key: str | None = None):
     return get_llm_client(api_key=api_key)
 
 
+def _make_request_reporter(tool_name: str) -> "progress.ProgressReporter | None":
+    """Bind a reporter to the live FastMCP request, or None when there isn't one.
+
+    `get_context()` RAISES outside an active MCP request, and these tools are
+    also called directly as Python functions by the test suite and by library
+    consumers, so the absence of a context is an ordinary condition and never an
+    error. Only that specific RuntimeError is caught — anything else is a real
+    fault.
+
+    A missing progressToken is handled a layer down: `Context.report_progress`
+    itself no-ops when the client did not send one, so a client that does not
+    want progress costs nothing.
+    """
+    try:
+        ctx = get_context()
+    except RuntimeError:
+        return None
+
+    async def _send(value: float, message: str) -> None:
+        await ctx.report_progress(progress=value, total=None, message=message)
+
+    return progress.ProgressReporter(_send, tool_name)
+
+
+def _reports_progress(fn):
+    """Install a request-scoped progress reporter for the whole tool call.
+
+    Applied to every tool that reaches the model. `search` is deliberately
+    excluded — it makes no LLM call, so it would install a reporter that never
+    ticks.
+
+    NOTE: this covers the **stdio** MCP transport only. The HTTP MCP surface in
+    `src/main.py` is served by FastApiMCP, which forwards into the REST routes
+    and never runs this decorator, so those calls emit no progress. See
+    `docs/reference/mcp-tools.md`.
+
+    A decorator rather than a `try/finally` inside each body purely to avoid
+    re-indenting several hundred lines; the semantics are installed-once around
+    the entire call, and always reset via its token so a subsequent sequential
+    call in the same task cannot inherit this request's reporter.
+
+    `functools.wraps` sets `__wrapped__`, which `inspect.signature` follows, so
+    FastMCP still derives each tool's schema from its real signature.
+    """
+
+    @functools.wraps(fn)
+    async def _wrapper(*args, **kwargs):
+        token = progress.install(_make_request_reporter(fn.__name__))
+        try:
+            await progress.tick("starting")
+            return await fn(*args, **kwargs)
+        finally:
+            progress.reset(token)
+
+    return _wrapper
+
+
 @mcp.tool()
 async def search(
     query: str,
@@ -102,6 +162,7 @@ async def search(
 
 
 @mcp.tool()
+@_reports_progress
 async def research(
     query: str,
     top_k: int = 10,
@@ -164,6 +225,7 @@ async def research(
 
 
 @mcp.tool()
+@_reports_progress
 async def ask(
     query: str,
     context: str = "",
@@ -197,6 +259,7 @@ async def ask(
 
 
 @mcp.tool()
+@_reports_progress
 async def discover(
     query: str,
     top_k: int = 10,
@@ -284,6 +347,7 @@ async def discover(
 
 
 @mcp.tool()
+@_reports_progress
 async def synthesize(
     query: str,
     sources: list[dict],
@@ -657,6 +721,7 @@ async def synthesize(
 
 
 @mcp.tool()
+@_reports_progress
 async def reason(
     query: str,
     context: str = "",
