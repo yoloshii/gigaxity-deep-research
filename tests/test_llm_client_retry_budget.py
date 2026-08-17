@@ -51,12 +51,18 @@ def test_retry_count_is_configurable(monkeypatch):
 def test_shipped_default_matches_the_sdk_default():
     """Installing this release must not change retry behaviour by itself.
 
-    The SDK's own default is 2. Shipping anything else here would silently trade
-    a recovery attempt for a shorter stall on every existing deployment — a
-    resilience regression nobody opted into. Operators who want the shorter
-    stall set RESEARCH_LLM_MAX_RETRIES themselves.
+    Shipping anything other than the SDK's own value would silently trade a
+    recovery attempt for a shorter stall on every existing deployment — a
+    resilience regression nobody opted into. Operators who want the shorter stall
+    set RESEARCH_LLM_MAX_RETRIES themselves.
+
+    Read from the SDK rather than hardcoded: `openai` is an open dependency range,
+    so a hardcoded literal would prove only that our default is 2, not that it
+    still matches the installed SDK if upstream ever moves.
     """
-    assert settings.llm_max_retries == 2
+    from openai._constants import DEFAULT_MAX_RETRIES
+
+    assert settings.llm_max_retries == DEFAULT_MAX_RETRIES
 
 
 def test_connect_timeout_stays_short(client):

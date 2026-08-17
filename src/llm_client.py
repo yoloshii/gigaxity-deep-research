@@ -92,10 +92,12 @@ class OpenRouterClient:
 
         logger.debug(f"Request with model: {current_model}")
 
-        # Every LLM call this server makes funnels through here — MCP tools, REST
-        # routes, the synthesis engine and library callers all reach the SDK via
-        # this method — so it is the one place that can bound and report on all
-        # of them. See `src/progress.py` for why silence is the problem.
+        # Every SERVER-OWNED LLM call funnels through here — MCP tools, REST
+        # routes and the synthesis engine all reach the SDK via this method — so
+        # it is the one place that can bound and report on all of them. NOT
+        # universal: `SynthesisEngine` accepts an injected client, and one that
+        # is not this wrapper bypasses both the reporting and the cap. See
+        # `src/progress.py` for why silence is the problem.
         #
         # The nesting is load-bearing, not stylistic:
         #   * the heartbeat is cancelled in an INNER `finally`, before settlement,

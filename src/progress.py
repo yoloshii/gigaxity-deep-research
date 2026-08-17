@@ -11,7 +11,10 @@ A pipeline that emits nothing runs the idle timer uninterrupted for its whole
 duration, so a long synthesis is aborted client-side mid-flight — while the
 server is still working, and without ever getting to report a failure. This
 module is the emitting half of the fix; `llm_client.chat_completion` is where it
-is wired, because every LLM call in this server funnels through that one method.
+is wired, because every server-owned LLM call reaches the SDK through that one
+method. Coverage is therefore exactly the calls made through this wrapper: a
+caller that injects its own client into `SynthesisEngine` bypasses both the
+reporting and the wall-clock cap.
 
 Design constraints
 ------------------

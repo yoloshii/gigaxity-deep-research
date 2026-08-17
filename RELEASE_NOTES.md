@@ -22,9 +22,14 @@ The heartbeat is the part that matters. Notifications on either side of a call c
 call itself, and a non-streaming completion is silent for its entire duration — on a slow endpoint
 that single call *is* the whole exposure.
 
-Instrumentation lives in `llm_client.chat_completion` rather than in the tools, because every LLM
-call in the process funnels through that one method. Progress therefore also covers the synthesis
-engine and per-source concurrent work, which the tool layer cannot see.
+Instrumentation lives in `llm_client.chat_completion` rather than in the tools, because every
+**server-owned** LLM call — MCP tools, REST routes and the synthesis engine — reaches the SDK
+through that one method. Progress therefore also covers per-source concurrent work, which the tool
+layer cannot see.
+
+The exception, stated rather than implied: `SynthesisEngine` lets a caller inject a replacement
+client, and an injected client bypasses the wrapper entirely. Library code that supplies its own
+client gets neither progress notifications nor `RESEARCH_LLM_WALL_CLOCK_CAP`.
 
 > **stdio transport only.** The HTTP MCP surface at `/mcp` is served by `FastApiMCP`, which forwards
 > tool calls into the REST routes and does not run the progress adapter. Those calls emit no
