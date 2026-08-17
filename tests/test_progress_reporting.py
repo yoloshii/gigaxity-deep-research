@@ -4,10 +4,12 @@ An MCP client runs two deadlines: a hard wall-clock cap that progress does NOT
 extend, and an idle cap that a progress notification DOES reset. This server
 emitted nothing, so the idle timer ran uninterrupted for a whole synthesis.
 
-Instrumentation lives in `llm_client.chat_completion` because every LLM call in
-the process funnels through it — MCP tools, REST routes, the synthesis engine
-and library callers alike. These tests cover the emission machinery, the
-production wiring, and the failure modes that would make either vacuous.
+Instrumentation lives in `llm_client.chat_completion` because every server-owned
+LLM call reaches the SDK through it — MCP tools, REST routes and the synthesis
+engine alike. A client injected into `SynthesisEngine` bypasses the wrapper and
+is therefore out of coverage by construction. These tests cover the emission
+machinery, the production wiring, and the failure modes that would make either
+vacuous.
 """
 
 import asyncio
@@ -208,24 +210,71 @@ async def test_no_heartbeat_task_without_a_reporter():
 
 
 async def test_cancellation_during_heartbeat_cleanup_propagates(reporter, monkeypatch):
-    """The subtle one. `heartbeat.cancel(); try: await heartbeat; except
-    CancelledError: pass` ALSO swallows a cancellation delivered to the request
-    task while it waits on that cleanup — the request would then sail on to
-    settlement as though nothing happened. `asyncio.gather(...,
-    return_exceptions=True)` returns the child's cancellation as a value while
-    leaving an outer cancellation intact."""
-    c = _client(monkeypatch, delay=1.5)
+    """The subtle one, and it has to be aimed precisely.
+
+    `heartbeat.cancel(); try: await heartbeat; except CancelledError: pass` ALSO
+    swallows a cancellation delivered to the REQUEST task while it waits on that
+    cleanup — the request then sails on to settlement as though nothing happened.
+    `asyncio.gather(..., return_exceptions=True)` returns the child's
+    cancellation as a value while leaving an outer cancellation intact.
+
+    Cancelling mid-model-call does NOT test this: that cancellation lands before
+    cleanup begins and the rejected implementation passes it too. So the fake
+    heartbeat resists teardown, signals once the request is parked inside
+    cleanup, and only then is the request cancelled — the one window where the
+    two implementations differ.
+    """
+    in_cleanup = asyncio.Event()
+
+    async def _stubborn():
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            in_cleanup.set()        # the request is now awaiting our teardown
+            await asyncio.sleep(0.3)  # hold it there
+            raise
+
+    monkeypatch.setattr(progress, "start_heartbeat",
+                        lambda: asyncio.create_task(_stubborn()))
+
+    c = _client(monkeypatch, delay=0.05)
     task = asyncio.create_task(c.chat_completion(messages=[{"role": "user", "content": "x"}]))
-    await asyncio.sleep(0.5)
+    await asyncio.wait_for(in_cleanup.wait(), timeout=5)
     task.cancel()
+
     with pytest.raises(asyncio.CancelledError):
         await task
-    assert task.cancelled()
+    assert task.cancelled(), "cancellation was swallowed by heartbeat cleanup"
+    assert not any("returned" in m for m in reporter.messages), (
+        "the request settled after being cancelled during cleanup"
+    )
 
 
 # --------------------------------------------------------------------------
 # the wall-clock cap
 # --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "field,bad",
+    [
+        ("llm_max_retries", -1),
+        ("progress_send_timeout", 0),
+        ("progress_heartbeat_interval", 0),
+    ],
+)
+def test_invalid_values_are_rejected_at_construction(field, bad):
+    """A packaged user never runs pytest, so the bounds have to hold at startup.
+
+    Without this, deleting `ge=0` / `gt=0` leaves the suite green while a
+    deployment silently accepts `RESEARCH_LLM_MAX_RETRIES=-1` — which the SDK
+    turns into zero attempts and then a "should never happen" assertion.
+    """
+    from pydantic import ValidationError
+    from src.config import Settings
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, **{field: bad})
 
 
 async def test_cap_is_disabled_by_default():
