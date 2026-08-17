@@ -58,14 +58,22 @@ Symptom-fix lookup table for common boot and runtime errors. Find your symptom i
 |---|---|---|
 | 422 `validation_error` on POST | Request body shape mismatch | Check schema in [reference/rest-api.md](reference/rest-api.md); `pydantic` reports the bad field |
 | `X-OpenRouter-Api-Key` header ignored | Header name typo | Exact name is `X-OpenRouter-Api-Key` (the alias in `routes.py`); HTTP makes it case-insensitive but typos still fail |
-| Connection drops on long synthesize calls | Reverse proxy timeout | Increase timeout on the proxy; FastAPI itself doesn't time out short of `RESEARCH_LLM_TIMEOUT` |
+| Connection drops on long synthesize calls | Reverse proxy timeout | Increase the timeout on the proxy. FastAPI does not impose one of its own; the server-side bounds are `RESEARCH_LLM_TIMEOUT` (per network operation, not a whole-call deadline) and `RESEARCH_LLM_WALL_CLOCK_CAP` (a whole-call ceiling, **disabled by default**) |
 | 500 with no useful error | Unhandled exception | Check server logs (`docker compose logs -f` or stdout); enable `--log-level debug` on uvicorn |
+
+## MCP client aborts
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| A long `synthesize` / `research` dies mid-call with no server-side error, and retrying the same request often succeeds in seconds | The client's **idle** deadline, not a server timeout. MCP clients typically abort a tool call that reports nothing for N seconds — and because the client gives up mid-call, the server never reaches the point of reporting a failure, so logs show nothing | Since v0.13.0 the five LLM-making tools emit `notifications/progress`, which resets that idle timer — provided your client sends a `progressToken`. If it does not, lower `RESEARCH_PROGRESS_HEARTBEAT_INTERVAL` will not help; set `RESEARCH_LLM_WALL_CLOCK_CAP` instead so a stalled call fails as a reportable error rather than a silent abort |
+| Long calls abort on the HTTP MCP transport (`/mcp`) but not on stdio | The HTTP MCP surface is served by `FastApiMCP`, which forwards into the REST routes and does not emit progress | Use the stdio transport, or set `RESEARCH_LLM_WALL_CLOCK_CAP`. See [reference/mcp-tools.md](reference/mcp-tools.md#progress-notifications) |
+| A call runs far longer than expected and is never bounded | `RESEARCH_LLM_WALL_CLOCK_CAP` is `0` (disabled) by default — deliberately, since a slow local endpoint can legitimately exceed any fixed ceiling | Set it to a value above your longest healthy generation. `480` is a reasonable starting profile for a hosted endpoint |
 
 ## Performance issues
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `synthesize` takes > 30 s | Quality gate enabled with many sources | Use `fast` preset, lower `RESEARCH_DEFAULT_TOP_K` |
+| `synthesize` takes > 30 s | Quality gate enabled with many sources | Use `fast` preset, lower `RESEARCH_DEFAULT_TOP_K`. Since v0.13.0 the call reports progress while it works, so a slow run is visibly alive rather than indistinguishable from a hang |
 | `discover` slow | Multiple search engines + decomposition | Disable LinkUp/Tavily by clearing their keys; reduce engine list in `RESEARCH_SEARXNG_ENGINES` |
 | First call after long idle is slow | OpenRouter cold-start | Send a warmup `ask` call before traffic |
 | High RAM usage | Large source content + RCS off | Enable RCS via `/synthesize/p1` endpoint |

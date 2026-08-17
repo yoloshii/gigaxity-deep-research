@@ -75,6 +75,8 @@ Where `rank_i(d)` is the rank of document `d` in connector `i`'s list. Documents
 
 `src/llm_client.py` holds the OpenRouter client (or, on the `local-inference` branch, a generic OpenAI-compatible client). The call sends the assembled prompt (system instructions + sources + query) and receives the model's completion.
 
+Every server-owned LLM call reaches the SDK through this one method, which makes it the single place that can observe and bound them all. Since v0.13.0 it is therefore also where two cross-cutting concerns live: progress notifications (entry, a periodic heartbeat, and settlement — see [`../reference/mcp-tools.md`](../reference/mcp-tools.md#progress-notifications)) and the optional whole-call resource ceiling `RESEARCH_LLM_WALL_CLOCK_CAP`. Instrumenting here rather than in the MCP tools is what lets progress cover the synthesis engine and per-source concurrent work, which the tool layer cannot see. A client injected directly into `SynthesisEngine` bypasses the wrapper and gets neither.
+
 The LLM is OpenAI-compatible only — no streaming-tool-call gymnastics. This keeps the client tiny (~100 lines) and lets you swap backends by changing two env vars.
 
 ### Stage 7 — citation binding
