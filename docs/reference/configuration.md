@@ -14,7 +14,8 @@ Variables can be set in `.env` (read at startup), in the MCP `env` block of `~/.
 | `RESEARCH_LLM_TEMPERATURE` | `0.85` | No | 0.0–1.0; lower = more deterministic |
 | `RESEARCH_LLM_TOP_P` | `0.95` | No | Nucleus sampling parameter |
 | `RESEARCH_LLM_MAX_TOKENS` | `16384` | No | Max output length per call |
-| `RESEARCH_LLM_TIMEOUT` | `120` | No | Seconds before LLM call times out |
+| `RESEARCH_LLM_TIMEOUT` | `120` | No | Per-request timeout in seconds. This is an httpx **operation** timeout (read/write/pool; connect is a separate 10 s), **not** a wall-clock bound on the call — httpx reapplies the read timeout to every individual network read, so a slowly-trickling response can outlast it. |
+| `RESEARCH_LLM_MAX_RETRIES` | `2` | No | Retries the OpenAI SDK performs per request, i.e. `(value + 1)` attempts. This is the SDK's own default, so leaving it unset changes nothing. The SDK retries read-timeouts exactly as it retries 429s, so this **multiplies** `RESEARCH_LLM_TIMEOUT`: one stalled upstream connection costs roughly `(retries + 1) x timeout` of silent retrying, which is how a chain outlives an MCP client's abort deadline while the server never gets to report a failure. Lowering it shortens that stall **and gives up a recovery attempt** — a request whose first attempts time out and whose last succeeds fails at `0`. |
 | `RESEARCH_RCS_CONCURRENCY` | `4` | No | Max concurrent RCS contextual-summary calls in the synthesis pipeline. Per-source summaries are independent LLM calls; higher values cut wall-clock latency over many sources. Tune up (16–32) for hosted endpoints that accept more parallelism; values <1 are floored to 1 (serial). |
 | `RESEARCH_FAIL_OPEN_MIN_SOURCE_SCORE` | `0.3` | No | Pre-synthesis relevance-gate fail-open floor. On a REJECT (or PARTIAL-with-zero-good) decision, if at least one source scores ≥ this, `synthesize` fails open — it synthesizes over the set-aside sources, opens the answer with a `low source relevance (fail-open)` caveat, and marks the result non-cacheable, instead of returning `## Source quality insufficient`. Below the floor (no source clears it) the gate still refuses. Default `0.3` equals the REJECT threshold; raise to refuse more aggressively, lower to fail open over weaker corpora. |
 
@@ -137,6 +138,7 @@ In practice, this means:
 
 - Numeric variables that aren't parseable → `ValidationError`
 - `RESEARCH_LLM_TIMEOUT` < 1 → `ValidationError`
+- `RESEARCH_LLM_MAX_RETRIES` < 0 → `ValidationError`
 - `RESEARCH_SEARXNG_SAFESEARCH` not in {0, 1, 2} → `ValidationError`
 
 Empty optional keys are accepted as "disabled."
