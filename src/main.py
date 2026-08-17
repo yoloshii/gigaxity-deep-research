@@ -21,8 +21,9 @@ async def lifespan(app: FastAPI):
     logger.info("SearXNG: %s", settings.searxng_host)
     logger.info("MCP Server: http://%s:%s/mcp", settings.host, settings.port)
     # The wall-clock cap is a server-wide resource policy that also governs REST
-    # and library callers, and it is disabled by default — say so, so an operator
-    # expecting a ceiling can see there isn't one.
+    # and library calls made through the project's client wrapper, and it is
+    # disabled by default — say so, so an operator expecting a ceiling can see
+    # there isn't one.
     logger.info(
         "LLM wall-clock cap: %s",
         f"{settings.llm_wall_clock_cap}s" if settings.llm_wall_clock_cap > 0 else "disabled",

@@ -58,11 +58,14 @@ def test_shipped_default_matches_the_sdk_default():
 
     Read from the SDK rather than hardcoded: `openai` is an open dependency range,
     so a hardcoded literal would prove only that our default is 2, not that it
-    still matches the installed SDK if upstream ever moves.
+    still matches the installed SDK if upstream ever moves. Read from a normally
+    constructed client rather than `openai._constants`, which is private and may
+    move without any behaviour change.
     """
-    from openai._constants import DEFAULT_MAX_RETRIES
+    from openai import AsyncOpenAI
 
-    assert settings.llm_max_retries == DEFAULT_MAX_RETRIES
+    sdk_default = AsyncOpenAI(api_key="x", base_url="https://example.invalid/v1").max_retries
+    assert settings.llm_max_retries == sdk_default
 
 
 def test_connect_timeout_stays_short(client):
