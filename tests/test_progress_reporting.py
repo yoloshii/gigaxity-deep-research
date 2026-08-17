@@ -303,8 +303,10 @@ async def test_positive_cap_bounds_the_call_and_still_settles(reporter, monkeypa
 
 async def test_cap_applies_without_a_reporter(monkeypatch):
     """It is a server-wide RESOURCE policy, not an MCP-derived one: REST and
-    library callers get the same ceiling. Making it caller-dependent would mean
-    identical work timing out on one surface and not the other."""
+    library calls through this wrapper get the same ceiling. Making it
+    caller-dependent would mean identical work timing out on one surface and not
+    the other. A client injected into SynthesisEngine bypasses the wrapper and so
+    is outside this policy by construction."""
     assert progress.current() is None
     monkeypatch.setattr(settings, "llm_wall_clock_cap", 1)
     with pytest.raises(asyncio.TimeoutError):

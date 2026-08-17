@@ -42,8 +42,9 @@ Two new knobs, both off or inert by default:
 
 - `RESEARCH_LLM_WALL_CLOCK_CAP` (default `0`, disabled) — an absolute ceiling in seconds for one
   model call including the SDK's retry chain. It is a **server-wide resource policy**, applying
-  uniformly to MCP, REST and library callers; a caller-dependent ceiling would mean identical work
-  timing out on one surface and not another. It is off by default because the right ceiling depends
+  uniformly across MCP, REST and library calls **that go through the project's client wrapper** — a
+  caller-dependent ceiling would mean identical work timing out on one surface and not another. An
+  injected client is the one exception, as above. It is off by default because the right ceiling depends
   on the endpoint: a hosted model's generation time is bounded, a slow local server's is not, and a
   ceiling that kills healthy local generation is a worse failure than having none. `480` is a
   reasonable starting profile for a hosted endpoint.
