@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     brave_country: str = Field(default="", description="Optional ISO country code for geo-targeting, e.g. 'us'")
     brave_safesearch: str = Field(default="off", description="Safe search: off, moderate, or strict")
 
+    # Parallel Search MCP Configuration
+    parallel_mcp_enabled: bool = Field(default=False, description="Enable the Parallel Search MCP connector")
+    parallel_mcp_url: str = Field(default="https://search.parallel.ai/mcp", description="Parallel Search MCP endpoint")
+
     # OpenRouter LLM Configuration
     llm_api_base: str = Field(default="https://openrouter.ai/api/v1", description="LLM API base URL")
     llm_api_key: str = Field(default="", description="OpenRouter API key")

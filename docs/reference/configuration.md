@@ -59,6 +59,8 @@ vLLM / SGLang / llama.cpp (local):
 | `RESEARCH_BRAVE_API_KEY` | *(empty)* | No | Brave Search — additional parallel source (https://brave.com/search/api/). Official Brave index over a keyed API, so unlike SearXNG's scraped engines it cannot be served a CAPTCHA under automated load. Free tier ~1,000 queries/month, recurring |
 | `RESEARCH_BRAVE_COUNTRY` | *(empty)* | No | Optional ISO country code for geo-targeting, e.g. `us` |
 | `RESEARCH_BRAVE_SAFESEARCH` | `off` | No | `off`, `moderate`, or `strict` |
+| `RESEARCH_PARALLEL_MCP_ENABLED` | `false` | No | Opt in to Parallel Search through the hosted `web_search` MCP tool. Search objectives and search queries are sent to `https://search.parallel.ai/mcp`; no custom headers or credentials are required. |
+| `RESEARCH_PARALLEL_MCP_URL` | `https://search.parallel.ai/mcp` | No | Parallel Search MCP endpoint override. |
 | `RESEARCH_LINKUP_DEPTH` | `standard` | No | `standard` or `deep` |
 
 When the corresponding API key is empty, the connector is disabled. When set, the connector runs in parallel with SearXNG and contributes to RRF fusion.
