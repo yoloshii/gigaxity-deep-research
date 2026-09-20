@@ -4,7 +4,7 @@ import asyncio
 import logging
 
 from ..connectors.base import Connector, Source, SearchResult
-from ..connectors import SearXNGConnector, TavilyConnector, LinkUpConnector, BraveConnector
+from ..connectors import SearXNGConnector, TavilyConnector, LinkUpConnector, BraveConnector, YouComConnector
 from .fusion import rrf_fusion
 from ..config import settings
 
@@ -37,6 +37,7 @@ class SearchAggregator:
                 TavilyConnector(),
                 LinkUpConnector(),
                 BraveConnector(),
+                YouComConnector(),
             ]
             self.connectors = [c for c in all_connectors if c.is_configured()]
 

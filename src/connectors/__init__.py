@@ -5,6 +5,7 @@ from .searxng import SearXNGConnector
 from .tavily import TavilyConnector
 from .linkup import LinkUpConnector
 from .brave import BraveConnector
+from .youcom import YouComConnector
 
 __all__ = [
     "SearchResult",
@@ -14,4 +15,5 @@ __all__ = [
     "TavilyConnector",
     "LinkUpConnector",
     "BraveConnector",
+    "YouComConnector",
 ]

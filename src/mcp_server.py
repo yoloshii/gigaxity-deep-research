@@ -134,7 +134,7 @@ async def search(
 ) -> str:
     """Multi-source search with RRF (Reciprocal Rank Fusion).
 
-    Returns ranked results from SearXNG, Tavily, LinkUp, and Brave.
+    Returns ranked results from SearXNG, Tavily, LinkUp, Brave, and You.com.
     Use for raw search results without synthesis. No LLM call.
 
     Args:

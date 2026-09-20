@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     brave_country: str = Field(default="", description="Optional ISO country code for geo-targeting, e.g. 'us'")
     brave_safesearch: str = Field(default="off", description="Safe search: off, moderate, or strict")
 
+    # You.com Search Configuration
+    youcom_api_key: str = Field(default="", description="You.com Web Search API key")
+    youcom_safesearch: str = Field(default="moderate", description="Safe search: off, moderate, or strict")
+
     # OpenRouter LLM Configuration
     llm_api_base: str = Field(default="https://openrouter.ai/api/v1", description="LLM API base URL")
     llm_api_key: str = Field(default="", description="OpenRouter API key")

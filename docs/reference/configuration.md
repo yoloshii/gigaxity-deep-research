@@ -59,6 +59,8 @@ vLLM / SGLang / llama.cpp (local):
 | `RESEARCH_BRAVE_API_KEY` | *(empty)* | No | Brave Search — additional parallel source (https://brave.com/search/api/). Official Brave index over a keyed API, so unlike SearXNG's scraped engines it cannot be served a CAPTCHA under automated load. Free tier ~1,000 queries/month, recurring |
 | `RESEARCH_BRAVE_COUNTRY` | *(empty)* | No | Optional ISO country code for geo-targeting, e.g. `us` |
 | `RESEARCH_BRAVE_SAFESEARCH` | `off` | No | `off`, `moderate`, or `strict` |
+| `RESEARCH_YOUCOM_API_KEY` | *(empty)* | No | You.com — additional parallel source (https://you.com/platform/api-keys). Keyed REST API over You.com's own web index, returning clean structured results (title, description, snippets, page_age), so like the other keyed lanes it cannot be served a CAPTCHA under automated load |
+| `RESEARCH_YOUCOM_SAFESEARCH` | `moderate` | No | `off`, `moderate`, or `strict` |
 | `RESEARCH_LINKUP_DEPTH` | `standard` | No | `standard` or `deep` |
 
 When the corresponding API key is empty, the connector is disabled. When set, the connector runs in parallel with SearXNG and contributes to RRF fusion.
