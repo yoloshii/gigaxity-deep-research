@@ -23,7 +23,7 @@ pip install -e ".[dev]"
 
 # Configure
 cp .env.example .env
-# Edit .env: set RESEARCH_LLM_API_KEY (OpenRouter), RESEARCH_SEARXNG_HOST, optional Tavily/LinkUp keys
+# Edit .env: set RESEARCH_LLM_API_KEY (OpenRouter), RESEARCH_SEARXNG_HOST, optional Tavily/LinkUp/Brave/Parallel keys
 
 # Run as REST server (FastAPI/uvicorn)
 uvicorn src.main:app --reload
@@ -54,7 +54,7 @@ src/
   api/            # FastAPI REST routes and pydantic schemas
   discovery/      # Query routing, expansion, decomposition, focus modes
   synthesis/      # Quality gate, contradiction detection, presets, engine
-  connectors/     # SearXNG, Tavily, LinkUp clients (created at import)
+  connectors/     # SearXNG, Tavily, LinkUp, Brave, Parallel clients (created at import)
   config.py       # Pydantic settings (RESEARCH_* env vars)
   main.py         # FastAPI app entry
   mcp_server.py   # FastMCP server entry (discover/synthesize/reason/ask tools)

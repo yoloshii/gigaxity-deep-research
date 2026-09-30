@@ -15,7 +15,8 @@ Both surfaces invoke the same orchestration layer underneath. Choosing one over 
 
 ```
 1. Discovery layer        →  classify, expand, decompose
-2. Search aggregator      →  SearXNG + Tavily + LinkUp (parallel)
+2. Search aggregator      →  SearXNG (+ one category lane) + Tavily + LinkUp
+                             + Brave + Parallel (parallel)
 3. RRF fusion             →  rank-merge across providers
 4. (optional) Read URLs   →  client fetches full content for top sources
 5. Synthesis layer        →  quality gate + contradiction + outline + RCS
@@ -31,7 +32,7 @@ Both surfaces invoke the same orchestration layer underneath. Choosing one over 
 - **Routing** classifies the query (factual lookup, comparison, exploratory, debugging) and selects connectors accordingly.
 - **Expansion** generates HyDE-style variants — alternate phrasings of the query that surface different result clusters.
 - **Decomposition** splits multi-aspect queries into sub-queries that each get their own search-and-synthesis pass.
-- **Focus modes** bias the connector selection and ranking weights toward a specific domain (academic, debugging, news, etc.).
+- **Focus modes** pick the SearXNG vertical lane (academic → science, debugging / documentation → it, tutorial → videos), whether discovery expands the query, and which gap categories it looks for.
 
 ### Stage 2 — search aggregator
 
@@ -40,6 +41,10 @@ Both surfaces invoke the same orchestration layer underneath. Choosing one over 
 - `searxng.py` — required (when configured), talks JSON to a self-hosted or third-party SearXNG instance
 - `tavily.py` — optional additional connector via `tavily-python`
 - `linkup.py` — optional additional connector via `linkup-sdk`
+- `brave.py` — optional additional connector, Brave's official Search API over HTTP
+- `parallel.py` — optional additional connector, Parallel's Search API over HTTP
+
+`src/search/verticals.py` decides whether a search gets a **vertical lane**: a second SearXNG connector on one category (`science`, `it` or `videos`), picked by the focus mode or a keyword heuristic, and run only when the instance's `/config` shows an enabled engine in that category. It runs beside the others (its `/config` read too) and fuses as its own ranked list, `searxng:<category>`. It keeps only results an engine of the category returned — a locked category preference or a `!bang` can make the instance answer from other engines — and drops URLs the base SearXNG list already holds, so one instance is never counted twice. A dropped result leaves its rank empty rather than promoting the results after it.
 
 Connectors run in parallel via `asyncio.gather`. If a connector fails (timeout, 5xx, missing API key), the aggregator logs and continues with whatever returned. Empty results from all connectors propagate as an empty `sources` array — the caller decides whether to retry or surface the failure.
 

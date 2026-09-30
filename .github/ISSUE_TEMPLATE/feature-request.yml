@@ -39,7 +39,7 @@ body:
         - REST API
         - Discovery Module
         - Synthesis Module
-        - Connectors (SearXNG, Tavily, LinkUp)
+        - Connectors (SearXNG, Tavily, LinkUp, Brave, Parallel)
         - LLM Client (OpenRouter / local inference)
         - Configuration
         - Docker / Deployment

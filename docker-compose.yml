@@ -20,7 +20,9 @@ services:
 
       # SearXNG Configuration
       RESEARCH_SEARXNG_HOST: "${SEARXNG_HOST:-http://host.docker.internal:8888}"
-      RESEARCH_SEARXNG_ENGINES: "brave,duckduckgo,startpage,mojeek,wikipedia"
+      # Leave empty: an explicit engines= list overrides the instance's disabled flags.
+      RESEARCH_SEARXNG_ENGINES: ""
+      RESEARCH_SEARXNG_VERTICAL_ROUTING: "true"
       RESEARCH_SEARXNG_CATEGORIES: "general"
       RESEARCH_SEARXNG_LANGUAGE: "en"
       RESEARCH_SEARXNG_SAFESEARCH: "0"
@@ -28,6 +30,10 @@ services:
       # Brave Search Configuration (optional)
       RESEARCH_BRAVE_API_KEY: "${BRAVE_API_KEY:-}"
       RESEARCH_BRAVE_SAFESEARCH: "off"
+
+      # Parallel Search Configuration (optional)
+      RESEARCH_PARALLEL_API_KEY: "${PARALLEL_API_KEY:-}"
+      RESEARCH_PARALLEL_MODE: "fast"
 
       # Tavily Configuration (optional)
       RESEARCH_TAVILY_API_KEY: "${TAVILY_API_KEY:-}"

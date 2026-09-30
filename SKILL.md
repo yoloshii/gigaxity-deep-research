@@ -1,6 +1,6 @@
 ---
 name: gigaxity-deep-research
-description: Deep research MCP server wrapping Qwen3-30B-A3B-Thinking via OpenRouter. Use when an agent needs cross-source synthesis with citations, exploratory expansion of an unfamiliar topic, chain-of-thought reasoning over evidence, or fast conversational lookups grounded in live web search. Exposes six MCP tools — two primitives (search, research) plus four deep-research tools (discover, synthesize, reason, ask) — with matching REST endpoints for each.
+description: Deep research MCP server wrapping Qwen3-30B-A3B-Thinking via OpenRouter. Use when an agent needs cross-source synthesis with citations, exploratory expansion of an unfamiliar topic, chain-of-thought reasoning over evidence, or fast conversational lookups grounded in live web search. Exposes seven MCP tools — three primitives (search, vertical_search, research) plus four deep-research tools (discover, synthesize, reason, ask) — with matching REST endpoints for each.
 version: 1.0.0
 ---
 
@@ -10,11 +10,12 @@ A skill-format reference for any agent (Claude Code, Codex, Cursor, Hermes, plai
 
 ## Quick Start
 
-The MCP server exposes **six tools** — two primitives plus four deep-research tools. Pick one based on query type, call it, return the result to the user verbatim.
+The MCP server exposes **seven tools** — three primitives plus four deep-research tools. Pick one based on query type, call it, return the result to the user verbatim.
 
 ```
 # Primitives — raw and combined behavior in one call
 search(query)                           # Multi-source aggregation, no LLM
+vertical_search(query, vertical)        # One SearXNG category (videos/science/it/docs/packages), no LLM
 research(query)                         # Search + synthesis with citations, single call
 
 # Deep-research tools — discrete steps, drive each independently
@@ -132,13 +133,20 @@ result = mcp__gigaxity-deep-research__reason(
 
 ### MCP tools (stdio)
 
-All six tools return **markdown strings**, not JSON. Every tool also accepts an optional `openrouter_api_key: str | None = None` for per-request key override (omitted from the signatures below for brevity).
+All seven tools return **markdown strings**, not JSON. Every tool also accepts an optional `openrouter_api_key: str | None = None` for per-request key override (omitted from the signatures below for brevity).
 
 ```
 mcp__gigaxity-deep-research__search(
     query: str,
+    top_k: int = 10,
+    focus_mode: Literal["general", "academic", "documentation", "comparison", "debugging", "tutorial", "news"] | None = None
+) -> str                      # markdown ranked results, no LLM call; focus_mode routes the SearXNG category lane
+
+mcp__gigaxity-deep-research__vertical_search(
+    query: str,
+    vertical: Literal["videos", "science", "it", "docs", "packages", "general"] = "videos",
     top_k: int = 10
-) -> str                      # markdown ranked results, no LLM call
+) -> str                      # markdown results from one SearXNG category + failing engines, no LLM call
 
 mcp__gigaxity-deep-research__research(
     query: str,
@@ -185,7 +193,8 @@ Base URL: `http://localhost:8000` (configurable via `RESEARCH_HOST` / `RESEARCH_
 | Method | Path | Body | Notes |
 |---|---|---|---|
 | GET | `/api/v1/health` | — | Health + active connectors |
-| POST | `/api/v1/search` | `{query, top_k?, connectors?}` | Multi-source search only, no LLM |
+| POST | `/api/v1/search` | `{query, top_k?, connectors?, focus_mode?}` | Multi-source search only, no LLM |
+| POST | `/api/v1/vertical-search` | `{query, vertical?, top_k?}` | One SearXNG category, no LLM |
 | POST | `/api/v1/research` | `{query, top_k?, reasoning_effort?, preset?, focus_mode?}` | Combined search + synthesis |
 | POST | `/api/v1/ask` | `{query, context?, api_key?}` | Direct LLM, no search hop |
 | POST | `/api/v1/discover` | `{query, focus_mode?, identify_gaps?, top_k?}` | Exploratory expansion + gap detection |
@@ -227,7 +236,7 @@ All POST endpoints accept the optional header `X-OpenRouter-Api-Key: <key>` to o
 | LLM client | `src/llm_client.py` (OpenRouter on `main`, generic OpenAI-compat on `local-inference` branch) |
 | Discovery | `src/discovery/` |
 | Synthesis | `src/synthesis/` |
-| Connectors | `src/connectors/` (SearXNG, Tavily, LinkUp, Brave) |
+| Connectors | `src/connectors/` (SearXNG, Tavily, LinkUp, Brave, Parallel) |
 | Config | `src/config.py` (pydantic settings, `RESEARCH_*` env vars) |
 
 ## Error Handling
@@ -237,7 +246,7 @@ All POST endpoints accept the optional header `X-OpenRouter-Api-Key: <key>` to o
 | `RESEARCH_LLM_API_KEY` missing | Fail fast at startup with clear message |
 | 401 from OpenRouter | Propagate as 401 to caller; do not retry with same key |
 | 429 from OpenRouter | Exponential backoff (3 attempts), then propagate |
-| SearXNG host unreachable | Fail open — fall back to Tavily/LinkUp if configured |
+| SearXNG host unreachable | Fail open — the keyed connectors (Tavily, LinkUp, Brave, Parallel) still answer if configured |
 | All search sources fail | Return empty `sources` with `error` field — let the agent decide |
 | LLM timeout | Honor `RESEARCH_LLM_TIMEOUT`; return partial result if streaming, else 504 |
 | Per-request key invalid | 401 to caller; the env-configured key remains usable for other tenants |

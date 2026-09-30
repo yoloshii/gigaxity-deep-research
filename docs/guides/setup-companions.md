@@ -55,6 +55,14 @@ In the parent project's `.env`:
 RESEARCH_SEARXNG_HOST=http://localhost:8888
 ```
 
+The bundled config groups engines into categories — `general`, `science`, `it`, `videos`, plus the custom `docs` and `packages` — which the parent project queries as vertical lanes and through `vertical_search`. Check that each one answers:
+
+```bash
+curl -s 'http://localhost:8888/search?q=python+asyncio&format=json&categories=science' \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin);print(len(d["results"]),{r.get("category") for r in d["results"]},d["unresponsive_engines"])'
+# e.g. 60 {'science'} []
+```
+
 For production hardening (real `secret_key`, rate limiting, reverse proxy), see [`companions/searxng/README.md`](../../companions/searxng/README.md).
 
 ## 2. Parent server
