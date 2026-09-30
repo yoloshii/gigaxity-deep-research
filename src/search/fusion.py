@@ -5,7 +5,7 @@ from ..config import settings
 
 
 def rrf_fusion(
-    results_lists: list[list[Source]],
+    results_lists: list[list[Source | None]],
     k: int | None = None,
     top_k: int = 20,
 ) -> list[Source]:
@@ -15,7 +15,9 @@ def rrf_fusion(
     RRF score = sum(1 / (k + rank)) for each list where item appears.
 
     Args:
-        results_lists: List of ranked source lists from different connectors
+        results_lists: List of ranked source lists from different connectors.
+            A None entry is a hole: a suppressed result keeps its rank, so
+            the results after it are not promoted.
         k: RRF constant (default: 60, higher = more weight to lower ranks)
         top_k: Number of results to return
 
@@ -28,6 +30,8 @@ def rrf_fusion(
 
     for results in results_lists:
         for rank, source in enumerate(results, start=1):
+            if source is None:
+                continue
             # Use URL as deduplication key
             source_key = source.url
 
