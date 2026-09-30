@@ -2,7 +2,7 @@
 
 > **You are reading this on the `local-inference` branch.** The default LLM endpoint is a self-hosted OpenAI-compatible server (vLLM, SGLang, or llama.cpp). The hosted-OpenRouter framing in the rest of this page applies on `main`; this branch swaps the default to local inference but the synthesis pipeline is identical.
 
-Gigaxity Deep Research is an MCP server that gives any MCP-compatible agent (Claude Code, Codex, Cursor, Hermes, and others) a deep research capability — multi-source search, citation-aware synthesis, contradiction detection, and chain-of-thought reasoning — backed by [Qwen3-30B-A3B-Thinking](https://huggingface.co/Qwen/Qwen3-30B-A3B-Thinking-2507) running locally on this branch (or hosted on [OpenRouter](https://openrouter.ai/) when configured for that). It exposes six tools — two primitives (`search`, `research`) plus four deep-research tools (`ask`, `discover`, `synthesize`, `reason`) — over both an MCP stdio surface and a FastAPI REST API. Standalone agents that take a system prompt instead of MCP can use the REST API for the same capability set.
+Gigaxity Deep Research is an MCP server that gives any MCP-compatible agent (Claude Code, Codex, Cursor, Hermes, and others) a deep research capability — multi-source search, citation-aware synthesis, contradiction detection, and chain-of-thought reasoning — backed by [Qwen3-30B-A3B-Thinking](https://huggingface.co/Qwen/Qwen3-30B-A3B-Thinking-2507) running locally on this branch (or hosted on [OpenRouter](https://openrouter.ai/) when configured for that). It exposes seven tools — three primitives (`search`, `vertical_search`, `research`) plus four deep-research tools (`ask`, `discover`, `synthesize`, `reason`) — over both an MCP stdio surface and a FastAPI REST API. Standalone agents that take a system prompt instead of MCP can use the REST API for the same capability set.
 
 This page covers what the project is, the problems it solves, and where it sits in the broader seven-MCP deep research stack.
 
@@ -19,7 +19,7 @@ Gigaxity Deep Research handles the second wall by running the search-read-synthe
 
 ```
 Query → Discovery layer (route, expand, decompose, focus)
-      → Search aggregator (SearXNG required; Tavily, LinkUp optional — all configured connectors run in parallel)
+      → Search aggregator (SearXNG required, plus one category lane when routed; Tavily, LinkUp, Brave, Parallel optional — all configured connectors run in parallel)
       → RRF fusion (rank-merge across providers)
       → Synthesis layer (CRAG quality gate, contradiction detection, outline-guided generation)
       → OpenAI-compatible LLM (Qwen3-30B-A3B-Thinking by default)

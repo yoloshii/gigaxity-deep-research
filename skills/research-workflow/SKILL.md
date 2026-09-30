@@ -344,8 +344,9 @@ exa_answer_detailed(query="What are the system requirements for Bun?")
 | PDF layout extraction (figures/tables) | `mcp__jina__extract_pdf` | — |
 | Images | `mcp__jina__search_images` (needs PAID Jina balance — no free-lane equivalent) | `mcp__exa__web_search_advanced_exa` |
 | Screenshots | `mcp__jina__capture_screenshot_url` | — |
-| General web | `mcp__gigaxity-deep-research__search` — 4 connectors (SearXNG + Tavily + LinkUp + Brave) RRF-fused, 0 LLM tokens | `mcp__exa__web_search_exa` |
-| Parallel multi-query web (3-5 variants) | `mcp__jina__parallel_search_web` (107 tokens for 3) | one `mcp__gigaxity-deep-research__search` per variant for 4-source fused depth |
+| General web | `mcp__gigaxity-deep-research__search` — 5 connectors (SearXNG + Tavily + LinkUp + Brave + Parallel) RRF-fused, plus one SearXNG category lane (science / it / videos) via `focus_mode` or keyword routing, 0 LLM tokens | `mcp__exa__web_search_exa` |
+| One category (videos / science / it / docs / packages) | `mcp__gigaxity-deep-research__vertical_search` — free, no quota; its footer names engines that failed | science: `mcp__exa__web_search_advanced_exa` with `category="research paper"`; others: the same tool without a category (Exa has none for them) |
+| Parallel multi-query web (3-5 variants) | `mcp__jina__parallel_search_web` (107 tokens for 3) | one `mcp__gigaxity-deep-research__search` per variant for multi-source fused depth |
 | Advanced web (category/domain/date filters) | `mcp__exa__web_search_advanced_exa` | `mcp__exa__web_search_exa` |
 | Company info | `mcp__exa__web_search_advanced_exa category="company"` | `mcp__gigaxity-deep-research__search "<name> company"` |
 | People / OSINT / attribute-based | `mcp__exa__web_search_advanced_exa category="people"` | `mcp__exa__web_search_advanced_exa includeDomains=["linkedin.com"]` |
@@ -367,7 +368,7 @@ exa_answer_detailed(query="What are the system requirements for Bun?")
 
 **One Jina search 4xx is deterministic and benign — 422 `AssertionFailureError` status 42206 means ZERO RESULTS (observed 2026-08-04).** `s.jina.ai` encodes an empty SERP as HTTP 422 with that exact signature (`No search results available for query …`) rather than an empty list; the practical trigger is a long exact-phrase quote, since unquoted queries fuzzy-match to something. The bundled `companions/jina-mcp/` server verifies the full signature and returns a plain `No results for …` line with a broaden-the-query hint — do not flag tool health on it, and a raw `Search failed … HTTP 422` therefore indicates a *different* 422. Scoped to `search_web`/`parallel_search_web`; other `mcp__jina__*` tools are unaffected.
 
-**General web routing.** Primary is `mcp__gigaxity-deep-research__search` — four RRF-fused connectors (SearXNG + Tavily + LinkUp + Brave) with content snippets, 0 LLM tokens, and Brave is a keyed official API that cannot be CAPTCHA'd. That is a coverage-and-durability choice, not a workaround: `mcp__jina__search_web` is healthy and is a fine cheap single-source fallback. Jina's `read_url`, `parallel_read_url`, the key-less arXiv/SSRN/BibTeX tools, rerank and dedup run on different endpoints and were never affected.
+**General web routing.** Primary is `mcp__gigaxity-deep-research__search` — five RRF-fused connectors (SearXNG + Tavily + LinkUp + Brave + Parallel) plus one SearXNG category lane, with content snippets, 0 LLM tokens; Brave and Parallel are keyed official APIs that cannot be CAPTCHA'd. That is a coverage-and-durability choice, not a workaround: `mcp__jina__search_web` is healthy and is a fine cheap single-source fallback. Jina's `read_url`, `parallel_read_url`, the key-less arXiv/SSRN/BibTeX tools, rerank and dedup run on different endpoints and were never affected.
 
 **Domain-scoped search.** Prefer `mcp__exa__web_search_advanced_exa` with `includeDomains=[...]` — a real multi-domain filter rather than a query-string hint. Jina's `site` argument works again as of the 2026-08-03 retest and is adequate for a cheap single-domain lookup.
 
@@ -1271,11 +1272,11 @@ Tool completely fails (timeout, connection error)?
 - The bundled server has no per-call `timeout` argument — it applies `JINA_TIMEOUT` (default 60s) server-side to every request, and fans out at most `JINA_MAX_PARALLEL` (default 5) at a time. Tune those in the MCP `env` block, not per call.
 
 **gigaxity-deep-research connector fan-out (load-bearing):**
-- `mcp__gigaxity-deep-research__search` / `discover` / `research` fan out to up to 3 backends in parallel via RRF fusion: **SearXNG** (always available — no key), **Tavily** (gated on `RESEARCH_TAVILY_API_KEY`), **LinkUp** (gated on `RESEARCH_LINKUP_API_KEY`).
+- `mcp__gigaxity-deep-research__search` / `discover` / `research` fan out to up to 5 backends in parallel via RRF fusion: **SearXNG** (always available — no key), **Tavily** (gated on `RESEARCH_TAVILY_API_KEY`), **LinkUp** (gated on `RESEARCH_LINKUP_API_KEY`), **Brave** (gated on `RESEARCH_BRAVE_API_KEY`), **Parallel** (gated on `RESEARCH_PARALLEL_API_KEY`) — plus, when routed, a second SearXNG list from one category, reported as `searxng:<category>`.
 - Connectors with missing keys are **silently dropped at init** (`SearchAggregator.__init__` filters on `is_configured()`). No error, no warning.
-- Health check: `mcp__gigaxity-deep-research__search` returns a trailer line `*N results from ['searxng', 'tavily', 'linkup'] (configured: ['searxng', 'tavily', 'linkup'])*`. If `configured:` shows only `['searxng']`, the other two are unconfigured at init. If `from` is shorter than `configured`, the configured connectors errored or returned empty for this query.
+- Health check: `mcp__gigaxity-deep-research__search` returns a trailer line `*N results from ['searxng', 'searxng:science', 'tavily', 'linkup'] (configured: ['searxng', 'tavily', 'linkup'])*`. If `configured:` shows only `['searxng']`, the keyed connectors are unconfigured at init. If `from` is shorter than `configured`, the configured connectors errored or returned empty for this query.
 - `research` mirrors the same `from [...] (configured: [...])` shape; `discover` surfaces only the `configured:` line (the Explorer wraps the aggregator and does not expose per-connector raw results).
-- Healthy steady state (3-way fusion) requires both `RESEARCH_TAVILY_API_KEY` and `RESEARCH_LINKUP_API_KEY` in the MCP `env` block (`~/.claude.json` under `gigaxity-deep-research.env`). MCP subprocess must be restarted after env changes — restart the full Claude Code session.
+- Healthy steady state (multi-way fusion) requires at least one keyed connector (`RESEARCH_TAVILY_API_KEY`, `RESEARCH_LINKUP_API_KEY`, `RESEARCH_BRAVE_API_KEY`, `RESEARCH_PARALLEL_API_KEY`) in the MCP `env` block (`~/.claude.json` under `gigaxity-deep-research.env`). MCP subprocess must be restarted after env changes — restart the full Claude Code session.
 - Searxng-only state is functional but lower-coverage — `discover` landscapes and `synthesize` outputs derived from gigaxity's own search will be less diverse.
 
 **Exa MCP transport (HTTP vs stdio — load-bearing):**

@@ -97,5 +97,7 @@ Sanitized JSON configs for all seven MCPs in the stack are in [`docs/reference/m
 - Context7: [context7.com](https://context7.com)
 - Brightdata Web Unlocker (optional, blocked-URL fallback): [brightdata.com](https://brightdata.com)
 - Tavily (optional, free additional parallel connector for the built-in aggregator): [tavily.com](https://tavily.com)
+- Brave Search API (optional additional connector; ~1,000 free queries/month): [brave.com/search/api](https://brave.com/search/api/)
+- Parallel Search API (optional additional connector; as of 2026-09 a $5 monthly credit for accounts with a payment method, about 5,000 searches in the default `fast` mode): [platform.parallel.ai](https://platform.parallel.ai)
 
 The same configs work for any MCP-compatible client (Claude Code, Cursor, Hermes, Windsurf).

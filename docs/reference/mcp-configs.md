@@ -57,7 +57,7 @@ HTTP transport. Fully hosted — no install. Sign up at https://exa.ai. Use HTTP
 
 **Use for:**
 - `get_code_context_exa` — code examples and patterns from a curated code index
-- `web_search_advanced_exa` — category-filtered search (`company`, `people`, `financial report`, `news`, `github`, `pdf`), date-bounded queries, domain-targeted, highlights
+- `web_search_advanced_exa` — category-filtered search (`company`, `people`, `research paper`, `financial report`, `news`, `github`, `pdf`), date-bounded queries, domain-targeted, highlights
 - `web_search_exa` — semantic web search
 - `crawling_exa` — URL crawling with subpage support (Jina has no subpage mode)
 
@@ -135,7 +135,7 @@ stdio transport. Bundled in this repo at [`companions/jina-mcp/`](../../companio
 }
 ```
 
-**Tools exposed:** `ask`, `discover`, `synthesize`, `reason`.
+**Tools exposed:** `search`, `vertical_search`, `research`, `ask`, `discover`, `synthesize`, `reason`.
 
 **Use for:** the full multi-source synthesis pipeline against Qwen3-30B-A3B-Thinking. See [mcp-tools.md](mcp-tools.md) for input/output schemas.
 

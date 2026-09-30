@@ -1,6 +1,6 @@
 # REST API reference
 
-Gigaxity Deep Research exposes the same orchestration over HTTP via FastAPI. The REST surface mirrors the six MCP tools (`search`, `research`, `ask`, `discover`, `synthesize`, `reason`) and adds enhanced synthesis variants (`/synthesize/enhanced`, `/synthesize/p1`) plus reflection endpoints for presets and focus modes.
+Gigaxity Deep Research exposes the same orchestration over HTTP via FastAPI. The REST surface mirrors the seven MCP tools (`search`, `vertical-search`, `research`, `ask`, `discover`, `synthesize`, `reason`) and adds enhanced synthesis variants (`/synthesize/enhanced`, `/synthesize/p1`) plus reflection endpoints for presets and focus modes.
 
 Base URL: `http://<RESEARCH_HOST>:<RESEARCH_PORT>` (defaults to `http://127.0.0.1:8000`). Bind to `0.0.0.0` only behind an authenticated reverse proxy — the REST surface spends the env-configured LLM key on every unauthenticated caller that reaches it.
 
@@ -38,7 +38,8 @@ Multi-source search only — no LLM call.
 |---|---|---|---|
 | `query` | str | required | Search query |
 | `top_k` | int | `10` | Per-connector result count |
-| `connectors` | list[str] \| null | null | Restrict to specific connectors (default: all configured) |
+| `connectors` | list[str] \| null | null | Restrict to specific connectors: `searxng`, `tavily`, `linkup`, `brave`, `parallel` (default: all configured). Any other name is a `422` (v0.14.0; earlier it matched nothing and returned an empty result) |
+| `focus_mode` | str \| null | null | Picks the SearXNG vertical lane: `academic` → `science`, `debugging` / `documentation` → `it`, `tutorial` → `videos`; `general` → no lane; `comparison` / `news` / null → keyword heuristic. See [configuration.md → Vertical lanes](configuration.md#vertical-lanes) |
 
 **Response (`SearchResponse`):**
 
@@ -56,10 +57,57 @@ Multi-source search only — no LLM call.
       "metadata": {}
     }
   ],
-  "connectors_used": ["searxng", "tavily"],
+  "connectors_used": ["searxng", "searxng:science", "tavily"],
   "total_results": 17
 }
 ```
+
+A vertical lane appears in `connectors_used` as `searxng:<category>` and on its sources' `connector` field. The lane needs `searxng` among the active connectors, so a `connectors` filter without it also drops the lane.
+
+Responses are cached per query, keyed on `top_k`, the `connectors` filter (as a set), `focus_mode` and `RESEARCH_SEARXNG_VERTICAL_ROUTING` (v0.14.0; earlier keys held `top_k` only).
+
+---
+
+## POST /api/v1/vertical-search
+
+One SearXNG category — no LLM call, no search-API quota, not cached (the response reports which engines failed on this call).
+
+**Request (`VerticalSearchRequest`):**
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `query` | str | required | Search query |
+| `vertical` | str | `videos` | `videos`, `science`, `it`, `docs`, `packages`, `general` |
+| `top_k` | int | `10` | Maximum results (1–50) |
+
+**Response (`VerticalSearchResponse`):**
+
+```json
+{
+  "query": "...",
+  "vertical": "videos",
+  "sources": [
+    {
+      "id": "sx_...",
+      "title": "...",
+      "url": "https://www.youtube.com/watch?v=...",
+      "content": "...",
+      "score": 1.0,
+      "connector": "searxng:videos",
+      "engine": "youtube",
+      "author": "...",
+      "length": "19:48",
+      "published_date": null
+    }
+  ],
+  "total_results": 20,
+  "unresponsive_engines": [{"engine": "duckduckgo", "reason": "CAPTCHA"}],
+  "category_status": "supported",
+  "off_category_results": 0
+}
+```
+
+`category_status` comes from the instance's `/config`: `supported` (an enabled engine serves the category), `missing` (none does — the category was not queried and `sources` is empty; `docs` and `packages` exist only in the bundled companion config), or `unknown` (`/config` unreadable — queried anyway, and SearXNG answers an undefined category from its defaults without an error). `off_category_results` counts results dropped because only engines outside the category returned them — a locked `categories` preference on the instance, or a `!bang` in the query, selects other engines. `RESEARCH_SEARXNG_ENGINES` is never sent here. `503` when `RESEARCH_SEARXNG_HOST` is unset.
 
 ---
 
@@ -73,10 +121,10 @@ Combined search + synthesis. The server fetches sources internally — caller do
 |---|---|---|---|
 | `query` | str | required | Research query |
 | `top_k` | int | `10` | Per-connector result count (1–50) |
-| `connectors` | list[str] \| null | null | Optional connector restriction |
+| `connectors` | list[str] \| null | null | Optional connector restriction; same names as `/search`, any other is a `422` |
 | `reasoning_effort` | str | `"medium"` | `"low"` / `"medium"` / `"high"` |
 | `preset` | str \| null | null | Optional P1 preset: `comprehensive`, `fast`, `contracrow`, `academic`, `tutorial` |
-| `focus_mode` | str \| null | null | Optional focus mode (same enum as `discover`) |
+| `focus_mode` | str \| null | null | Optional focus mode (same enum as `discover`). Also picks the SearXNG vertical lane; `general` means none, null lets the keyword heuristic decide |
 | `api_key` | str \| null | null | Per-request key override |
 
 **Response (`ResearchResponse`):**
@@ -145,8 +193,8 @@ Exploratory expansion + knowledge-gap detection.
 | `query` | str | required | Topic to explore |
 | `top_k` | int | `10` | Per-connector result count |
 | `identify_gaps` | bool | `true` | Run gap-detection LLM call |
-| `focus_mode` | str | `"general"` | `general`, `academic`, `documentation`, `comparison`, `debugging`, `tutorial`, `news` |
-| `connectors` | list[str] \| null | null | Optional connector restriction |
+| `focus_mode` | str \| null | null | `general`, `academic`, `documentation`, `comparison`, `debugging`, `tutorial`, `news`. Picks the SearXNG vertical lane for every search discovery runs; `general` means none, null lets the keyword heuristic decide. Accepted since v0.14.0 — earlier the field was silently dropped |
+| `connectors` | list[str] \| null | null | Optional connector restriction, applied to every search discovery runs (v0.14.0; earlier it was accepted and ignored); same names as `/search`, any other is a `422` |
 | `api_key` | str \| null | null | Per-request key override |
 
 **Response (`DiscoverResponse`):**

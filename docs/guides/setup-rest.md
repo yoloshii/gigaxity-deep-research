@@ -43,7 +43,7 @@ Expected response:
 }
 ```
 
-`connectors` lists the active connector names (any of `searxng`, `tavily`, `linkup` whose configuration is complete). `llm_configured` reflects whether `RESEARCH_LLM_API_KEY` is set; the env-configured base URL alone is not sufficient.
+`connectors` lists the active connector names (any of `searxng`, `tavily`, `linkup`, `brave`, `parallel` whose configuration is complete). `llm_configured` reflects whether `RESEARCH_LLM_API_KEY` is set; the env-configured base URL alone is not sufficient.
 
 ## Option B: Native Python
 
@@ -67,13 +67,14 @@ Add `--reload` during development for autoreload on source changes.
 
 ## Endpoint surface
 
-The REST surface mirrors the six MCP tools (two primitives plus four deep-research tools) and adds enhanced synthesis variants:
+The REST surface mirrors the seven MCP tools (three primitives plus four deep-research tools) and adds enhanced synthesis variants:
 
 | Method | Path | Body | Notes |
 |---|---|---|---|
 | GET | `/api/v1/health` | — | Health + connector status (config presence only; no network I/O) |
 | GET | `/api/v1/health/connectors` | — | Real liveness probes per connector (~2s, parallel): `ok` / `unreachable` / `unconfigured`. `ok` = reachable, not key-valid |
-| POST | `/api/v1/search` | `{query, top_k?, connectors?}` | Multi-source search only, no LLM |
+| POST | `/api/v1/search` | `{query, top_k?, connectors?, focus_mode?}` | Multi-source search only, no LLM; `focus_mode` picks the SearXNG vertical lane |
+| POST | `/api/v1/vertical-search` | `{query, vertical?, top_k?}` | One SearXNG category (videos, science, it, docs, packages, general), no LLM |
 | POST | `/api/v1/research` | `{query, top_k?, reasoning_effort?, preset?, focus_mode?}` | Combined search + synthesis |
 | POST | `/api/v1/ask` | `{query, context?}` | Quick conversational answer (direct LLM, no search) |
 | POST | `/api/v1/discover` | `{query, focus_mode?, identify_gaps?, top_k?}` | Exploratory expansion + gap detection |
@@ -84,7 +85,7 @@ The REST surface mirrors the six MCP tools (two primitives plus four deep-resear
 | GET | `/api/v1/presets` | — | List the five synthesis presets |
 | GET | `/api/v1/focus-modes` | — | List the seven focus modes |
 
-The HTTP MCP transport (mounted at `/mcp`) exposes the same six tools as the stdio MCP. The two enhanced synthesis variants are **REST-only** — callers who need them hit the HTTP endpoint directly.
+The HTTP MCP transport (mounted at `/mcp`) exposes the same seven tools as the stdio MCP. The two enhanced synthesis variants are **REST-only** — callers who need them hit the HTTP endpoint directly.
 
 > ⚠️ **No progress notifications on this transport.** The stdio MCP emits `notifications/progress`
 > during long calls (see [reference/mcp-tools.md](../reference/mcp-tools.md#progress-notifications)).

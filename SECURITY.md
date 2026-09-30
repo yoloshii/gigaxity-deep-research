@@ -14,7 +14,7 @@ Gigaxity Deep Research is an **MCP server + REST API** that orchestrates third-p
 
 - OpenRouter (default LLM backend) over HTTPS
 - A SearXNG instance you point it at (self-hosted or third-party)
-- Tavily and LinkUp (optional fallback search providers)
+- Tavily, LinkUp, Brave Search and Parallel Search (optional additional search providers — each receives your search queries once its key is set)
 
 No telemetry. No phone-home. The server holds your API keys in environment variables and forwards them only to the providers you've configured.
 
@@ -22,7 +22,7 @@ No telemetry. No phone-home. The server holds your API keys in environment varia
 
 Given the orchestration architecture, the primary security concerns are:
 
-1. **API key exposure** — `RESEARCH_LLM_API_KEY`, `RESEARCH_TAVILY_API_KEY`, and `RESEARCH_LINKUP_API_KEY` are read from environment. Reports of unintended logging, error messages, or response payloads that include these keys should be filed.
+1. **API key exposure** — `RESEARCH_LLM_API_KEY`, `RESEARCH_TAVILY_API_KEY`, `RESEARCH_LINKUP_API_KEY`, `RESEARCH_BRAVE_API_KEY`, and `RESEARCH_PARALLEL_API_KEY` are read from environment. Reports of unintended logging, error messages, or response payloads that include these keys should be filed.
 
 2. **Per-request key passthrough** — The REST API accepts an `X-LLM-Api-Key` header that overrides the env-configured key for multi-tenant deployments. Any path where this header leaks across requests, into logs, or into stored responses should be reported.
 

@@ -1,16 +1,16 @@
 # MCP tool reference
 
-Full input/output reference for the **six** stdio MCP tools exposed by Gigaxity Deep Research. Tools register under whatever alias you set in `~/.claude.json` — `mcp__<alias>__<tool>` is the call syntax.
+Full input/output reference for the **seven** stdio MCP tools exposed by Gigaxity Deep Research. Tools register under whatever alias you set in `~/.claude.json` — `mcp__<alias>__<tool>` is the call syntax.
 
 The stdio surface returns **markdown strings**, not JSON, so the agent can pipe results straight into a response. The matching REST endpoints (under `/api/v1/`) return structured JSON shapes — see [`rest-api.md`](rest-api.md) for those.
 
-The tools split into **two primitives** (raw and combined behavior in one call) plus **four deep-research tools** (drive each step independently).
+The tools split into **three primitives** (raw, single-category and combined behavior in one call) plus **four deep-research tools** (drive each step independently).
 
 ## Progress notifications
 
 Every tool that makes an LLM call — `research`, `ask`, `discover`, `synthesize`, `reason` — emits
 `notifications/progress` while it works, provided your client sends a `progressToken` with the
-request. `search` does not: it makes no LLM call.
+request. `search` and `vertical_search` do not: they make no LLM call.
 
 You get an opening notification when the tool starts, one on either side of every model call, and a
 `model call still running` heartbeat every `RESEARCH_PROGRESS_HEARTBEAT_INTERVAL` seconds while a
@@ -33,7 +33,7 @@ client aborts it mid-flight while the server is still working.
 
 ## Common parameter
 
-Every tool accepts an optional `api_key: str | None = None` parameter. When set, it overrides `RESEARCH_LLM_API_KEY` for that call only — used in multi-tenant deployments to bill each user's calls to their own LLM endpoint account. `search` accepts the parameter for surface consistency but ignores it (no LLM call).
+Every tool accepts an optional `api_key: str | None = None` parameter. When set, it overrides `RESEARCH_LLM_API_KEY` for that call only — used in multi-tenant deployments to bill each user's calls to their own LLM endpoint account. `search` and `vertical_search` accept the parameter for surface consistency but ignore it (no LLM call).
 
 The matching REST endpoints accept the same per-request override either via the request body's `api_key` field or via the `X-LLM-Api-Key` header.
 
@@ -43,7 +43,9 @@ The matching REST endpoints accept the same per-request override either via the 
 
 ### search
 
-Raw multi-source aggregation across SearXNG, Tavily, and LinkUp with RRF fusion. **No LLM call.**
+Raw multi-source aggregation across SearXNG, Tavily, LinkUp, Brave and Parallel with RRF fusion. **No LLM call.**
+
+SearXNG contributes its `general` category on every call, plus at most one **vertical lane** — a second SearXNG list from `science`, `it` or `videos` — chosen by `focus_mode` or, without one, by a keyword heuristic — and only when the instance's `/config` shows an enabled engine in that category. The lane fuses as its own ranked list, named `searxng:<category>`; it keeps only results an engine of the category returned, and a URL the base list already holds is kept there only. See [configuration.md → Vertical lanes](configuration.md#vertical-lanes) for the mapping.
 
 **Input:**
 
@@ -52,6 +54,7 @@ Raw multi-source aggregation across SearXNG, Tavily, and LinkUp with RRF fusion.
 | `query` | str | required | The search query |
 | `top_k` | int | `10` | Results per source (1–50) |
 | `api_key` | str \| null | null | Accepted for consistency; ignored (no LLM call) |
+| `focus_mode` | str \| null | null | `academic` → science lane · `debugging` / `documentation` → it lane · `tutorial` → videos lane · `general` → no lane · `comparison` / `news` / null → keyword heuristic |
 
 **Output (markdown):**
 
@@ -61,25 +64,62 @@ Raw multi-source aggregation across SearXNG, Tavily, and LinkUp with RRF fusion.
 ## [1] {title}
 **URL:** {url}
 **Source:** {connector_name} (score: {score:.3f})
+*channel: {author} · length: {length}*          ← video results only
 
 {content snippet up to 500 chars}
 
 ## [2] ...
 
 ---
-*{N} results from ['searxng', 'tavily', 'linkup'] (configured: ['searxng', 'tavily', 'linkup'])*
+*{N} results from ['searxng', 'searxng:videos', 'tavily', 'linkup'] (configured: ['searxng', 'tavily', 'linkup'])*
 ```
 
-The trailer's first list shows connectors that **returned results** for this query; the parenthetical `configured:` list shows connectors that the aggregator initialized (i.e. their env keys were set at MCP boot). When the two lists diverge:
+The trailer's first list shows connectors that **returned results** for this query — including a vertical lane such as `searxng:videos`; the parenthetical `configured:` list shows connectors that the aggregator initialized (i.e. their env keys were set at MCP boot). Lanes never appear under `configured:`. When the two lists diverge:
 
-- `configured: ['searxng']` only → Tavily / LinkUp env keys are unset; the aggregator silently dropped them at init. See [troubleshooting.md](../troubleshooting.md#search--connector-errors) to enable 3-way fan-out.
+- `configured: ['searxng']` only → the keyed connectors' env keys are unset; the aggregator silently dropped them at init. See [troubleshooting.md](../troubleshooting.md#search--connector-errors) to enable multi-way fan-out.
 - `from ['searxng']` with `configured: ['searxng', 'tavily', 'linkup']` → the other connectors errored or returned empty for this query. Check the MCP's stderr log for `Tavily search error` / `LinkUp search error`.
 
 **Use when:** you want raw search hits without paying for synthesis tokens, or when you'll feed the results into your own pipeline.
 
+### vertical_search
+
+One SearXNG category on its own. **No LLM call and no search-API quota** — it only queries your SearXNG instance.
+
+**Input:**
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `query` | str | required | The search query |
+| `vertical` | str | `videos` | `videos` · `science` · `it` · `docs` · `packages` · `general` |
+| `top_k` | int | `10` | Maximum results (1–50) |
+| `api_key` | str \| null | null | Accepted for consistency; ignored (no LLM call) |
+
+With the bundled [SearXNG companion](../../companions/searxng/README.md) the categories hold: `videos` — YouTube; `science` — arXiv, Google Scholar, Semantic Scholar, OpenAlex, PubMed, Crossref; `it` — Stack Overflow, Ask Ubuntu, Super User, GitHub, Hacker News; `docs` — MDN, Microsoft Learn, Arch Linux wiki; `packages` — PyPI, npm, crates.io, pkg.go.dev, Docker Hub, Hugging Face; `general` — DuckDuckGo, Brave, Wikipedia, Wikidata.
+
+**Output (markdown):**
+
+```
+# {vertical} results for: {query}
+
+## [1] {title}
+**URL:** {url}
+*engine: {engine} · channel: {author} · length: {length}*
+
+{content snippet up to 400 chars}
+
+---
+*{N} results from SearXNG category `{vertical}`*
+*⚠️ Off-category results dropped: 3 came only from engines outside `videos` (...)*   ← only when some were dropped
+*⚠️ Unresponsive engines: duckduckgo (CAPTCHA)*          ← only when an engine failed
+```
+
+SearXNG answers HTTP 200 even when engines fail, so the `Unresponsive engines` line is the only degradation signal. SearXNG also answers a category it does not define from its default categories, without an error, so the tool first reads the instance's `/config`: a category with no enabled engine (`docs` and `packages` are custom to the companion config) is not queried, and the footer says so. When `/config` cannot be read, the tool queries anyway and the footer marks the results as unverified. A locked `categories` preference on the instance, or a `!bang` in the query, makes SearXNG answer from other engines; the tool keeps only results an engine of the category returned and counts the rest in the footer. `RESEARCH_SEARXNG_ENGINES` is never sent here.
+
+**Use when:** you want videos to pair with a transcript tool, papers without the general web's noise, practitioner Q&A, or package-registry hits.
+
 ### research
 
-Combined pipeline: multi-source search **plus** LLM synthesis with citations, in a single call.
+Combined pipeline: multi-source search **plus** LLM synthesis with citations, in a single call. The search step adds a SearXNG vertical lane when the keyword heuristic matches (see [`search`](#search)).
 
 **Input:**
 
@@ -141,7 +181,7 @@ Exploratory expansion plus knowledge-gap detection. Returns the knowledge landsc
 | `query` | str | required | Topic to explore |
 | `top_k` | int | `10` | Results per source |
 | `identify_gaps` | bool | `true` | Run gap-detection LLM call |
-| `focus_mode` | str | `"general"` | One of `general`, `academic`, `documentation`, `comparison`, `debugging`, `tutorial`, `news` |
+| `focus_mode` | str \| null | null | One of `general`, `academic`, `documentation`, `comparison`, `debugging`, `tutorial`, `news`; null behaves as `general` for discovery. Also picks the SearXNG vertical lane for every search `discover` runs, as in [`search`](#search): null lets the keyword heuristic decide, `general` means none |
 | `api_key` | str \| null | null | Per-request LLM key override |
 
 **Output (markdown):**
@@ -178,7 +218,7 @@ Exploratory expansion plus knowledge-gap detection. Returns the knowledge landsc
 *Search backends configured: ['searxng', 'tavily', 'linkup']*
 ```
 
-The final `configured:` line surfaces which connectors initialized at MCP boot. If only `['searxng']` is shown, Tavily / LinkUp env keys were unset — see `search` above and [troubleshooting.md](../troubleshooting.md#search--connector-errors) to enable 3-way fan-out. (Unlike `search` / `research`, `discover` does not surface which connectors actually returned content for this query — the Explorer wraps the aggregator and doesn't expose per-connector raw results.)
+The final `configured:` line surfaces which connectors initialized at MCP boot. If only `['searxng']` is shown, no keyed connector (Tavily, LinkUp, Brave, Parallel) has its key set — see `search` above and [troubleshooting.md](../troubleshooting.md#search--connector-errors) to enable the multi-connector fan-out. (Unlike `search` / `research`, `discover` does not surface which connectors actually returned content for this query — the Explorer wraps the aggregator and doesn't expose per-connector raw results.)
 
 **Use when:** cold-start research, mapping a topic before drilling, or driving a follow-up `synthesize`/`reason` step from the recommended deep-dive URLs.
 

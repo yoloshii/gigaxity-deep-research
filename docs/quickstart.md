@@ -2,7 +2,7 @@
 
 > **You are reading this on the `local-inference` branch.** This quickstart shows the branch default — a self-hosted OpenAI-compatible LLM server. Need OpenRouter (or any other hosted endpoint) instead? Either check out the [`main` branch](https://github.com/yoloshii/gigaxity-deep-research/tree/main) for an OpenRouter-default config, or stay here and use the OpenRouter override block at the bottom of [step 4](#4-register-with-claude-code). For LLM-server setup (vLLM, SGLang, llama.cpp) and the recommended Q4_K_M GGUF quant on 24 GB consumer GPUs (browse community [GGUF builds](https://huggingface.co/models?other=base_model:quantized:Qwen/Qwen3-30B-A3B-Thinking-2507)), see [`setup-local-inference.md`](guides/setup-local-inference.md).
 
-A five-minute install that gets the six MCP tools (`search`, `research`, `ask`, `discover`, `synthesize`, `reason`) registered with Claude Code, calling Qwen3-30B-A3B-Thinking on a self-hosted OpenAI-compatible server, and resolving real queries.
+A five-minute install that gets the seven MCP tools (`search`, `vertical_search`, `research`, `ask`, `discover`, `synthesize`, `reason`) registered with Claude Code, calling Qwen3-30B-A3B-Thinking on a self-hosted OpenAI-compatible server, and resolving real queries.
 
 ## Prerequisites
 
@@ -75,7 +75,7 @@ Use **absolute paths**. For local servers without auth, `local-anything` (or any
 
 ## 5. Restart Claude Code
 
-After restart, the six tools should appear under the alias `gigaxity-deep-research`. Confirm with `/mcp` in Claude Code — you should see six tools registered (`search`, `research`, `ask`, `discover`, `synthesize`, `reason`).
+After restart, the seven tools should appear under the alias `gigaxity-deep-research`. Confirm with `/mcp` in Claude Code — you should see seven tools registered (`search`, `vertical_search`, `research`, `ask`, `discover`, `synthesize`, `reason`).
 
 ## 6. Try it
 

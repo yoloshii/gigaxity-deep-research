@@ -199,6 +199,6 @@ If routing happens correctly, the stack is wired.
 
 ## Next steps
 
-- [MCP tool reference](../reference/mcp-tools.md) — full schemas for the six `gigaxity-deep-research` tools
+- [MCP tool reference](../reference/mcp-tools.md) — full schemas for the seven `gigaxity-deep-research` tools
 - [REST API reference](../reference/rest-api.md) — same surface over HTTP
 - [Troubleshooting](../troubleshooting.md) — boot and runtime errors

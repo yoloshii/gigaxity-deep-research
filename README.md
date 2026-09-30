@@ -2,7 +2,7 @@
 
 **Open-source deep research MCP server for Claude Code, Hermes, Cursor, and any MCP-compatible agent — local-inference branch.** [Qwen3-30B-A3B-Thinking](https://huggingface.co/Qwen/Qwen3-30B-A3B-Thinking-2507) (or any OpenAI-compatible chat-completions model) running on your own hardware via [vLLM](https://github.com/vllm-project/vllm), [SGLang](https://github.com/sgl-project/sglang), or [llama.cpp](https://github.com/ggerganov/llama.cpp), plus multi-source web synthesis with citations.
 
-Gigaxity Deep Research is a multi-source synthesis pipeline — six MCP tools (two primitives `search`/`research` plus four deep-research tools `ask`/`discover`/`synthesize`/`reason`) with a matching FastAPI REST surface, fronting parallel multi-source search, RRF fusion, citation binding, and contradiction detection. The synthesis stage runs against any OpenAI-compatible chat-completions model; the recommended default is [Alibaba's Qwen3-30B-A3B-Thinking](https://huggingface.co/Qwen/Qwen3-30B-A3B-Thinking-2507), a reasoning-tuned 30B-A3B MoE model, but DeepSeek-R1, Qwen-QwQ, Llama 3.x, and hosted-aggregator endpoints (OpenRouter and the like) all work — pick any model your endpoint serves. The search layer pulls from a "Triple Stack" of complementary MCPs ([Context7](https://context7.com), [Exa](https://exa.ai), [Jina](https://jina.ai)) alongside [SearXNG](https://github.com/searxng/searxng), [Tavily](https://tavily.com), and [LinkUp](https://linkup.so) connectors. A bundled [`gptr-mcp`](https://github.com/assafelovic/gptr-mcp) companion — the MCP shim around [GPT Researcher](https://github.com/assafelovic/gpt-researcher) — adds Reddit, X, and YouTube as social-first sources.
+Gigaxity Deep Research is a multi-source synthesis pipeline — seven MCP tools (three primitives `search`/`vertical_search`/`research` plus four deep-research tools `ask`/`discover`/`synthesize`/`reason`) with a matching FastAPI REST surface, fronting parallel multi-source search, RRF fusion, citation binding, and contradiction detection. The synthesis stage runs against any OpenAI-compatible chat-completions model; the recommended default is [Alibaba's Qwen3-30B-A3B-Thinking](https://huggingface.co/Qwen/Qwen3-30B-A3B-Thinking-2507), a reasoning-tuned 30B-A3B MoE model, but DeepSeek-R1, Qwen-QwQ, Llama 3.x, and hosted-aggregator endpoints (OpenRouter and the like) all work — pick any model your endpoint serves. The search layer pulls from a "Triple Stack" of complementary MCPs ([Context7](https://context7.com), [Exa](https://exa.ai), [Jina](https://jina.ai)) alongside [SearXNG](https://github.com/searxng/searxng), [Tavily](https://tavily.com), [LinkUp](https://linkup.so), [Brave](https://brave.com/search/api/), and [Parallel](https://platform.parallel.ai) connectors. A bundled [`gptr-mcp`](https://github.com/assafelovic/gptr-mcp) companion — the MCP shim around [GPT Researcher](https://github.com/assafelovic/gpt-researcher) — adds Reddit, X, and YouTube as social-first sources.
 
 This branch defaults to a local OpenAI-compatible inference server on `http://localhost:8000/v1`. If you'd rather use a hosted model (OpenRouter and friends), check out the [`main` branch](https://github.com/yoloshii/gigaxity-deep-research/tree/main) — it ships with OpenRouter as the default and is the simpler path when you don't have GPU capacity. The search-MCP layer is priced separately by each provider. See [`docs/guides/free-tier-strategy.md`](docs/guides/free-tier-strategy.md) for what their free tiers cover and how to wire them up.
 
@@ -16,7 +16,7 @@ Python on FastAPI. MIT License. Runs as an MCP stdio server, FastAPI REST API, o
 
 ## What it does
 
-Gigaxity Deep Research wires a multi-source search layer (SearXNG, Tavily, LinkUp) to an RRF fusion stage and a synthesis engine with citation binding, then exposes the whole pipeline as six MCP tools — two primitives (`search`, `research`) plus four deep-research tools (`ask`, `discover`, `synthesize`, `reason`) — that Claude Code or any MCP-compatible agent can call. The synthesis stage runs against any OpenAI-compatible chat-completions model; the recommended default is Qwen3-30B-A3B-Thinking, a reasoning-tuned MoE model from Alibaba.
+Gigaxity Deep Research wires a multi-source search layer (SearXNG, Tavily, LinkUp, Brave, Parallel) to an RRF fusion stage and a synthesis engine with citation binding, then exposes the whole pipeline as seven MCP tools — three primitives (`search`, `vertical_search`, `research`) plus four deep-research tools (`ask`, `discover`, `synthesize`, `reason`) — that Claude Code or any MCP-compatible agent can call. The synthesis stage runs against any OpenAI-compatible chat-completions model; the recommended default is Qwen3-30B-A3B-Thinking, a reasoning-tuned MoE model from Alibaba.
 
 So when an agent hits a question outside its training cutoff, it doesn't hallucinate or shell out to a generic search tool. It calls `discover` to widen the source set, reads the top hits, and calls `synthesize` to fold the evidence into a citation-backed answer. Round-trip is typically 5–15 seconds against a hosted reasoning model.
 
@@ -24,13 +24,14 @@ So when an agent hits a question outside its training cutoff, it doesn't halluci
 
 ### Tools (MCP and REST)
 
-The MCP server exposes **two primitives** plus **four deep-research tools** — six tools total. The primitives give you raw search and the simple combined pipeline; the deep-research tools split discovery, synthesis, and reasoning so each step can be driven independently.
+The MCP server exposes **three primitives** plus **four deep-research tools** — seven tools total. The primitives give you raw search, single-category search and the simple combined pipeline; the deep-research tools split discovery, synthesis, and reasoning so each step can be driven independently.
 
 **Primitives**
 
 | Tool | Purpose |
 |---|---|
-| `search` | Raw multi-source aggregation across SearXNG, Tavily, and LinkUp with RRF fusion. No LLM call. |
+| `search` | Raw multi-source aggregation across SearXNG, Tavily, LinkUp, Brave and Parallel with RRF fusion, plus one SearXNG category lane (science / it / videos) when the query calls for it. No LLM call. |
+| `vertical_search` | One SearXNG category on its own — videos, science, it, docs, packages or general. No LLM call, no search-API quota. |
 | `research` | Combined pipeline: multi-source search plus LLM synthesis with citations, in one call. |
 
 **Deep-research tools**
@@ -44,7 +45,8 @@ The MCP server exposes **two primitives** plus **four deep-research tools** — 
 
 ### Pipeline
 
-- **Multi-source search**: parallel queries across SearXNG, Tavily, and LinkUp with graceful degradation if any source is unavailable.
+- **Multi-source search**: parallel queries across SearXNG, Tavily, LinkUp, Brave and Parallel with graceful degradation if any source is unavailable.
+- **SearXNG vertical lanes**: a second SearXNG list from one category (science, it or videos), picked by focus mode or a keyword heuristic and checked against the instance's `/config`, fused beside the general lane.
 - **RRF fusion**: Reciprocal Rank Fusion combines and re-ranks results across providers.
 - **Adaptive routing**: query classification picks the right combination of connectors per query.
 - **Query expansion**: HyDE-style variant generation for broader coverage.
@@ -123,9 +125,9 @@ Add to `~/.claude.json` under `mcpServers`:
 }
 ```
 
-Restart Claude Code. The six tools (`search`, `research`, `ask`, `discover`, `synthesize`, `reason`) become callable as `mcp__gigaxity-deep-research__<tool>`.
+Restart Claude Code. The seven tools (`search`, `vertical_search`, `research`, `ask`, `discover`, `synthesize`, `reason`) become callable as `mcp__gigaxity-deep-research__<tool>`.
 
-The MCP alone gives you raw access to the six tools. Most of the deep research value — automatic per-query tool routing across the full seven-MCP stack, the social-first layer via `gptr-mcp`, the routing skill, and the global agent-instruction block — comes from the rest of the staircase. Walk it in [Setup roadmap](#setup-roadmap) below.
+The MCP alone gives you raw access to the seven tools. Most of the deep research value — automatic per-query tool routing across the full seven-MCP stack, the social-first layer via `gptr-mcp`, the routing skill, and the global agent-instruction block — comes from the rest of the staircase. Walk it in [Setup roadmap](#setup-roadmap) below.
 
 ## Quick start: REST API for distributed compute
 
@@ -188,7 +190,7 @@ If a query routes somewhere unexpected, the most common cause is the global inst
 
 ### Common pitfalls
 
-- **Stage 2 is required, not optional.** SearXNG is the only required search connector — Tavily and LinkUp are optional additional connectors that run in parallel and contribute to RRF fusion. Skipping SearXNG leaves the synthesis layer with nothing to fuse unless you configure Tavily or LinkUp as a substitute.
+- **Stage 2 is required, not optional.** SearXNG is the only required search connector — Tavily, LinkUp, Brave and Parallel are optional additional connectors that run in parallel and contribute to RRF fusion. Skipping SearXNG leaves the synthesis layer with nothing to fuse unless you configure one of them as a substitute.
 - **Verify Stage 4 before adding companions.** A failing `research` call after Stage 5 is hard to debug because the failure could be any of seven MCPs misfiring; confirm the orchestrator alone works first.
 - **Stage 6 is what makes the agent route automatically.** Without the skill plus the instruction block, the seven MCPs are visible but the agent treats them as raw tools, not a stack.
 - **`local-inference` branch defaults to `http://localhost:8000/v1`; `main` defaults to OpenRouter.** Stage 3's verify command is the same either way, but the env var values differ — match them to your branch.
@@ -218,7 +220,8 @@ This branch ships with `RESEARCH_LLM_API_BASE` defaulted to `http://localhost:80
 │                      └────────────┬────────────┘                   │
 │                                   ▼                                │
 │  ┌──────── Search aggregator (parallel, fail-graceful) ─────────┐  │
-│  │   SearXNG     ·     Tavily     ·     LinkUp                  │  │
+│  │  SearXNG (+ one category lane) · Tavily · LinkUp · Brave ·   │  │
+│  │  Parallel                                                    │  │
 │  │       ↓ rank-merged across connectors ↓                      │  │
 │  │                      RRF fusion                              │  │
 │  └─────────────────────────┬────────────────────────────────────┘  │
@@ -271,7 +274,7 @@ The bundled [`research-workflow`](skills/research-workflow/) skill plus the inst
 - [Guide: Bundled companions setup (SearXNG, Exa Answer, Jina, Brightdata)](docs/guides/setup-companions.md)
 - [Guide: Triple Stack — full deep research setup](docs/guides/triple-stack-setup.md)
 - [Guide: Free-tier strategy](docs/guides/free-tier-strategy.md): configuring the search MCPs against each provider's free tier
-- [Reference: MCP tools](docs/reference/mcp-tools.md): input/output reference for the six stdio MCP tools this server exposes
+- [Reference: MCP tools](docs/reference/mcp-tools.md): input/output reference for the seven stdio MCP tools this server exposes
 - [Reference: MCP configs](docs/reference/mcp-configs.md): sanitized JSON blocks for all seven MCPs in the stack, in one place
 - [Reference: REST API](docs/reference/rest-api.md)
 - [Reference: Configuration](docs/reference/configuration.md): `RESEARCH_*` env vars for this server
@@ -296,7 +299,7 @@ The pipeline implements techniques from the recent literature:
 | :white_check_mark: | OpenRouter mode | Default on `main` |
 | :white_check_mark: | Local inference mode | Default on this branch — generic OpenAI-compatible client, ships with vLLM/SGLang/llama.cpp-friendly defaults |
 | :white_check_mark: | MCP + REST surfaces | Both stable, share orchestration logic |
-| :white_check_mark: | search · research · ask · discover · synthesize · reason | All six tools wired and tested |
+| :white_check_mark: | search · vertical_search · research · ask · discover · synthesize · reason | All seven tools wired and tested |
 | :white_check_mark: | Multi-tenant via per-request key | `X-LLM-Api-Key` header passthrough |
 | :white_check_mark: | Self-hosted model guide | vLLM, SGLang, and llama.cpp walkthroughs plus Q4_K_M GGUF quant recommendation (browse community [GGUF builds on HuggingFace](https://huggingface.co/models?other=base_model:quantized:Qwen/Qwen3-30B-A3B-Thinking-2507)), threshold table, and quant-format-per-server matrix in [setup-local-inference.md](docs/guides/setup-local-inference.md) |
 | :memo: | Streaming responses | SSE for `synthesize` / `reason` long-running calls |
@@ -310,7 +313,7 @@ The pipeline implements techniques from the recent literature:
 - A local OpenAI-compatible inference server: vLLM, SGLang, or llama.cpp (or override `RESEARCH_LLM_API_BASE` to point at a hosted endpoint such as OpenRouter)
 - A GPU sized for your chosen model — Qwen3-30B-A3B-Thinking fits in a 24 GB consumer GPU (RTX 3090 / 4090 / 5090) at the **Q4_K_M GGUF** quant (~18.5 GB on disk, ~18.9 GB VRAM at runtime; loads on llama.cpp or vLLM — SGLang doesn't load GGUF as of May 2026, use an AWQ or GPTQ build instead). See [`setup-local-inference.md`](docs/guides/setup-local-inference.md#quant-format-support-per-server) for the per-server format matrix and recommended quants. Smaller models (Qwen, Llama 3.x, DeepSeek-R1 distilled) run on lighter hardware.
 - A SearXNG instance, self-hosted (https://docs.searxng.org/) or third-party, as the required search connector
-- Optional: Tavily API key and/or LinkUp API key — each runs in parallel with SearXNG and contributes to RRF fusion when configured
+- Optional: Tavily, LinkUp, Brave and/or Parallel API keys — each runs in parallel with SearXNG and contributes to RRF fusion when configured
 - Optional: Docker + Docker Compose for REST mode
 
 ## License
