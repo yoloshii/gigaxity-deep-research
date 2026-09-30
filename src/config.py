@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     searxng_host: str = Field(default="http://localhost:8888", description="SearXNG instance URL")
     searxng_engines: str = Field(
         default="",
-        description="Comma-separated engines sent as `engines=`. Leave EMPTY: an explicit engines list overrides the instance's `disabled:` flags and pins every query to exactly those engines, so the instance's own settings.yml (keep_only + categories) should stay the engine source of truth. Set it only to pin or debug specific engines.",
+        description="Comma-separated engines sent as `engines=` on the base lane. Leave EMPTY: SearXNG adds named engines to the category's enabled engines even when the instance disabled them, so the instance's own settings.yml (keep_only + categories) should stay the engine source of truth. Set it only to force or debug specific engines.",
     )
     searxng_categories: str = Field(default="general", description="Categories for the base SearXNG lane (sent as `categories=`)")
     searxng_vertical_routing: bool = Field(default=True, description="Add a second SearXNG list from one vertical category (science / it / videos) when the focus mode or a conservative keyword heuristic calls for it; it fuses by RRF beside the base lane as `searxng:<vertical>`")

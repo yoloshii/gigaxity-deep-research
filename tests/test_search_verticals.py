@@ -2,8 +2,8 @@
 
 Bugs these catch:
 - the SearXNG connector sending an `engines=` list by default, which overrides
-  the instance's `disabled:` flags and pins every query to engines the
-  instance disabled;
+  the instance's `disabled:` flags and forces engines the instance disabled
+  into every query;
 - an `engines=` pin leaking into a lane: SearXNG adds named engines to the
   requested category, so the lane would carry general results;
 - a lane on an instance that does not define its category: SearXNG answers
