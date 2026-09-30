@@ -62,11 +62,12 @@ mcp = FastApiMCP(
     description="Multi-source search and LLM synthesis research tool",
     # Forward per-user LLM API key to route handlers
     headers=["X-LLM-Api-Key"],
-    # Expose exactly the six documented tools — `synthesize/enhanced` and
+    # Expose exactly the seven documented tools — `synthesize/enhanced` and
     # `synthesize/p1` stay reachable as REST endpoints but not as MCP tools,
     # so the HTTP MCP surface matches the stdio MCP surface (and the docs).
     include_operations=[
         "search_api_v1_search_post",
+        "vertical_search_api_v1_vertical_search_post",
         "research_api_v1_research_post",
         "ask_api_v1_ask_post",
         "discover_api_v1_discover_post",
@@ -90,6 +91,7 @@ async def root():
             # Core endpoints
             "health": "/api/v1/health",
             "search": "/api/v1/search",
+            "vertical_search": "/api/v1/vertical-search",
             "research": "/api/v1/research",
             # Conversational + deep-research endpoints
             "ask": "/api/v1/ask",

@@ -25,6 +25,7 @@ from .config import settings
 from .llm_client import get_llm_client
 from .llm_utils import get_llm_content, derive_effective_budget
 from .search import SearchAggregator
+from .connectors import SearXNGConnector
 from .synthesis import (
     SynthesisStyle,
     PreGatheredSource,
@@ -127,27 +128,53 @@ def _reports_progress(fn):
     return _wrapper
 
 
+FocusMode = Literal["general", "academic", "documentation", "comparison", "debugging", "tutorial", "news"]
+
+Vertical = Literal["videos", "science", "it", "docs", "packages", "general"]
+
+
+def _video_meta(source) -> str:
+    """Channel / duration / date line for a video result, or empty."""
+    md = source.metadata or {}
+    parts = [
+        f"{label}: {md[key]}"
+        for key, label in (("author", "channel"), ("length", "length"), ("published_date", "published"))
+        if md.get(key)
+    ]
+    return " · ".join(parts)
+
+
 @mcp.tool()
 async def search(
     query: str,
     top_k: int = 10,
     api_key: str | None = None,
+    focus_mode: FocusMode | None = None,
 ) -> str:
     """Multi-source search with RRF (Reciprocal Rank Fusion).
 
-    Returns ranked results from SearXNG, Tavily, LinkUp, and Brave.
+    Returns ranked results from SearXNG, Tavily, LinkUp, Brave and Parallel.
     Use for raw search results without synthesis. No LLM call.
+
+    SearXNG contributes its general lane on every call, plus ONE vertical lane
+    when routed: academic -> science; debugging / documentation -> it;
+    tutorial -> videos; general -> none. With no focus_mode (or comparison /
+    news), a conservative keyword heuristic decides. A lane runs only when the
+    instance defines its category. See `vertical_search` to query one category
+    directly.
 
     Args:
         query: Search query
         top_k: Results per source (1-50)
         api_key: Per-request key override; ignored by `search` since
             no LLM call is made, but accepted for consistency across tools.
+        focus_mode: Optional routing hint for the SearXNG vertical lane;
+            `general` keeps the general lane only.
     """
     # search makes no LLM call, but we accept api_key for surface
-    # consistency so callers can use the same shape across all six tools.
+    # consistency so callers can use the same shape across all seven tools.
     _ = api_key
-    aggregator = SearchAggregator()
+    aggregator = SearchAggregator(vertical=focus_mode or "auto")
     sources, raw_results = await aggregator.search(query=query, top_k=top_k)
 
     lines = [f"# Search Results for: {query}\n"]
@@ -155,9 +182,87 @@ async def search(
         lines.append(f"## [{i}] {s.title}")
         lines.append(f"**URL:** {s.url}")
         lines.append(f"**Source:** {s.connector} (score: {s.score:.3f})")
+        if meta := _video_meta(s):
+            lines.append(f"*{meta}*")
         lines.append(f"\n{s.content[:500]}{'...' if len(s.content) > 500 else ''}\n")
 
     lines.append(f"\n---\n*{len(sources)} results from {list(raw_results.keys())} (configured: {aggregator.get_active_connectors()})*")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def vertical_search(
+    query: str,
+    vertical: Vertical = "videos",
+    top_k: int = 10,
+    api_key: str | None = None,
+) -> str:
+    """Search ONE SearXNG category. No LLM call and no search-API quota.
+
+    Verticals (engines as configured by the bundled companion settings):
+    - videos: YouTube — talks, demos and tutorials.
+    - science: arXiv, Google Scholar, Semantic Scholar, OpenAlex, PubMed, Crossref.
+    - it: Stack Overflow, Ask Ubuntu, Super User, GitHub, Hacker News.
+    - docs: MDN, Microsoft Learn, Arch Linux wiki (keyword matches across
+      languages — check each hit is for the right stack).
+    - packages: PyPI, npm, crates.io, pkg.go.dev, Docker Hub, Hugging Face.
+    - general: DuckDuckGo, Brave, Wikipedia, Wikidata.
+
+    `docs` and `packages` exist only on instances that define them (the
+    companion does). The tool checks the instance's `/config` first and says
+    so instead of querying a category the instance lacks. It drops results
+    that only engines outside the category returned (a locked category
+    preference or a `!bang` in the query selects other engines) and says how
+    many.
+
+    Args:
+        query: Search query
+        vertical: Which category to search
+        top_k: Maximum results (1-50)
+        api_key: Per-request key override; ignored (no LLM call),
+            accepted for consistency across tools.
+    """
+    _ = api_key
+    # Never an engines= pin: SearXNG would add the pinned engines to the category.
+    connector = SearXNGConnector(engines="", vertical=vertical)
+    if not connector.is_configured():
+        return "SearXNG is not configured (set RESEARCH_SEARXNG_HOST)."
+    result = await connector.search(query, top_k=max(1, min(top_k, 50)))
+
+    lines = [f"# {vertical} results for: {query}\n"]
+    for i, s in enumerate(result.sources, 1):
+        lines.append(f"## [{i}] {s.title}")
+        lines.append(f"**URL:** {s.url}")
+        detail = [f"engine: {s.metadata.get('engine') or '?'}"]
+        if meta := _video_meta(s):
+            detail.append(meta)
+        lines.append(f"*{' · '.join(detail)}*")
+        if s.content:
+            lines.append(f"\n{s.content[:400]}{'...' if len(s.content) > 400 else ''}\n")
+
+    footer = f"\n---\n*{len(result.sources)} results from SearXNG category `{vertical}`*"
+    if connector.last_category_status == "missing":
+        footer += (
+            f"\n*⚠️ The SearXNG instance has no enabled engine in category `{vertical}`, so it "
+            f"was not queried. `docs` and `packages` are defined in "
+            f"companions/searxng/settings.yml.example.*"
+        )
+    elif connector.last_category_status == "unknown":
+        footer += (
+            f"\n*⚠️ Could not read the instance's /config to confirm it defines `{vertical}`. "
+            f"SearXNG answers an undefined category from its default categories, so "
+            f"these may not be `{vertical}` results.*"
+        )
+    if connector.last_off_category:
+        footer += (
+            f"\n*⚠️ Off-category results dropped: {connector.last_off_category} came only from "
+            f"engines outside `{vertical}` (a locked category preference on the instance, or a "
+            f"`!bang` in the query, selects other engines).*"
+        )
+    if connector.last_unresponsive:
+        failing = ", ".join(f"{name} ({why})" for name, why in connector.last_unresponsive)
+        footer += f"\n*⚠️ Unresponsive engines: {failing}*"
+    lines.append(footer)
     return "\n".join(lines)
 
 
@@ -179,7 +284,7 @@ async def research(
         reasoning_effort: Depth of analysis (low=concise, medium=balanced, high=academic)
         api_key: Per-request key override; defaults to RESEARCH_LLM_API_KEY.
     """
-    aggregator = SearchAggregator()
+    aggregator = SearchAggregator(vertical="auto")
     sources, raw_results = await aggregator.search(query=query, top_k=top_k)
 
     if not sources:
@@ -264,7 +369,7 @@ async def discover(
     query: str,
     top_k: int = 10,
     identify_gaps: bool = True,
-    focus_mode: Literal["general", "academic", "documentation", "comparison", "debugging", "tutorial", "news"] = "general",
+    focus_mode: FocusMode | None = None,
     api_key: str | None = None,
 ) -> str:
     """Exploratory discovery with knowledge gap analysis.
@@ -276,18 +381,22 @@ async def discover(
         query: Topic to explore
         top_k: Results per source
         identify_gaps: Analyze knowledge gaps
-        focus_mode: Domain-specific discovery mode
+        focus_mode: Domain-specific discovery mode (default: general). Also
+            routes the SearXNG vertical lane for every search discovery runs;
+            omitted lets a keyword heuristic pick the lane, `general` keeps
+            the general lane only.
         api_key: Per-request key override; defaults to RESEARCH_LLM_API_KEY.
     """
     client = _get_llm_client(api_key)
-    aggregator = SearchAggregator()
+    aggregator = SearchAggregator(vertical=focus_mode or "auto")
+    mode_name = focus_mode or "general"
 
     try:
-        focus_mode_type = FocusModeType(focus_mode.lower())
+        focus_mode_type = FocusModeType(mode_name.lower())
     except ValueError:
         focus_mode_type = FocusModeType.GENERAL
 
-    focus_config = get_focus_mode(focus_mode)
+    focus_config = get_focus_mode(mode_name)
     search_params = get_search_params(focus_mode_type)
     expand_searches = search_params.get("expand_searches", True)
 

@@ -180,17 +180,18 @@ class TestErrorHandling:
         assert response.status_code == 422
 
     @pytest.mark.integration
-    def test_nonexistent_connector_handled(self, client):
-        """Non-existent connector is handled gracefully."""
+    def test_nonexistent_connector_rejected(self, client):
+        """A non-existent connector name is a validation error (v0.14.0).
+
+        It used to return 200 with empty results, and that empty result was
+        cached: `["*"]` shared the cache key of an unfiltered request.
+        """
         response = client.post("/api/v1/search", json={
             "query": "test",
             "connectors": ["nonexistent_connector"]
         })
 
-        # Should return 200 with empty results, not crash
-        assert response.status_code == 200
-        data = response.json()
-        assert data["sources"] == []
+        assert response.status_code == 422
 
 
 class TestPerformance:
