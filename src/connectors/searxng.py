@@ -2,9 +2,9 @@
 
 The instance's own settings.yml (keep_only + categories) is the engine source
 of truth. This connector sends `categories=` and, by default, NO `engines=`
-parameter: an explicit engines list overrides the instance's `disabled:` flags
-and pins every query to exactly those engines, including ones the instance
-disabled because they are blocked or return junk.
+parameter: SearXNG adds explicitly named engines to the requested category's
+engines, overriding the instance's `disabled:` flags, so a list brings back
+engines the instance disabled because they are blocked or return junk.
 
 A vertical lane is the same instance queried on one category (science, it,
 videos, docs, packages). It carries its own connector name,

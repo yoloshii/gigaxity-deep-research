@@ -72,7 +72,7 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 | `RESEARCH_PROGRESS_HEARTBEAT_INTERVAL` | `30` | Seconds between "still running" progress notifications during a model call. A call shorter than one interval emits none |
 | `RESEARCH_PROGRESS_SEND_TIMEOUT` | `10` | Seconds one notification may take before reporting is disabled for that request |
 | `RESEARCH_SEARXNG_HOST` | `http://localhost:8888` | Primary search source — required |
-| `RESEARCH_SEARXNG_ENGINES` | *(empty)* | Leave empty: the instance's own settings decide the engines per category. A non-empty list is sent as `engines=` on the base `general` lane, which overrides the instance's `disabled:` flags and pins that lane to exactly those engines. Vertical lanes and `vertical_search` never send it |
+| `RESEARCH_SEARXNG_ENGINES` | *(empty)* | Leave empty: the instance's own settings decide the engines per category. A non-empty list is sent as `engines=` on the base `general` lane; SearXNG adds the named engines to the lane's enabled `general` engines, even engines the instance disabled because they are blocked or return junk. Vertical lanes and `vertical_search` never send it |
 | `RESEARCH_SEARXNG_VERTICAL_ROUTING` | `true` | Add one SearXNG category lane (science / it / videos) per search when the focus mode or a keyword heuristic calls for it, and the instance's `/config` shows the category; `false` keeps the `general` lane only |
 | `RESEARCH_TAVILY_API_KEY` | *(empty)* | Optional additional connector — runs in parallel with SearXNG, RRF-fused |
 | `RESEARCH_LINKUP_API_KEY` | *(empty)* | Optional additional connector — runs in parallel with SearXNG, RRF-fused |

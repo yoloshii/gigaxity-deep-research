@@ -319,7 +319,8 @@ engines:
 #
 # Each failed on the test network; yours may differ. To try one, add it to
 # `keep_only` AND give it an `engines:` entry with `disabled: false`, then run
-# the health check below.
+# the health check below. Startpage and mojeek also need `inactive: false`:
+# upstream ships them inactive, and an inactive engine is not loaded at all.
 #
 #   startpage    — ships `inactive: true` upstream: it now answers only after
 #                  a proof-of-work challenge (searxng PR #6669), which refused
@@ -363,15 +364,24 @@ default_doi_resolver: "oadoi.org"
 # them in its footer, and its REST endpoint returns them as
 # `unresponsive_engines`.
 #
-# Check every category, not just `general`:
+# Check every category, not just `general`, counting results by the engines
+# that returned them (a result's `category` label is its engine's PRIMARY
+# category, so a valid category can come back labelled `general`):
 #
 #   for c in general science it videos docs packages; do
 #     curl -s "http://localhost:8888/search?q=python+asyncio&format=json&categories=$c" \
-#       | python3 -c "import sys,json,collections;d=json.load(sys.stdin);print('$c',len(d['results']),dict(collections.Counter(r.get('category') for r in d['results'])),d['unresponsive_engines'])"
+#       | python3 -c "import sys,json,collections;d=json.load(sys.stdin);print('$c',len(d['results']),dict(collections.Counter(e for r in d['results'] for e in (r.get('engines') or [r.get('engine')]))),d['unresponsive_engines'])"
 #   done
 #
-# A category that reports only `general` results is not defined on the
-# instance. Alert when the healthy general-category pool drops below about
+# Whether a category exists comes from /config, which lists every enabled
+# engine's categories. SearXNG answers an undefined category from its default
+# categories without an error, and the parent project skips any category
+# missing here:
+#
+#   curl -s http://localhost:8888/config \
+#     | python3 -c "import sys,json,collections;c=collections.defaultdict(list);[c[k].append(e['name']) for e in json.load(sys.stdin)['engines'] if e['enabled'] for k in e['categories']];[print(k,sorted(v)) for k,v in sorted(c.items()) if k in ('general','science','it','videos','docs','packages')]"
+#
+# Alert when the healthy general-category pool drops below about
 # three engines. Below that, one misbehaving engine dominates the RRF fusion
 # and results collapse topically while still returning 200.
 #
