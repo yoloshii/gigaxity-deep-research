@@ -11,6 +11,7 @@ from ..connectors import (
     LinkUpConnector,
     BraveConnector,
     ParallelConnector,
+    YouComConnector,
 )
 from .fusion import rrf_fusion
 from .verticals import resolve_vertical
@@ -71,6 +72,7 @@ class SearchAggregator:
                 TavilyConnector(),
                 LinkUpConnector(),
                 BraveConnector(),
+                YouComConnector(),
                 ParallelConnector(),
             ]
             self.connectors = [c for c in all_connectors if c.is_configured()]

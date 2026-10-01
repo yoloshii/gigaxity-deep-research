@@ -31,6 +31,9 @@ services:
       RESEARCH_BRAVE_API_KEY: "${BRAVE_API_KEY:-}"
       RESEARCH_BRAVE_SAFESEARCH: "off"
 
+      # You.com Search Configuration (optional)
+      RESEARCH_YOUCOM_API_KEY: "${YOUCOM_API_KEY:-}"
+      RESEARCH_YOUCOM_SAFESEARCH: "moderate"
       # Parallel Search Configuration (optional)
       RESEARCH_PARALLEL_API_KEY: "${PARALLEL_API_KEY:-}"
       RESEARCH_PARALLEL_MODE: "fast"

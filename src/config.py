@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     brave_country: str = Field(default="", description="Optional ISO country code for geo-targeting, e.g. 'us'")
     brave_safesearch: str = Field(default="off", description="Safe search: off, moderate, or strict")
 
+    # You.com Search Configuration
+    youcom_api_key: str = Field(default="", description="You.com Web Search API key")
+    youcom_safesearch: str = Field(default="moderate", description="Safe search: off, moderate, or strict")
     # Parallel Search Configuration
     parallel_api_key: str = Field(default="", description="Parallel Search API key (platform.parallel.ai)")
     parallel_mode: str = Field(default="fast", description="Search mode: turbo or fast (cheapest tier), basic or advanced (5x the price as of 2026-09). The API defaults to advanced when mode is omitted, so the connector always sends this value; an unknown value falls back to fast")

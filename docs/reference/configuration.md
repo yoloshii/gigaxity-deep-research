@@ -80,6 +80,8 @@ Every search a tool runs costs one request per configured connector. `discover` 
 | `RESEARCH_BRAVE_API_KEY` | *(empty)* | No | Brave Search — additional parallel source (https://brave.com/search/api/). Official Brave index over a keyed API, so unlike SearXNG's scraped engines it cannot be served a CAPTCHA under automated load. Free tier ~1,000 queries/month, recurring |
 | `RESEARCH_BRAVE_COUNTRY` | *(empty)* | No | Optional ISO country code for geo-targeting, e.g. `us` |
 | `RESEARCH_BRAVE_SAFESEARCH` | `off` | No | `off`, `moderate`, or `strict` |
+| `RESEARCH_YOUCOM_API_KEY` | *(empty)* | No | You.com — additional parallel source (https://you.com/platform/api-keys). Keyed REST API over You.com's own web index, returning clean structured results (title, description, snippets, page_age), so like the other keyed lanes it cannot be served a CAPTCHA under automated load |
+| `RESEARCH_YOUCOM_SAFESEARCH` | `moderate` | No | `off`, `moderate`, or `strict` |
 | `RESEARCH_LINKUP_DEPTH` | `standard` | No | `standard` or `deep` |
 | `RESEARCH_PARALLEL_API_KEY` | *(empty)* | No | Parallel Search — additional parallel source (https://platform.parallel.ai). Parallel's own web index over a keyed API, returning LLM-oriented excerpts; like Brave it cannot be served a CAPTCHA |
 | `RESEARCH_PARALLEL_MODE` | `fast` | No | `turbo` or `fast` ($1 per 1,000 requests as of 2026-09), `basic` or `advanced` ($5 per 1,000). Always sent — the API bills `advanced` when `mode` is omitted. An unknown value falls back to `fast` |
