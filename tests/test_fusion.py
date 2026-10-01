@@ -160,3 +160,16 @@ class TestRRFFusion:
         assert urls[0] == "http://b.com"  # B should be first
         assert urls[1] == "http://a.com"  # A should be second
         assert urls[2] == "http://c.com"  # C should be third
+
+    @pytest.mark.unit
+    def test_a_hole_keeps_the_ranks_after_it(self):
+        """A None entry is a suppressed result: the result after it is not promoted."""
+        sources = [
+            None,
+            Source(id="b", title="B", url="http://b.com", content="B"),
+        ]
+
+        result = rrf_fusion([sources], k=60)
+
+        assert [s.url for s in result] == ["http://b.com"]
+        assert abs(result[0].score - 1/62) < 0.0001

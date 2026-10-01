@@ -1,8 +1,8 @@
 # SearXNG settings for Gigaxity Deep Research
 #
 # Tuned for use as a JSON API backend feeding the parent project's research
-# connector. Engine selection, weights and timeouts were re-validated against
-# upstream SearXNG on 2026-08-03 (release 2026.8.1).
+# connector. Engine selection, categories, weights and timeouts were
+# re-validated against upstream SearXNG on 2026-09-30 (release 2026.9.30).
 #
 # Setup:
 #   1. Copy this file to settings.yml
@@ -20,41 +20,68 @@
 # list then runs alongside ~79 unaudited default-enabled engines. See
 # https://docs.searxng.org/admin/settings/settings.html#use-default-settings
 #
+# Categories are the routing contract with the parent project. It sends
+# `categories=` and, by default, never `engines=` (an explicit engines list
+# overrides the `disabled:` flags below, and is never sent on a vertical lane):
+#   - every fused search queries `general`;
+#   - a vertical lane adds ONE of `science` / `it` / `videos` when the focus
+#     mode or a keyword heuristic calls for it;
+#   - `docs` and `packages` are defined only here, and are reached only
+#     through an explicit `vertical_search` request.
+# SearXNG answers a category it does not define from its default categories,
+# with no error. The parent project therefore reads this instance's `/config`
+# (engines, their categories, enabled flags) and skips any category without an
+# enabled engine.
+#
+# Image version matters. From 2026.9.x the image makes outgoing requests
+# through curl_cffi with browser TLS impersonation (earlier images used httpx).
+# On a residential test connection the httpx image (2026.8.1) drew a DuckDuckGo
+# CAPTCHA and a Brave "too many requests" on the first query, while the
+# curl_cffi image (2026.9.30) returned results from both - same IP, same query.
+# Some blocks that look like IP reputation are TLS fingerprinting.
+#
 # Adjust per your jurisdiction — engines blocked from one network often work
 # fine from another. Verify yours rather than trusting this file; see
 # "Health check" at the bottom.
 
 # `keep_only` makes this an allow-list: engines absent from it are removed
 # outright. To add an engine, list it BOTH here and (if you want a non-default
-# weight or timeout) in the `engines:` block further down.
+# weight, timeout, category or enabled state) in the `engines:` block further
+# down. Unknown names are dropped SILENTLY — re-validate this list against the
+# image's engine registry on every image update.
 use_default_settings:
   engines:
     keep_only:
       # general web
-      - brave
       - duckduckgo
-      - mojeek
-      - startpage
+      - brave
       - wikipedia
       - wikidata
-      - wolframalpha
-      - qwant
-      - bing
-      - google news
       # science / academic
       - arxiv
       - google scholar
       - semantic scholar
       - pubmed
-      - openairepublications
-      # technical
-      - github
+      - openalex
+      - crossref
+      # technical (Q&A, repos, discussion)
       - stackoverflow
       - askubuntu
       - superuser
+      - github
+      - hackernews
+      # docs (opt-in vertical)
       - mdn
+      - microsoft learn
+      - arch linux wiki
+      # packages (opt-in vertical)
       - pypi
-      # social / media (focus-mode coverage)
+      - npm
+      - crates.io
+      - pkg.go.dev
+      - docker hub
+      - huggingface
+      # video
       - youtube
 
 general:
@@ -83,11 +110,11 @@ server:
   method: "POST"
 
 outgoing:
+  # `pool_maxsize` and `keepalive_expiry` were httpx settings and have no
+  # effect since the curl_cffi switch; `pool_connections` still applies.
   request_timeout: 3.5
   max_request_timeout: 10.0
   pool_connections: 50
-  pool_maxsize: 20
-  keepalive_expiry: 10.0
   enable_http2: true
 
 ui:
@@ -101,98 +128,49 @@ search:
   autocomplete_min: 4
   favicon_resolver: ""
   default_lang: "auto"
-  ban_time_on_fail: 5
-  max_ban_time_on_fail: 60
-  suspended_times:
-    SearxEngineAccessDenied: 300
-    SearxEngineCaptcha: 600
-    SearxEngineTooManyRequests: 120
-    cf_SearxEngineCaptcha: 7200
-    cf_SearxEngineAccessDenied: 600
-    recaptcha_SearxEngineCaptcha: 14400
+  # `ban_time_on_fail`, `max_ban_time_on_fail` and `suspended_times` are
+  # deliberately NOT set, so upstream's defaults apply (2026.9.30: CAPTCHA
+  # 3600 s, too-many-requests 180 s, access-denied 180 s, Cloudflare CAPTCHA
+  # 15 days, reCAPTCHA 7 days). Shorter suspensions re-probe a blocked engine
+  # every few minutes, which keeps the instance's IP flagged.
   formats:
     - html
     - json                     # required by gigaxity-deep-research
 
 engines:
   # ============================================
-  # Tier 1: PRIMARY (weight 5) — independent indices
+  # GENERAL WEB — categories=general
   # ============================================
 
-  - name: mojeek
+  - name: brave
+    # Independent index, and the strongest general engine when reachable.
+    # Scraped, so it rate-limits under sustained automated load. If you drive
+    # this backend hard, also configure Brave's official API in the parent
+    # project (RESEARCH_BRAVE_API_KEY) rather than raising the weight.
     disabled: false
     weight: 5
-    timeout: 5.0
+    timeout: 4.0
+
+  - name: duckduckgo
+    # Best-measured general engine for research-shaped queries. Also CAPTCHAs
+    # fastest under bursts. Pace the caller; do not compensate by re-enabling
+    # bing.
+    disabled: false
+    weight: 4
+    timeout: 4.0
 
   - name: wikipedia
     disabled: false
     weight: 5
     timeout: 3.0
 
-  - name: brave
-    # Independent index, and the strongest general engine when reachable.
-    # Scraped, so it rate-limits under sustained automated load — observed
-    # "Suspended: too many requests" on an instance doing roughly six queries
-    # a minute. If you drive this backend hard, move Brave to its official API
-    # (see "Durable lanes" at the bottom) rather than raising the weight.
-    disabled: false
-    weight: 5
-    timeout: 4.0
-
-  # ============================================
-  # Tier 2: SECONDARY (weight 3-4)
-  # ============================================
-
-  - name: duckduckgo
-    # Best-measured general engine for research-shaped queries (2026-08-03):
-    # returned relevant academic sources where every other general engine on
-    # the test instance returned noise. Also CAPTCHAs fastest — six rapid
-    # queries was enough to trip it. Pace the caller; do not compensate by
-    # re-enabling bing.
-    disabled: false
-    weight: 4
-    timeout: 4.0
-
-  - name: startpage
-    # Google-syndicated. CAPTCHAs from datacenter/VPS IPs, usually fine from
-    # residential egress. Verify on your network before relying on it.
-    disabled: false
-    weight: 3
-    timeout: 6.0
-
   - name: wikidata
     disabled: false
     weight: 3
     timeout: 4.0
 
-  - name: wolframalpha
-    engine: wolframalpha_noapi
-    disabled: false
-    weight: 4
-    timeout: 8.0
-
-  - name: bing
-    # DISABLED 2026-08-03 after direct measurement. Bing served bot-block
-    # fallback content — Microsoft property pages ("Microsoft Official Home
-    # Page", "Sign in to your account", "Outlook") in response to an academic
-    # query, and unrelated Chinese forum threads to another — while returning
-    # HTTP 200 with no error signal. RRF fuses on rank, so junk at any weight
-    # displaces good results; deweighting is not a fix.
-    #
-    # IP-reputation dependent, so test before assuming it applies to you:
-    #   curl -s 'http://localhost:8888/search?q=retrieval+augmented+generation+benchmarks&format=json' \
-    #     | python3 -c 'import sys,json;[print(r.get("engines"),r["title"][:70]) for r in json.load(sys.stdin)["results"][:10]]'
-    # If the bing-tagged rows are on-topic, set disabled: false and weight: 3.
-    disabled: true
-
-  - name: qwant
-    # Cloudflare-blocked from many residential IPs. Qwant supports
-    # `use_official_api` with an `api_key`; that lane does not CAPTCHA and is
-    # the durable way to run it. Without a key, leave this disabled.
-    disabled: true
-
   # ============================================
-  # SCIENCE / ACADEMIC
+  # SCIENCE / ACADEMIC — categories=science
   # ============================================
 
   - name: arxiv
@@ -211,34 +189,43 @@ engines:
     weight: 4
     timeout: 8.0
 
+  - name: openalex
+    # OpenAlex API, no key. Off upstream by default.
+    disabled: false
+    weight: 3
+    timeout: 6.0
+
   - name: pubmed
     disabled: false
     weight: 3
     timeout: 6.0
 
-  - name: openairepublications
+  - name: crossref
+    # Crossref API, no key. Metadata-heavy, so weighted low. Upstream's
+    # default timeout is 30 s; capped here so one slow API cannot stall the lane.
     disabled: false
-    weight: 3
+    weight: 2
     timeout: 6.0
 
   # ============================================
-  # TECHNICAL — code/dev focus
+  # TECHNICAL — categories=it
   # ============================================
-
-  - name: github
-    disabled: false
-    weight: 4
-    timeout: 5.0
 
   - name: stackoverflow
     disabled: false
     weight: 4
     timeout: 4.0
 
-  - name: mdn
+  - name: github
     disabled: false
     weight: 3
-    timeout: 4.0
+    timeout: 5.0
+
+  - name: hackernews
+    # Algolia HN search — practitioner discussion.
+    disabled: false
+    weight: 2
+    timeout: 5.0
 
   - name: askubuntu
     disabled: false
@@ -250,13 +237,75 @@ engines:
     weight: 2
     timeout: 4.0
 
+  # ============================================
+  # DOCS — opt-in, categories=docs
+  # Kept out of `it`: MDN and Microsoft Learn keyword-match across languages
+  # (a Python httpx question drew JavaScript `async function` and Azure
+  # pages), which displaces real answers under RRF.
+  # ============================================
+
+  - name: mdn
+    categories: [docs]
+    disabled: false
+    weight: 3
+    timeout: 4.0
+
+  - name: microsoft learn
+    categories: [docs]
+    disabled: false
+    weight: 3
+    timeout: 5.0
+
+  - name: arch linux wiki
+    categories: [docs]
+    disabled: false
+    weight: 3
+    timeout: 5.0
+
+  # ============================================
+  # PACKAGES — opt-in, categories=packages
+  # Categories overridden to keep registry hits out of the `it` lane: a
+  # package listing that merely matches a word displaces real answers.
+  # ============================================
+
   - name: pypi
+    categories: [packages]
     disabled: false
     weight: 2
     timeout: 4.0
 
+  - name: npm
+    categories: [packages]
+    disabled: false
+    weight: 2
+    timeout: 5.0
+
+  - name: crates.io
+    categories: [packages]
+    disabled: false
+    weight: 2
+    timeout: 6.0
+
+  - name: pkg.go.dev
+    categories: [packages]
+    disabled: false
+    weight: 2
+    timeout: 5.0
+
+  - name: docker hub
+    categories: [packages]
+    disabled: false
+    weight: 2
+    timeout: 5.0
+
+  - name: huggingface
+    categories: [packages]
+    disabled: false
+    weight: 2
+    timeout: 5.0
+
   # ============================================
-  # SOCIAL / MEDIA — focus-mode coverage
+  # VIDEO — categories=videos
   # ============================================
 
   - name: youtube
@@ -264,40 +313,34 @@ engines:
     weight: 3
     timeout: 4.0
 
-  # ============================================
-  # KEPT AVAILABLE BUT OFF — flip if your egress supports it
-  # ============================================
-
-  - name: google news
-    engine: google_news
-    # Broke in March 2026 when Google changed the News HTML and moved article
-    # hrefs to protobuf-encrypted payloads (searxng issue #5852). FIXED
-    # upstream: PR #5984 merged, issue closed 2026-05-17. Requires an image at
-    # least that recent — check `__SEARXNG_VERSION` inside the container.
-    # Left off by default because it still depends on server-IP reputation;
-    # enable it and confirm non-zero results before relying on it.
-    disabled: true
-
-# Removed 2026-08-03:
+# ============================================
+# Re-enable candidates — dropped from keep_only on 2026-09-30
+# ============================================
 #
-#   karmasearch (+ images/videos/news) — the engine was DELETED from SearXNG in
-#   PR #6213 on 2026-06-07, after Cloudflare 403s proved unbeatable from every
-#   tested IP including Tor exits (issue #5976). Entries naming it are dead
-#   config, not a disabled engine.
+# Each failed on the test network; yours may differ. To try one, add it to
+# `keep_only` AND give it an `engines:` entry with `disabled: false`, then run
+# the health check below. Startpage and mojeek also need `inactive: false`:
+# upstream ships them inactive, and an inactive engine is not loaded at all.
 #
-#   google images, yandex — dropped rather than listed-and-disabled; with
-#   `keep_only` above, omission already removes them.
+#   startpage    — ships `inactive: true` upstream: it now answers only after
+#                  a proof-of-work challenge (searxng PR #6669), which refused
+#                  with "difficulty too high" on the test network.
+#   mojeek       — ships `inactive: true` upstream; served "unusual traffic"
+#                  pages at HTTP 200, which SearXNG parses as a clean zero.
+#   bing         — served bot-block pages ("Microsoft Official Home Page",
+#                  "Sign in to your account") at HTTP 200 with no error signal.
+#                  RRF fuses on rank, so junk at any weight displaces good results.
+#   qwant        — Cloudflare-blocked from many residential IPs. Supports
+#                  `use_official_api` with an `api_key`, which does not CAPTCHA.
+#   wolframalpha — the no-API engine timed out; disabled upstream.
+#   openairepublications — timed out at 6 s; OpenAlex covers the same corpus.
+#   google news  — fixed upstream in May 2026 (searxng PR #5984) but still
+#                  depends on server-IP reputation; confirm non-zero results.
 #
-#   google (web) and reddit — REMOVED FROM UPSTREAM between 2026.3.29 and
-#   2026.8.1. Both are present in the 2026.3.29 engine registry and absent from
-#   2026.8.1's, so naming them resolves to nothing. SearXNG does not error on an
-#   unknown name in `keep_only`, it just drops it — which is exactly why a config
-#   can rot silently. Google's removal is consistent with discussion #5651, where
-#   the maintainer could only make it respond through a Playwright service
-#   carrying a signed-in session cookie that expires within minutes.
-#
-# `aol` is deliberately absent from `keep_only`: upstream enables it by
-# default, it sits in the `general` category, and it returns HTTP errors.
+# Removed upstream (naming them does nothing — keep_only drops unknown names):
+# karmasearch (PR #6213), reddit and aol are absent from the 2026.9.30 engine
+# registry. `google` (web) is still registered but ships `disabled: true`, and
+# answers only through a signed-in browser session (discussion #5651).
 
 doi_resolvers:
   oadoi.org: "https://oadoi.org/"
@@ -317,11 +360,30 @@ default_doi_resolver: "oadoi.org"
 #     | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["unresponsive_engines"]);print(d["number_of_results"])'
 #
 # Typical entries: ["brave","Suspended: too many requests"],
-# ["startpage","Suspended: CAPTCHA"], ["duckduckgo","CAPTCHA"].
+# ["duckduckgo","CAPTCHA"]. The parent project's `vertical_search` tool prints
+# them in its footer, and its REST endpoint returns them as
+# `unresponsive_engines`.
 #
-# Alert when the healthy general-category pool drops below about three
-# engines. Below that, one misbehaving engine dominates the RRF fusion and
-# results collapse topically while still returning 200.
+# Check every category, not just `general`, counting results by the engines
+# that returned them (a result's `category` label is its engine's PRIMARY
+# category, so a valid category can come back labelled `general`):
+#
+#   for c in general science it videos docs packages; do
+#     curl -s "http://localhost:8888/search?q=python+asyncio&format=json&categories=$c" \
+#       | python3 -c "import sys,json,collections;d=json.load(sys.stdin);print('$c',len(d['results']),dict(collections.Counter(e for r in d['results'] for e in (r.get('engines') or [r.get('engine')]))),d['unresponsive_engines'])"
+#   done
+#
+# Whether a category exists comes from /config, which lists every enabled
+# engine's categories. SearXNG answers an undefined category from its default
+# categories without an error, and the parent project skips any category
+# missing here:
+#
+#   curl -s http://localhost:8888/config \
+#     | python3 -c "import sys,json,collections;c=collections.defaultdict(list);[c[k].append(e['name']) for e in json.load(sys.stdin)['engines'] if e['enabled'] for k in e['categories']];[print(k,sorted(v)) for k,v in sorted(c.items()) if k in ('general','science','it','videos','docs','packages')]"
+#
+# Alert when the healthy general-category pool drops below about
+# three engines. Below that, one misbehaving engine dominates the RRF fusion
+# and results collapse topically while still returning 200.
 #
 # ============================================
 # Durable lanes — for sustained automated load
@@ -329,11 +391,15 @@ default_doi_resolver: "oadoi.org"
 #
 # Scraped engines lose the anti-bot arms race by design; upstream has removed
 # engines outright when a provider's blocking became permanent. If this backend
-# serves real query volume, put at least one engine on an official API — no
+# serves real query volume, put at least one lane on an official API — no
 # XPath to break, no CAPTCHA risk from server IPs:
 #
-#   - Brave Search API (free tier available)
+#   - Brave Search API or Parallel Search API, configured in the parent project
 #   - qwant, mwmbl, core, tagesschau (support use_official_api + api_key)
+#
+# Most science engines here are already API-backed (arXiv, OpenAlex, PubMed,
+# Crossref, Semantic Scholar), so the `science` lane usually keeps answering
+# when the scraped general engines are blocked.
 #
 # The alternatives are rotating egress IPs (residential proxies or multiple
 # VPS) or accepting lower throughput.

@@ -4,9 +4,10 @@ This guide walks through registering the server with Claude Code as an MCP stdio
 
 ## What you'll get
 
-After this setup, six tools become available to Claude Code — two primitives plus four deep-research tools:
+After this setup, seven tools become available to Claude Code — three primitives plus four deep-research tools:
 
 - `mcp__gigaxity-deep-research__search` — raw multi-source aggregation, no LLM call
+- `mcp__gigaxity-deep-research__vertical_search` — one SearXNG category (videos, science, it, docs, packages), no LLM call
 - `mcp__gigaxity-deep-research__research` — combined search + synthesis in a single call
 - `mcp__gigaxity-deep-research__ask` — fast conversational answer (direct LLM, no search hop)
 - `mcp__gigaxity-deep-research__discover` — exploratory expansion + gap detection
@@ -78,7 +79,7 @@ Use **absolute paths**. Replace `YOUR_OPENROUTER_API_KEY` with your real key, or
 
 ## Restart Claude Code
 
-After restart, the six tools should appear under the alias `gigaxity-deep-research`. Confirm by typing `/mcp` in Claude Code — you should see the alias listed with a green dot.
+After restart, the seven tools should appear under the alias `gigaxity-deep-research`. Confirm by typing `/mcp` in Claude Code — you should see the alias listed with a green dot.
 
 ## Install the bundled skill (recommended)
 
@@ -99,7 +100,7 @@ Ask Claude Code something outside its training cutoff or something requiring fre
 - "Compare the 2026 versions of FastAPI and Litestar."
 - "What's the latest CVE on `httpx`?"
 
-If the agent calls one of the six tools and returns a citation-backed answer, the install is working.
+If the agent calls one of the seven tools and returns a citation-backed answer, the install is working.
 
 ## Setting up SearXNG
 
@@ -134,4 +135,4 @@ This means the server holds an "owner" key (used for the request that didn't spe
 
 - [Triple Stack setup](triple-stack-setup.md) — wire up the other five companion MCPs for the full deep research workflow
 - [Configuration reference](../reference/configuration.md) — every env var explained
-- [MCP tool reference](../reference/mcp-tools.md) — full input/output reference for all six tools
+- [MCP tool reference](../reference/mcp-tools.md) — full input/output reference for all seven tools

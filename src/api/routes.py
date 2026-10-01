@@ -5,11 +5,20 @@ from fastapi import APIRouter, HTTPException, Header
 from typing import Annotated
 from ..llm_client import get_llm_client, OpenRouterClient
 from ..llm_utils import get_llm_content, derive_effective_budget
-from ..cache import cache, build_discover_cache_extra, build_synthesis_cache_extra
+from ..cache import (
+    cache,
+    build_discover_cache_extra,
+    build_search_cache_extra,
+    build_synthesis_cache_extra,
+)
 from .schemas import (
     # Existing
     SearchRequest,
     SearchResponse,
+    VerticalSearchRequest,
+    VerticalSearchResponse,
+    VerticalSourceSchema,
+    UnresponsiveEngineSchema,
     ResearchRequest,
     ResearchResponse,
     HealthResponse,
@@ -18,7 +27,6 @@ from .schemas import (
     SourceSchema,
     CitationSchema,
     # Discovery
-    DiscoverRequest,
     DiscoverResponse,
     KnowledgeGapSchema,
     KnowledgeLandscapeSchema,
@@ -87,6 +95,7 @@ from ..synthesis import (
     run_outline_synthesize,
 )
 from ..search import SearchAggregator
+from ..connectors import SearXNGConnector
 from ..connectors.doctor import check_connectors
 from ..discovery import (
     Explorer,
@@ -164,14 +173,20 @@ async def search(request: SearchRequest):
 
     Returns aggregated and ranked results from configured connectors.
     """
-    # Check cache
-    cache_extra = f"top_k={request.top_k}"
+    # Check cache. The key carries SEARCH_CACHE_VERSION plus every
+    # behaviour-affecting dimension (connector filter, focus mode, routing).
+    cache_extra = build_search_cache_extra(
+        top_k=request.top_k,
+        connectors=request.connectors,
+        focus_mode=request.focus_mode,
+        vertical_routing=settings.searxng_vertical_routing,
+    )
     cached_result = cache.get(request.query, tier="search", extra=cache_extra)
     if cached_result:
         cached_result["_cached"] = True
         return SearchResponse(**cached_result)
 
-    aggregator = SearchAggregator()
+    aggregator = SearchAggregator(vertical=request.focus_mode or "auto")
 
     if not aggregator.connectors:
         raise HTTPException(
@@ -207,6 +222,55 @@ async def search(request: SearchRequest):
     return response
 
 
+@router.post("/vertical-search", response_model=VerticalSearchResponse)
+async def vertical_search(request: VerticalSearchRequest):
+    """
+    Search ONE SearXNG category (videos, science, it, docs, packages, general).
+
+    No LLM call and no search-API quota. Uncached: the response reports which
+    engines failed on this call, and a cached copy would report stale health.
+    """
+    # Never an engines= pin: SearXNG would add the pinned engines to the category.
+    connector = SearXNGConnector(engines="", vertical=request.vertical)
+    if not connector.is_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="SearXNG is not configured (set RESEARCH_SEARXNG_HOST)"
+        )
+
+    result = await connector.search(request.query, top_k=request.top_k)
+
+    def _text(value) -> str | None:
+        return str(value) if value else None
+
+    return VerticalSearchResponse(
+        query=request.query,
+        vertical=request.vertical,
+        sources=[
+            VerticalSourceSchema(
+                id=s.id,
+                title=s.title,
+                url=s.url,
+                content=s.content,
+                score=s.score,
+                connector=s.connector,
+                engine=str(s.metadata.get("engine") or ""),
+                author=_text(s.metadata.get("author")),
+                length=_text(s.metadata.get("length")),
+                published_date=_text(s.metadata.get("published_date")),
+            )
+            for s in result.sources
+        ],
+        total_results=len(result.sources),
+        unresponsive_engines=[
+            UnresponsiveEngineSchema(engine=name, reason=why)
+            for name, why in connector.last_unresponsive
+        ],
+        category_status=connector.last_category_status or "supported",
+        off_category_results=connector.last_off_category,
+    )
+
+
 @router.post("/research", response_model=ResearchResponse)
 async def research(
     request: ResearchRequest,
@@ -221,9 +285,10 @@ async def research(
 
     P1 Enhancements (when preset or focus_mode is specified):
     - preset: Use P1 synthesis with quality gate, RCS, contradictions
-    - focus_mode: Optimize discovery for specific domains
+    - focus_mode: Optimize discovery for specific domains; also routes the
+      SearXNG vertical lane (a keyword heuristic decides when omitted)
     """
-    aggregator = SearchAggregator()
+    aggregator = SearchAggregator(vertical=request.focus_mode or "auto")
     llm_client = _get_llm_client(request.api_key, x_openrouter_api_key)
 
     if not aggregator.connectors:
@@ -590,7 +655,10 @@ async def ask(
 
 @router.post("/discover", response_model=DiscoverResponse)
 async def discover(
-    request: DiscoverRequest | DiscoverRequestEnhanced,
+    # One model, not a union: the enhanced request is a superset of the plain
+    # one with the same defaults, and a union body left the HTTP MCP `discover`
+    # tool with an empty input schema (fastapi_mcp cannot flatten it).
+    request: DiscoverRequestEnhanced,
     x_openrouter_api_key: OpenRouterApiKeyHeader = None,  # placeholder; per-request override of env key
 ):
     """
@@ -626,13 +694,22 @@ async def discover(
         use_adaptive_routing=use_routing,
         focus_mode=focus_mode,
         identify_gaps=identify_gaps,
+        connectors=request.connectors,
+        vertical_routing=settings.searxng_vertical_routing,
     )
     cached_result = cache.get(request.query, tier="discover", extra=cache_extra)
     if cached_result:
         cached_result["_cached"] = True
         return DiscoverResponse(**cached_result)
 
-    aggregator = SearchAggregator()
+    aggregator = SearchAggregator(vertical=focus_mode or "auto")
+    # Discovery runs many searches (original, expansions, gap fills) through
+    # this one aggregator, so the connector filter is applied to it rather
+    # than to a single search call.
+    if request.connectors:
+        aggregator.connectors = [
+            c for c in aggregator.connectors if c.name in request.connectors
+        ]
     llm_client = _get_llm_client(request.api_key, x_openrouter_api_key)
 
     if not aggregator.connectors:

@@ -5,6 +5,10 @@ from pydantic import BaseModel, Field
 from ..connectors.base import HealthStatus
 from typing import Literal
 
+# Names a `connectors` filter may carry. An unknown name is rejected (422)
+# rather than silently matching nothing.
+ConnectorName = Literal["searxng", "tavily", "linkup", "brave", "parallel"]
+
 
 # =============================================================================
 # Base Search Schemas (existing)
@@ -16,9 +20,15 @@ class SearchRequest(BaseModel):
 
     query: str = Field(..., description="Search query")
     top_k: int = Field(default=10, ge=1, le=50, description="Results per source")
-    connectors: list[str] | None = Field(
+    connectors: list[ConnectorName] | None = Field(
         default=None,
-        description="Specific connectors to use (searxng, tavily, linkup)"
+        description="Specific connectors to use (searxng, tavily, linkup, brave, parallel)"
+    )
+    focus_mode: Literal[
+        "general", "academic", "documentation", "comparison", "debugging", "tutorial", "news"
+    ] | None = Field(
+        default=None,
+        description="Routing hint for the SearXNG vertical lane: academic -> science, debugging/documentation -> it, tutorial -> videos, general -> none. Omitted (or comparison/news) lets a keyword heuristic decide."
     )
 
 
@@ -42,14 +52,59 @@ class SearchResponse(BaseModel):
     total_results: int
 
 
+class VerticalSearchRequest(BaseModel):
+    """Request for a single-category SearXNG search."""
+
+    query: str = Field(..., description="Search query")
+    vertical: Literal["videos", "science", "it", "docs", "packages", "general"] = Field(
+        default="videos",
+        description="SearXNG category to search. docs and packages exist only on instances that define them (the bundled companion does); see category_status in the response."
+    )
+    top_k: int = Field(default=10, ge=1, le=50, description="Maximum results")
+
+
+class VerticalSourceSchema(SourceSchema):
+    """A single-category result, with the engine and any video metadata."""
+
+    engine: str = ""
+    author: str | None = None
+    length: str | None = None
+    published_date: str | None = None
+
+
+class UnresponsiveEngineSchema(BaseModel):
+    """An engine the SearXNG instance reported as failing for this query."""
+
+    engine: str
+    reason: str
+
+
+class VerticalSearchResponse(BaseModel):
+    """Response from the vertical-search endpoint."""
+
+    query: str
+    vertical: str
+    sources: list[VerticalSourceSchema]
+    total_results: int
+    unresponsive_engines: list[UnresponsiveEngineSchema] = []
+    category_status: Literal["supported", "missing", "unknown"] = Field(
+        default="supported",
+        description="From the instance's /config: `supported` (an enabled engine serves the category), `missing` (none does, so it was not queried and sources is empty), or `unknown` (/config unreadable; queried anyway, and SearXNG answers an undefined category from its defaults)."
+    )
+    off_category_results: int = Field(
+        default=0,
+        description="Results dropped because only engines outside the category returned them: a locked category preference on the instance, or a !bang in the query, selects other engines. Counted when category_status is `supported`."
+    )
+
+
 class ResearchRequest(BaseModel):
     """Request for full research with synthesis."""
 
     query: str = Field(..., description="Research query")
     top_k: int = Field(default=10, ge=1, le=50, description="Results per source")
-    connectors: list[str] | None = Field(
+    connectors: list[ConnectorName] | None = Field(
         default=None,
-        description="Specific connectors to use"
+        description="Specific connectors to use (searxng, tavily, linkup, brave, parallel)"
     )
     reasoning_effort: Literal["low", "medium", "high"] = Field(
         default="medium",
@@ -66,7 +121,7 @@ class ResearchRequest(BaseModel):
         "general", "academic", "documentation", "comparison", "debugging", "tutorial", "news"
     ] | None = Field(
         default=None,
-        description="Discovery focus mode for query optimization"
+        description="Discovery focus mode for query optimization. Also routes the SearXNG vertical lane: academic -> science, debugging/documentation -> it, tutorial -> videos, general -> none; omitted (or comparison/news) lets a keyword heuristic decide."
     )
     gate_focus: str | None = Field(
         default=None,
@@ -156,9 +211,15 @@ class DiscoverRequest(BaseModel):
         default=True,
         description="Expand to related concepts for breadth"
     )
-    connectors: list[str] | None = Field(
+    connectors: list[ConnectorName] | None = Field(
         default=None,
-        description="Specific connectors to use"
+        description="Specific connectors to use (searxng, tavily, linkup, brave, parallel); applies to every search discovery runs"
+    )
+    focus_mode: Literal[
+        "general", "academic", "documentation", "comparison", "debugging", "tutorial", "news"
+    ] | None = Field(
+        default=None,
+        description="Routes the SearXNG vertical lane for every search discovery runs: academic -> science, debugging/documentation -> it, tutorial -> videos, general -> none. Omitted (or comparison/news) lets a keyword heuristic decide."
     )
     api_key: str | None = Field(
         default=None,
@@ -551,7 +612,16 @@ class DiscoverRequestEnhanced(BaseModel):
     expand_searches: bool = Field(default=True, description="Expand to related concepts")
     fill_gaps: bool = Field(default=True, description="Auto-search for knowledge gaps")
     use_adaptive_routing: bool = Field(default=True, description="Route to optimal connectors")
-    connectors: list[str] | None = Field(default=None)
+    connectors: list[ConnectorName] | None = Field(
+        default=None,
+        description="Specific connectors to use (searxng, tavily, linkup, brave, parallel); applies to every search discovery runs"
+    )
+    focus_mode: Literal[
+        "general", "academic", "documentation", "comparison", "debugging", "tutorial", "news"
+    ] | None = Field(
+        default=None,
+        description="Routes the SearXNG vertical lane for every search discovery runs: academic -> science, debugging/documentation -> it, tutorial -> videos, general -> none. Omitted (or comparison/news) lets a keyword heuristic decide."
+    )
     api_key: str | None = Field(
         default=None,
         description="OpenRouter API key for this request. Uses server default if not provided."
@@ -672,7 +742,7 @@ class DiscoverRequestP1(BaseModel):
     expand_searches: bool = Field(default=True, description="Expand to related concepts")
     fill_gaps: bool = Field(default=True, description="Auto-search for knowledge gaps")
     use_adaptive_routing: bool = Field(default=True, description="Route to optimal connectors")
-    connectors: list[str] | None = Field(default=None)
+    connectors: list[ConnectorName] | None = Field(default=None)
     # P1: Focus Mode
     focus_mode: Literal[
         "general", "academic", "documentation", "comparison", "debugging", "tutorial", "news"

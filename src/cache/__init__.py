@@ -201,7 +201,22 @@ SYNTH_CACHE_VERSION = "7"
 # fallbacks, scoring_status, the exactly-once original search, and the
 # degradations field - all of which change discovery output for an unchanged
 # pre-v2 key.
-DISCOVER_CACHE_VERSION = "2"
+# v3 (v0.14.0): the fused source set behind every discovery search changed -
+# a SearXNG vertical lane, the Parallel connector, and an empty default
+# `engines=` - so a pre-v3 entry holds results a v3 request would not produce.
+# The key also gains the connector filter (now applied to every discovery
+# search; before v0.14.0 it was accepted and ignored) and the vertical-routing
+# switch.
+DISCOVER_CACHE_VERSION = "3"
+
+# REST /search cache key versioning (v0.14.0). The unversioned key carried
+# only top_k - not the connector filter, so two requests differing only in
+# `connectors` collided onto one entry. v2 = first versioned key (v1 = the
+# implicit unversioned era, matching DISCOVER_CACHE_VERSION's convention); it
+# adds the connector filter, the focus mode that drives the SearXNG vertical
+# lane, and whether vertical routing is enabled. Bump whenever /search output
+# can change for an unchanged key.
+SEARCH_CACHE_VERSION = "2"
 
 
 def _source_field(source: Any, field: str) -> str:
@@ -243,6 +258,17 @@ def build_synthesis_cache_extra(
     )
 
 
+def _connector_key(connectors: Optional[list[str]]) -> str:
+    """Encode a connector filter for a cache key, one encoding per filter.
+
+    The aggregator matches the filter as a set, and treats an empty list like
+    no filter, so both become `null`; any other filter is its sorted, distinct
+    names as a JSON array. No name - `*`, or one holding a comma - can then
+    produce another filter's key.
+    """
+    return json.dumps(sorted(set(connectors))) if connectors else "null"
+
+
 def build_discover_cache_extra(
     *,
     model: str,
@@ -252,19 +278,46 @@ def build_discover_cache_extra(
     use_adaptive_routing: bool,
     focus_mode: Optional[str],
     identify_gaps: bool,
+    connectors: Optional[list[str]] = None,
+    vertical_routing: bool = True,
 ) -> str:
     """Build the cache `extra` discriminator for a discovery result.
 
     Carries DISCOVER_CACHE_VERSION plus every behaviour-affecting request
     dimension: the model (stage grammars and budgets are model-sensitive),
-    top_k, search expansion, gap filling, adaptive routing, and the
-    focus-mode / identify_gaps pair the pre-versioned key already had.
+    top_k, search expansion, gap filling, adaptive routing, the
+    focus-mode / identify_gaps pair the pre-versioned key already had, the
+    connector filter (see `_connector_key`) and the SearXNG vertical-routing
+    switch.
     """
+    connector_key = _connector_key(connectors)
     return (
         f"v={DISCOVER_CACHE_VERSION}:model={model}:top_k={top_k}"
         f":expand={expand_searches}:fill_gaps={fill_gaps}"
         f":routing={use_adaptive_routing}:focus_mode={focus_mode}"
-        f":identify_gaps={identify_gaps}"
+        f":identify_gaps={identify_gaps}:connectors={connector_key}"
+        f":vertical_routing={vertical_routing}"
+    )
+
+
+def build_search_cache_extra(
+    *,
+    top_k: int,
+    connectors: Optional[list[str]],
+    focus_mode: Optional[str],
+    vertical_routing: bool,
+) -> str:
+    """Build the cache `extra` discriminator for a REST /search result.
+
+    Carries SEARCH_CACHE_VERSION plus every behaviour-affecting request
+    dimension: top_k, the connector filter (see `_connector_key`), the focus
+    mode that selects the SearXNG vertical lane, and the vertical-routing
+    switch.
+    """
+    connector_key = _connector_key(connectors)
+    return (
+        f"v={SEARCH_CACHE_VERSION}:top_k={top_k}:connectors={connector_key}"
+        f":focus_mode={focus_mode}:vertical_routing={vertical_routing}"
     )
 
 

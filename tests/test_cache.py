@@ -593,17 +593,17 @@ class TestSynthesizeSourceAwareCaching:
 @pytest.mark.unit
 @pytest.mark.skipif(not HAS_MCP_SERVER, reason="FastMCP tool registry not loadable")
 class TestToolRegistryCoverage:
-    """Sanity-check that all six stdio MCP tools are registered."""
+    """Sanity-check that all seven stdio MCP tools are registered."""
 
-    async def test_six_tools_registered(self):
-        """The stdio MCP surface must register exactly the six documented tools."""
+    async def test_seven_tools_registered(self):
+        """The stdio MCP surface must register exactly the seven documented tools."""
         from src.mcp_server import mcp
 
         registered = {t.name for t in await mcp.list_tools()}
-        expected = {"search", "research", "ask", "discover", "synthesize", "reason"}
-        assert expected.issubset(registered), (
+        expected = {"search", "vertical_search", "research", "ask", "discover", "synthesize", "reason"}
+        assert registered == expected, (
             f"Missing tools: {expected - registered}. "
-            f"Registered: {sorted(registered)}"
+            f"Unexpected tools: {registered - expected}."
         )
 
     def test_synthesize_uses_inline_cache(self):

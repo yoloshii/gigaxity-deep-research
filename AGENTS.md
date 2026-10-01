@@ -2,7 +2,7 @@
 
 This is the agent reference for Gigaxity Deep Research, an open-source deep research MCP server for Claude Code, Hermes, Cursor, and other MCP-compatible agents. Qwen3-30B-A3B-Thinking runs via OpenRouter, the Triple Stack search MCPs (Context7, Exa, Jina) handle web/docs/code retrieval, and the bundled `research-workflow` skill routes queries to the right tool per query class.
 
-This file is loaded by Claude Code (`CLAUDE.md`) and other MCP-compatible agents (`AGENTS.md` is byte-identical). It documents how to operate the six MCP tools this server exposes (two primitives plus four deep-research tools) and how to plug them into the broader deep research stack.
+This file is loaded by Claude Code (`CLAUDE.md`) and other MCP-compatible agents (`AGENTS.md` is byte-identical). It documents how to operate the seven MCP tools this server exposes (three primitives plus four deep-research tools) and how to plug them into the broader deep research stack.
 
 If your harness loads a global `CLAUDE.md` or `AGENTS.md` (Claude Code, Codex, Cursor, Hermes, etc.), copy the **instruction block** at the bottom of this file into that global file. For standalone agents that take a system prompt instead, paste the block directly into the system prompt. That single block makes any compatible agent automatically route research queries through this MCP plus the six companion MCPs (Context7, Exa, Exa Answer, Jina, Brightdata fallback, gptr-mcp) in the full deep research stack.
 
@@ -10,13 +10,14 @@ If your harness loads a global `CLAUDE.md` or `AGENTS.md` (Claude Code, Codex, C
 
 ## Tool surface
 
-The MCP server exposes **two primitives** plus **four deep-research tools** — six tools total. Pick a primitive when you want raw or combined behavior in one call; pick a deep-research tool when you want to drive discovery, synthesis, or reasoning as a discrete step.
+The MCP server exposes **three primitives** plus **four deep-research tools** — seven tools total. Pick a primitive when you want raw or combined behavior in one call; pick a deep-research tool when you want to drive discovery, synthesis, or reasoning as a discrete step.
 
 **Primitives**
 
 | Tool | Use for | Token cost (typical) |
 |---|---|---|
-| `mcp__gigaxity-deep-research__search` | Raw multi-source aggregation (SearXNG + Tavily + LinkUp + Brave + RRF). No LLM call. | 0 LLM tokens; search-API quotas only |
+| `mcp__gigaxity-deep-research__search` | Raw multi-source aggregation (SearXNG + Tavily + LinkUp + Brave + Parallel, RRF-fused), plus one SearXNG category lane (science / it / videos) chosen by `focus_mode` (`general` = none) or, without one, a keyword heuristic. No LLM call. | 0 LLM tokens; search-API quotas only |
+| `mcp__gigaxity-deep-research__vertical_search` | One SearXNG category on its own: `videos`, `science`, `it`, `docs`, `packages` or `general`. Reports engines that failed on the call. No LLM call. | 0 LLM tokens; no search-API quota |
 | `mcp__gigaxity-deep-research__research` | Combined search + synthesis with citations in a single call. The simple pipeline. | ~3000–8000 |
 
 **Deep-research tools**
@@ -28,7 +29,7 @@ The MCP server exposes **two primitives** plus **four deep-research tools** — 
 | `mcp__gigaxity-deep-research__synthesize` | Citation-aware fusion of pre-gathered content; CRAG quality gate, contradiction surfacing | ~5000–10000 |
 | `mcp__gigaxity-deep-research__reason` | Deep synthesis with explicit chain-of-thought depth control over pre-gathered content | ~5000–15000 |
 
-All six tools accept an optional `openrouter_api_key` parameter for per-request key override (multi-tenant deployments). REST callers can use the `X-OpenRouter-Api-Key` header for the same purpose.
+All seven tools accept an optional `openrouter_api_key` parameter for per-request key override (multi-tenant deployments). REST callers can use the `X-OpenRouter-Api-Key` header for the same purpose.
 
 ---
 
@@ -71,12 +72,17 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 | `RESEARCH_PROGRESS_HEARTBEAT_INTERVAL` | `30` | Seconds between "still running" progress notifications during a model call. A call shorter than one interval emits none |
 | `RESEARCH_PROGRESS_SEND_TIMEOUT` | `10` | Seconds one notification may take before reporting is disabled for that request |
 | `RESEARCH_SEARXNG_HOST` | `http://localhost:8888` | Primary search source — required |
-| `RESEARCH_SEARXNG_ENGINES` | `brave,duckduckgo,startpage,mojeek,wikipedia` | Matches the bundled SearXNG `settings.yml.example` enabled list |
+| `RESEARCH_SEARXNG_ENGINES` | *(empty)* | Leave empty: the instance's own settings decide the engines per category. A non-empty list is sent as `engines=` on the base `general` lane; SearXNG adds the named engines to the lane's enabled `general` engines, even engines the instance disabled because they are blocked or return junk. Vertical lanes and `vertical_search` never send it |
+| `RESEARCH_SEARXNG_VERTICAL_ROUTING` | `true` | Add one SearXNG category lane (science / it / videos) per search when the focus mode or a keyword heuristic calls for it, and the instance's `/config` shows the category; `false` keeps the `general` lane only |
 | `RESEARCH_TAVILY_API_KEY` | *(empty)* | Optional additional connector — runs in parallel with SearXNG, RRF-fused |
 | `RESEARCH_LINKUP_API_KEY` | *(empty)* | Optional additional connector — runs in parallel with SearXNG, RRF-fused |
 | `RESEARCH_BRAVE_API_KEY` | *(empty)* | Optional additional connector — official Brave index, keyed API (no CAPTCHA risk). Free tier ~1,000 queries/month |
 | `RESEARCH_BRAVE_COUNTRY` | *(empty)* | Optional ISO country code for geo-targeting, e.g. `us` |
 | `RESEARCH_BRAVE_SAFESEARCH` | `off` | `off`, `moderate`, or `strict` |
+| `RESEARCH_PARALLEL_API_KEY` | *(empty)* | Optional additional connector — Parallel's own web index via keyed API (no CAPTCHA risk), with LLM-oriented excerpts |
+| `RESEARCH_PARALLEL_MODE` | `fast` | `turbo` / `fast` (cheapest) or `basic` / `advanced` (5x the price). Always sent, because the API bills `advanced` when it is omitted |
+| `RESEARCH_PARALLEL_MAX_RESULTS` | `10` | Results per request; 10 are in the base price, extras bill separately |
+| `RESEARCH_PARALLEL_EXCERPT_CHARS` | `1500` | Excerpt characters per result |
 | `RESEARCH_DEFAULT_TOP_K` | `10` | Results per source |
 | `RESEARCH_RRF_K` | `60` | RRF fusion constant |
 | `RESEARCH_HOST` | `127.0.0.1` | REST mode only. Default loopback; bind `0.0.0.0` only behind an authenticated reverse proxy. |
@@ -101,11 +107,14 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 ❌ Pass the same OpenRouter key in every request body
 ✅ Set RESEARCH_LLM_API_KEY in env, override per-request only when multi-tenant
 
-❌ Treat Tavily, LinkUp and Brave as failover-on-error for SearXNG
-✅ SearXNG, Tavily, LinkUp and Brave all run in parallel via `asyncio.gather` and get RRF-fused. The three keyed connectors are optional **additional** parallel sources, not fallbacks — they fire whenever their key is configured. SearXNG is the only one that's required (the others silently drop out when their key is empty).
+❌ Treat Tavily, LinkUp, Brave and Parallel as failover-on-error for SearXNG
+✅ SearXNG, Tavily, LinkUp, Brave and Parallel all run in parallel via `asyncio.gather` and get RRF-fused. The four keyed connectors are optional **additional** parallel sources, not fallbacks — they fire whenever their key is configured. SearXNG is the only one that's required (the others silently drop out when their key is empty).
 
 ❌ Rely on SearXNG alone for general web search under automated load
-✅ Configure at least one keyed connector. SearXNG's engines are scraped, so they CAPTCHA under sustained automation and fail *silently* — HTTP 200 with degraded results. Brave is the cheapest durable lane: official index, keyed API, ~1,000 free queries/month.
+✅ Configure at least one keyed connector. SearXNG's engines are scraped, so they CAPTCHA under sustained automation and fail *silently* — HTTP 200 with degraded results. Brave (official index, ~1,000 free queries/month) and Parallel (own index, fast mode) are the durable lanes.
+
+❌ Pin `RESEARCH_SEARXNG_ENGINES` to a list of engines
+✅ Leave it empty and shape the instance's `settings.yml` instead. An explicit list overrides the instance's `disabled:` flags, so engines it switched off because they are blocked or return junk come back
 
 ❌ Run REST mode bound to 0.0.0.0 on a shared/exposed machine
 ✅ Bind to 127.0.0.1 unless behind an authenticated reverse proxy
@@ -121,6 +130,7 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 | 401 from OpenRouter on every call | Invalid or expired key | Regenerate at https://openrouter.ai/keys |
 | Empty results from `discover` / `synthesize` | SearXNG host unreachable | `curl $RESEARCH_SEARXNG_HOST/healthz` — should return 200. REST mode: `GET /api/v1/health/connectors` probes every connector at once |
 | `Qwen3-30B-A3B-Thinking not found` from OpenRouter | Model slug typo | Use exactly `qwen/qwen3-30b-a3b-thinking-2507` |
+| `vertical_search` says the instance has no enabled engine in `docs` / `packages` | Those categories exist only in the bundled companion config. The server reads the instance's `/config` and skips a category no enabled engine serves — SearXNG would otherwise answer it from its default categories without an error | Use `companions/searxng/settings.yml.example`, or add the category to your instance (`categories: [docs]` on the engines you want) |
 | MCP server boots but Claude Code shows no tools | stdio path / venv mismatch | Confirm `command` in `~/.claude.json` points at the venv's Python (not system Python) |
 | 429 rate limit from OpenRouter | Quota exceeded | Reduce `RESEARCH_DEFAULT_TOP_K`; consider local-inference branch |
 | Latency > 30 s on `synthesize` | Quality gate enabled with many sources | Lower `RESEARCH_DEFAULT_TOP_K` to 5; switch preset to `fast` |
@@ -138,7 +148,8 @@ All variables are prefixed `RESEARCH_`. Set in `.env` (gitignored) or pass via t
 | LLM client | `src/llm_client.py` | OpenRouter on `main`, generic OpenAI-compat on `local-inference` branch |
 | Discovery | `src/discovery/` | Routing, expansion, decomposition, focus modes |
 | Synthesis | `src/synthesis/` | Quality gate, contradictions, presets, outline, RCS |
-| Connectors | `src/connectors/` | SearXNG, Tavily, LinkUp, Brave |
+| Search | `src/search/` | RRF aggregator; SearXNG vertical-lane routing in `verticals.py` |
+| Connectors | `src/connectors/` | SearXNG, Tavily, LinkUp, Brave, Parallel |
 | Config | `src/config.py` | All `RESEARCH_*` env vars; pydantic settings |
 
 ---
@@ -360,6 +371,7 @@ If the header is absent: relay the subagent's full output as normal.
 | Library / API documentation | mcp__context7__resolve-library-id → query-docs | mcp__exa__get_code_context_exa |
 | Code examples / patterns | mcp__exa__get_code_context_exa | mcp__exa__web_search_advanced_exa with `includeDomains=["github.com"]` |
 | General web (single query) | mcp__jina__search_web (~63 tokens) | mcp__exa__web_search_exa |
+| One category: videos / science / it / docs / packages | mcp__gigaxity-deep-research__vertical_search (no quota) | science: mcp__exa__web_search_advanced_exa with `category="research paper"`; others: mcp__exa__web_search_advanced_exa without a category (Exa has none for them) |
 | Parallel multi-query web (3-5 variants) | mcp__jina__parallel_search_web (~107 / 3) | sequential mcp__exa__web_search_exa |
 | Advanced web (date-bounded, highlights, domain filters) | mcp__exa__web_search_advanced_exa | mcp__jina__search_web with manual filtering |
 | Company info / company research | mcp__exa__web_search_advanced_exa with `category="company"` | mcp__jina__search_web |

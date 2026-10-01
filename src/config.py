@@ -10,10 +10,11 @@ class Settings(BaseSettings):
     # SearXNG Configuration
     searxng_host: str = Field(default="http://localhost:8888", description="SearXNG instance URL")
     searxng_engines: str = Field(
-        default="brave,duckduckgo,startpage,mojeek,wikipedia",
-        description="Comma-separated search engines (matches the bundled SearXNG settings.yml.example default-enabled list)",
+        default="",
+        description="Comma-separated engines sent as `engines=` on the base lane. Leave EMPTY: SearXNG adds named engines to the category's enabled engines even when the instance disabled them, so the instance's own settings.yml (keep_only + categories) should stay the engine source of truth. Set it only to force or debug specific engines.",
     )
-    searxng_categories: str = Field(default="general", description="Search categories")
+    searxng_categories: str = Field(default="general", description="Categories for the base SearXNG lane (sent as `categories=`)")
+    searxng_vertical_routing: bool = Field(default=True, description="Add a second SearXNG list from one vertical category (science / it / videos) when the focus mode or a conservative keyword heuristic calls for it; it fuses by RRF beside the base lane as `searxng:<vertical>`")
     searxng_language: str = Field(default="en", description="Search language")
     searxng_safesearch: int = Field(default=0, description="Safe search level (0=off, 1=moderate, 2=strict)")
 
@@ -33,6 +34,11 @@ class Settings(BaseSettings):
     # You.com Search Configuration
     youcom_api_key: str = Field(default="", description="You.com Web Search API key")
     youcom_safesearch: str = Field(default="moderate", description="Safe search: off, moderate, or strict")
+    # Parallel Search Configuration
+    parallel_api_key: str = Field(default="", description="Parallel Search API key (platform.parallel.ai)")
+    parallel_mode: str = Field(default="fast", description="Search mode: turbo or fast (cheapest tier), basic or advanced (5x the price as of 2026-09). The API defaults to advanced when mode is omitted, so the connector always sends this value; an unknown value falls back to fast")
+    parallel_max_results: int = Field(default=10, ge=1, description="Upper bound on results per request; 10 are included in the base price and each extra result bills separately")
+    parallel_excerpt_chars: int = Field(default=1500, ge=1, description="Upper bound on excerpt characters per result")
 
     # OpenRouter LLM Configuration
     llm_api_base: str = Field(default="https://openrouter.ai/api/v1", description="LLM API base URL")

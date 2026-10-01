@@ -1,18 +1,20 @@
 # Focus modes
 
-Focus modes tune the discovery and search-aggregation layers toward a specific domain. They bias which connectors run, which engines those connectors hit, and how results get re-ranked before fusion. Where presets shape the *output*, focus modes shape the *input*.
+Focus modes tune the discovery and search layers toward a specific domain. They pick which SearXNG category lane runs beside the general web, whether discovery expands the query, and which knowledge gaps discovery highlights. Where presets shape the *output*, focus modes shape the *input*.
 
 ## Available modes
 
-| Mode | Source bias | Engine selection | Recency weight |
-|---|---|---|---|
-| `general` (default) | Mixed | All engines, balanced | Moderate |
-| `academic` | `.edu`, `.gov`, peer-reviewed, arXiv, SSRN | Google Scholar, arxiv, ssrn | Low — older sources are fine |
-| `documentation` | Official docs, reference sites | Google with `site:docs.*` boost, Bing | Moderate |
-| `comparison` | Comparison sites, blog post round-ups | All engines, balanced | Moderate |
-| `debugging` | Stack Overflow, GitHub issues, forum posts | Google, DuckDuckGo | High — recent posts are more likely current |
-| `tutorial` | Blog posts, video transcripts, official guides | All engines, balanced | Moderate |
-| `news` | News outlets, press releases | Google News, Bing News | Very high — date-bounded |
+| Mode | Use for | SearXNG vertical lane | Query expansion | Gap categories highlighted |
+|---|---|---|---|---|
+| `general` | Broad technical questions and general research | none — general lane only | yes | documentation, examples, alternatives, gotchas |
+| `academic` | Research papers, scientific studies, citations | `science` — arXiv, Google Scholar, Semantic Scholar, OpenAlex, PubMed, Crossref | yes | methodology, limitations, replications, critiques, citations |
+| `documentation` | Official docs, API references, library guides | `it` — Stack Overflow, Ask Ubuntu, Super User, GitHub, Hacker News | no | api_reference, examples, migration, changelog, configuration |
+| `comparison` | X vs Y evaluations, choosing between options | keyword heuristic | yes | criteria, tradeoffs, edge_cases, benchmarks, community_preference |
+| `debugging` | Error messages, bug investigation, troubleshooting | `it` | yes | error_context, similar_issues, root_cause, workarounds, fixes |
+| `tutorial` | How-to guides, step-by-step learning | `videos` — YouTube | no | prerequisites, step_by_step, common_mistakes, next_steps |
+| `news` | Recent events, announcements, updates | keyword heuristic | yes | announcement, reaction, impact, timeline |
+
+Engines listed are those of the bundled [SearXNG companion](../../companions/searxng/README.md); on another instance the lane runs whatever engines that instance puts in the category. With no focus mode, the lane follows a keyword heuristic: `science` for paper / arXiv / peer-reviewed / DOI queries, `it` for error / traceback / crash / "not working" queries, `videos` for video / tutorial / walkthrough / how-to queries — otherwise no lane. Discovery-side behaviour (expansion, gap categories) treats no focus mode as `general`. A lane runs only when the instance's `/config` shows an enabled engine in its category, and it keeps only results one of those engines returned.
 
 ## When to use which
 
@@ -39,22 +41,12 @@ Question type?
 
 ## How it works under the hood
 
-`src/discovery/focus_modes.py` holds the per-mode configuration. A focus mode is a dataclass with:
+Two modules carry the per-mode behaviour:
 
-- `name`
-- `connector_weights` (dict of connector → weight)
-- `searxng_engines` (override default engines)
-- `recency_weight` (multiplier on RRF fusion for recent results)
-- `domain_boosts` (list of `(domain_pattern, boost_factor)`)
-- `domain_penalties` (list of `(domain_pattern, penalty_factor)`)
+- `src/search/verticals.py` maps each focus mode to a SearXNG vertical lane (`FOCUS_TO_VERTICAL`) and holds the keyword heuristic. The search aggregator adds that lane as a second SearXNG list, which fuses beside the base `general` list as `searxng:<category>`. `RESEARCH_SEARXNG_VERTICAL_ROUTING=false` turns lanes off.
+- `src/discovery/focus_modes.py` holds a dataclass per mode. Its `search_expansion` flag decides whether the MCP `discover` tool expands the query (REST `/discover` takes `expand_searches` from the request instead), and `gap_categories` marks the matching knowledge gaps in the MCP tool's output. The dataclass also declares `priority_engines`, `metadata_boost` and `time_filter`, which nothing applies yet — engine choice comes from the lane's SearXNG category, never from an `engines=` list.
 
-When a request specifies a focus mode, the discovery layer:
-
-1. Picks the connectors with non-zero weight.
-2. Overrides each connector's engine selection.
-3. Adjusts the post-fusion ranking using `recency_weight` × `domain_boosts/penalties`.
-
-The synthesis layer also reads the focus mode to adjust prompt templates — e.g. `academic` uses a more formal system prompt with explicit citation-format instructions.
+The mode applies to searches; the synthesis prompts do not change with it.
 
 ## Combining focus modes and presets
 

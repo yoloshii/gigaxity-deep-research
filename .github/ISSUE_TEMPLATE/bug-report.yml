@@ -56,7 +56,7 @@ body:
         - REST API (src/api/routes.py)
         - Discovery Module (routing, expansion, decomposition, focus modes)
         - Synthesis Module (quality gate, contradictions, presets, outline)
-        - Connectors (SearXNG, Tavily, LinkUp)
+        - Connectors (SearXNG, Tavily, LinkUp, Brave, Parallel)
         - LLM Client (OpenRouter / local inference)
         - Configuration (src/config.py / .env)
         - Docker / Deployment
