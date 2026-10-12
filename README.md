@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/yoloshii-gigaxity-deep-research-badge.png)](https://mseep.ai/app/yoloshii-gigaxity-deep-research)
+
 # Gigaxity Deep Research — Open-source deep research MCP server for Claude Code, Codex, Cursor, Hermes, and any MCP-capable agent
 
 **Open-source deep research MCP server for Claude Code, Hermes, Cursor, and any MCP-compatible agent.** [Qwen3-30B-A3B-Thinking](https://huggingface.co/Qwen/Qwen3-30B-A3B-Thinking-2507) via [OpenRouter](https://openrouter.ai/) plus multi-source web synthesis with citations.
