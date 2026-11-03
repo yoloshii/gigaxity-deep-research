@@ -239,10 +239,11 @@ class TestDoctor:
         monkeypatch.setattr(settings, "linkup_api_key", "")
         monkeypatch.setattr(settings, "brave_api_key", "")
         monkeypatch.setattr(settings, "parallel_api_key", "")
+        monkeypatch.setattr(settings, "keenable_api_key", "")
         checks = asyncio.run(check_connectors())
         # Brave (added in v0.10.0) was missing from the doctor until v0.14.0, so
         # its liveness was never reported; every fused connector must be here.
-        assert {c.name for c in checks} == {"searxng", "tavily", "linkup", "brave", "parallel"}
+        assert {c.name for c in checks} == {"searxng", "tavily", "linkup", "brave", "parallel", "keenable"}
         assert all(c.status == "unconfigured" for c in checks)
 
 

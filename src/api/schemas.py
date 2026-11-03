@@ -7,7 +7,7 @@ from typing import Literal
 
 # Names a `connectors` filter may carry. An unknown name is rejected (422)
 # rather than silently matching nothing.
-ConnectorName = Literal["searxng", "tavily", "linkup", "brave", "parallel"]
+ConnectorName = Literal["searxng", "tavily", "linkup", "brave", "parallel", "keenable"]
 
 
 # =============================================================================

@@ -20,6 +20,7 @@ from . import (
     LinkUpConnector,
     BraveConnector,
     ParallelConnector,
+    KeenableConnector,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ def known_connectors() -> list[Connector]:
         LinkUpConnector(),
         BraveConnector(),
         ParallelConnector(),
+        KeenableConnector(),
     ]
 
 

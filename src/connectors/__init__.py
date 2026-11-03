@@ -6,6 +6,7 @@ from .tavily import TavilyConnector
 from .linkup import LinkUpConnector
 from .brave import BraveConnector
 from .parallel import ParallelConnector
+from .keenable import KeenableConnector
 
 __all__ = [
     "SearchResult",
@@ -16,4 +17,5 @@ __all__ = [
     "LinkUpConnector",
     "BraveConnector",
     "ParallelConnector",
+    "KeenableConnector",
 ]

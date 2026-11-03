@@ -1031,7 +1031,7 @@ class TestRestSurface:
         monkeypatch.setattr(routes_mod.cache, "set", lambda *a, **k: None)
         monkeypatch.setattr(settings, "searxng_host", "http://sx.test")
         monkeypatch.setattr(settings, "searxng_engines", "")
-        for key in ("tavily_api_key", "linkup_api_key", "brave_api_key", "parallel_api_key"):
+        for key in ("tavily_api_key", "linkup_api_key", "brave_api_key", "parallel_api_key", "keenable_api_key"):
             monkeypatch.setattr(settings, key, "")
         return TestClient(app)
 
