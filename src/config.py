@@ -28,6 +28,7 @@ class Settings(BaseSettings):
 
     # Brave Search Configuration
     brave_api_key: str = Field(default="", description="Brave Search API key")
+    keenable_api_key: str = Field(default="", description="Keenable Search API key")
     brave_country: str = Field(default="", description="Optional ISO country code for geo-targeting, e.g. 'us'")
     brave_safesearch: str = Field(default="off", description="Safe search: off, moderate, or strict")
 
